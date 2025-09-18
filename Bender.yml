@@ -1,0 +1,96 @@
+package:
+  name: ara
+  authors:
+    - "Matheus Cavalcante <matheusd@iis.ee.ethz.ch>"
+    - "Matteo Perotti <mperotti@iis.ee.ethz.ch>"
+    - "Basile Bougenot <basileb@student.ethz.ch>"
+    - "Nils Wistoff <nwistoff@iis.ee.ethz.ch>"
+    - "Paul Scheffler <paulsc@iis.ee.ethz.ch>"
+
+dependencies:
+  axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.1                               }
+  common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.22.1                               }
+  ariane:             { git: "https://github.com/pulp-platform/cva6.git",               rev: 2ebe023f7289300348c68e99267afcc03256f3ed } # mp/acc_port_rebase
+  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.13                               }
+  apb:                { git: "https://github.com/pulp-platform/apb.git",                version: 0.2.4                                }
+
+workspace:
+  checkout_dir: "hardware/deps"
+
+export_include_dirs:
+  - hardware/include
+
+sources:
+  files:
+    # Headers
+    - hardware/include/rvv_pkg.sv
+    - hardware/include/ara_pkg.sv
+
+    # Sources
+    # Level 1
+    - hardware/src/cva6_cut.sv
+    - hardware/src/req_fork_cut.sv
+    - hardware/src/axi_to_mem.sv
+    - hardware/src/ctrl_registers.sv
+    - hardware/src/cva6_accel_first_pass_decoder.sv
+    - hardware/src/ara_dispatcher.sv
+    - hardware/src/ara_sequencer.sv
+    - hardware/src/axi_inval_filter.sv
+    - hardware/src/lane/lane_sequencer.sv
+    - hardware/src/lane/operand_queue.sv
+    - hardware/src/lane/operand_requester.sv
+    - hardware/src/lane/simd_alu.sv
+    - hardware/src/lane/simd_div.sv
+    - hardware/src/lane/simd_mul.sv
+    - hardware/src/lane/vector_regfile.sv
+    - hardware/src/lane/power_gating_generic.sv
+    - hardware/src/masku/masku.sv
+    - hardware/src/sldu/p2_stride_gen.sv
+    - hardware/src/sldu/ring_router.sv
+    - hardware/src/sldu/sldu_op_dp.sv
+    - hardware/src/sldu/sldu.sv
+    - hardware/src/vlsu/addrgen.sv
+    - hardware/src/vlsu/vldu.sv
+    - hardware/src/vlsu/vstu.sv
+    - hardware/src/vlsu/global_dispatcher.sv
+    - hardware/src/vlsu/global_ldst.sv
+    - hardware/src/vlsu/align_stage.sv
+    - hardware/src/vlsu/shuffle_stage.sv
+    # Level 2
+    - hardware/src/lane/operand_queues_stage.sv
+    - hardware/src/lane/valu.sv
+    - hardware/src/lane/vmfpu.sv
+    - hardware/src/lane/fixed_p_rounding.sv
+    - hardware/src/vlsu/vlsu.sv
+    # Level 3
+    - hardware/src/lane/vector_fus_stage.sv
+    # Level 4
+    - hardware/src/lane/lane.sv
+    # Level 5
+    - hardware/src/ara.sv
+    # Level 6
+    - hardware/src/ara_macro.sv
+    # Level 7
+    - hardware/src/ara_cluster.sv
+    # Level 8
+    - hardware/src/ara_system.sv
+    # Level 9
+    - hardware/src/ara_soc.sv
+
+    - target: ara_test
+      files:
+        # Level 1
+        - hardware/tb/ara_testharness.sv
+        # Level 2
+        - hardware/tb/ara_tb.sv
+        # Level 3
+        - hardware/src/accel_dispatcher_ideal.sv
+
+        - target: verilator
+          files:
+            # Level 2
+            - hardware/tb/ara_tb_verilator.sv
+
+    - target: spyglass
+      files:
+        - hardware/spyglass/src/ara_soc_wrap.sv

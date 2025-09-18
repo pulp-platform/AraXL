@@ -1,0 +1,67 @@
+// Copyright 2022-2025 ETH Zurich and University of Bologna.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// Author: Matteo Perotti <mperotti@iis.ee.ethz.ch>
+
+#include <stdint.h>
+#include <string.h>
+
+#include "../kernel/softmax.h"
+#include "runtime.h"
+#include "util.h"
+
+#ifndef WARM_CACHES_ITER
+#define WARM_CACHES_ITER 1
+#endif
+
+#ifndef SPIKE
+#include "printf.h"
+#else
+#include <stdio.h>
+#endif
+
+extern uint64_t channels;
+extern uint64_t innerSize;
+extern dtype i[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern dtype buf[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern dtype o_s[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern dtype o_v[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+
+void warm_caches(uint64_t heat) {
+  for (uint64_t k = 0; k < heat; ++k)
+    softmax_vec_reduction(i, o_v, channels, innerSize);
+}
+
+int main() {
+  int64_t runtime;
+
+#ifndef SPIKE
+  // Warm-up caches
+  warm_caches(WARM_CACHES_ITER);
+#endif
+
+  HW_CNT_READY;
+  start_timer();
+  softmax_vec_reduction(i, o_v, channels, innerSize);
+  stop_timer();
+
+  runtime = get_timer();
+  
+  float performance = 35.0 * innerSize * channels / runtime;
+  printf("[sw-cycles]: %ld performance:%f\n", runtime, performance);
+
+  return 0;
+}

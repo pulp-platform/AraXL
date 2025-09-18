@@ -1,0 +1,94 @@
+// Copyright 2020-2025 ETH Zurich and University of Bologna.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Author: Matheus Cavalcante, ETH Zurich
+//         Samuel Riedel, ETH Zurich
+
+// Define Matrix dimensions:
+// C = AB with A=[MxN], B=[NxP], C=[MxP]
+
+#include "../kernel/fmatmul.h"
+#include "../kernel/fmatmul32.h"
+
+#ifndef WARM_CACHES_ITER
+#define WARM_CACHES_ITER 1
+#endif
+
+// Define Matrix dimensions:
+// C = AB with A=[MxN], B=[NxP], C=[MxP]
+extern uint64_t M;
+extern uint64_t N;
+extern uint64_t P;
+
+extern double a[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double b[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double c[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
+
+dtype r;
+
+void warm_caches(uint64_t heat) {
+  volatile double *a_ = a;
+  volatile double buf;
+
+  for (uint64_t k = 0; k < heat; ++k)
+  if (sizeof(r) == 8)
+    fmatmul(c, a, b, M, N, P);
+  else 
+    fmatmul32(c, a, b, M, N, P);
+#ifdef AD_HOC_WARMING
+    // Vector stores have invalidated the A mtx cache lines!
+    // Fetch them again
+    for (int m = 0; m < M; ++m) {
+      buf = (volatile double) *a_;
+      a_ += N;
+    }
+#endif
+}
+
+int main() {
+
+#ifndef SPIKE
+  // Warm-up caches
+  warm_caches(WARM_CACHES_ITER);
+#endif
+
+  // Measure runtime with a hot cache
+  HW_CNT_READY;
+
+  if (sizeof(r) == 8) {
+    start_timer();
+    fmatmul(c, a, b, M, N, P);
+    stop_timer();
+  } else {
+    start_timer();
+    fmatmul32(c, a, b, M, N, P);
+    stop_timer();
+  }
+
+  int64_t runtime = get_timer();
+  float performance = 2.0 * M * N * P / runtime;
+
+  float utilization;
+  if (sizeof(r) == 8) {
+    utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);  
+  } else {
+  utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * 2.0);// 2 FP32-ops/lane/cycle
+  }
+
+  printf("M:%d N:%d P=%d [sw-cycles]: %ld performance:%f util:%f%%\n", M, N, P, runtime, performance, utilization);
+
+  return 0;
+}

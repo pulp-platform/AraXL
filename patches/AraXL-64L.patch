@@ -1,0 +1,23 @@
+diff --git a/src/axi_pkg.sv b/src/axi_pkg.sv
+index 4102be0e..5fb12cce 100644
+--- a/src/axi_pkg.sv
++++ b/src/axi_pkg.sv
+@@ -36,7 +36,8 @@ package axi_pkg;
+   /// AXI Transaction Length Width.
+   parameter int unsigned LenWidth    = 32'd8;
+   /// AXI Transaction Size Width.
+-  parameter int unsigned SizeWidth   = 32'd3;
++  // parameter int unsigned SizeWidth   = 32'd4;
++  parameter int unsigned SizeWidth   = 32'd4;
+   /// AXI Lock Width.
+   parameter int unsigned LockWidth   = 32'd1;
+   /// AXI5 Atomic Operation Width.
+@@ -59,7 +60,7 @@ package axi_pkg;
+   /// AXI Transaction Length Type.
+   typedef logic [7:0]    len_t;
+   /// AXI Transaction Size Type.
+-  typedef logic [2:0]   size_t;
++  typedef logic [3:0]   size_t;
+   /// AXI5 Atomic Operation Type.
+   typedef logic [5:0]   atop_t; // atomic operations
+   /// AXI5 Non-Secure Address Identifier.

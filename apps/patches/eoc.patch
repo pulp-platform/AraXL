@@ -1,0 +1,32 @@
+diff --git a/p/link.ld b/p/link.ld
+index b3e315e..f624069 100644
+--- a/p/link.ld
++++ b/p/link.ld
+@@ -6,12 +6,11 @@ SECTIONS
+   . = 0x80000000;
+   .text.init : { *(.text.init) }
+   . = ALIGN(0x1000);
+-  .tohost : { *(.tohost) }
+-  . = ALIGN(0x1000);
+   .text : { *(.text) }
+   . = ALIGN(0x1000);
+   .data : { *(.data) }
+   .bss : { *(.bss) }
+   _end = .;
+-}
+ 
++  tohost        = 0xD0000000;
++}
+diff --git a/p/riscv_test.h b/p/riscv_test.h
+index 3d4637a..7036ffc 100644
+--- a/p/riscv_test.h
++++ b/p/riscv_test.h
+@@ -261,7 +261,7 @@ reset_vector:                                                           \
+ 
+ #define RVTEST_PASS                                                     \
+         fence;                                                          \
+-        li TESTNUM, 1;                                                  \
++        li TESTNUM, 0;                                                  \
+         li a7, 93;                                                      \
+         li a0, 0;                                                       \
+         ecall
