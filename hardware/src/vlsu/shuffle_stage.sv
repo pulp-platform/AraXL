@@ -47,6 +47,7 @@ vlen_cl_t vl, vl_d, vl_q;
 vtype_t vtype;
 
 global_dispatcher #(
+  .NrLanes      (NrLanes   ),
   .NrClusters   (NrClusters),
   .vlen_cl_t    (vlen_cl_t )
 ) i_global_dispatcher (

@@ -130,6 +130,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster
       ara_macro #(
         .NrLanes           (NrLanes             ),
+        .NrClusters        (NrClusters          ),
         .FPUSupport        (FPUSupport          ),
         .FPExtSupport      (FPExtSupport        ),
         .FixPtSupport      (FixPtSupport        ),
@@ -331,8 +332,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   assign ara_axi_req_cut = ara_axi_req_shuffle_cut[ShuffleCuts];
   assign ara_axi_resp_shuffle_cut[ShuffleCuts] = ara_axi_resp_cut;
   shuffle_stage #(
-    .NrLanes              (NrLanes              ),
-    .NrClusters           (NrClusters           ),
+      .NrLanes            (NrLanes              ),
+      .NrClusters         (NrClusters           ),
       .ClusterAxiDataWidth(ClusterAxiDataWidth  ),
       .AxiAddrWidth       (AxiAddrWidth         ),
       .axi_r_t            (cluster_axi_r_t      ),
@@ -421,6 +422,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   // Align stage
   align_stage #(
+      .NrLanes          (NrLanes            ),
       .NrClusters       (NrClusters         ),
       .AxiDataWidth     (AxiDataWidth       ),
       .AxiAddrWidth     (AxiAddrWidth       ),

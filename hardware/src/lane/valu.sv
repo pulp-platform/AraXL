@@ -21,6 +21,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     input  logic                         clk_i,
     input  logic                         rst_ni,
     input  logic[idx_width(NrLanes)-1:0] lane_id_i,
+    input  id_cluster_t                  cluster_id_i,
+    input  num_cluster_t                 num_clusters_i,
     // Interface with Dispatcher
     output logic                         vxsat_flag_o,
     input  vxrm_t                        alu_vxrm_i,
@@ -264,7 +266,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // so on. In the end, the result is collected in Lane 0 and the last SIMD reduction is performed.
   // The following function determines how many partial results this lane must process during the
   // inter-lane reduction.
-  typedef logic [idx_width(NrLanes/2):0] reduction_rx_cnt_t;
+  typedef logic [idx_width(NrLanes*MaxNrClusters/2):0] reduction_rx_cnt_t;
   reduction_rx_cnt_t reduction_rx_cnt_d, reduction_rx_cnt_q;
   reduction_rx_cnt_t simd_red_cnt_max_d, simd_red_cnt_max_q;
 
@@ -298,6 +300,12 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     endcase
   endfunction: reduction_rx_cnt_init
 
+  // Inter cluster reductions are handled like inter lane reductions.
+  // In inter cluster only the last lane participates.
+  // Finally, the lane-0 receives the last packet for SIMD
+  id_cluster_t max_cluster_id; 
+  assign max_cluster_id = (1 << num_clusters_i) - 1;
+
   // Count how many transactions we must do in total to complete the reduction operation
   logic [idx_width($clog2(NrLanes)+1):0] sldu_transactions_cnt_d, sldu_transactions_cnt_q;
 
@@ -309,7 +317,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   logic first_op_d, first_op_q;
 
   // Signal to indicate the state of the ALU
-  typedef enum logic [2:0] {NO_REDUCTION, INTRA_LANE_REDUCTION, INTER_LANES_REDUCTION_RX, INTER_LANES_REDUCTION_TX, LN0_REDUCTION_COMMIT, SIMD_REDUCTION} alu_state_e;
+  typedef enum logic [2:0] {NO_REDUCTION, INTRA_LANE_REDUCTION, 
+    INTER_LANES_REDUCTION_RX, INTER_LANES_REDUCTION_TX, 
+    LN0_REDUCTION_COMMIT, SIMD_REDUCTION
+  } alu_state_e;
   alu_state_e alu_state_d, alu_state_q;
 
   // Reductions commit by zeroing the commit counter
@@ -782,7 +793,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         // Initialize reduction-related sequential elements
         first_op_d              = 1'b1;
         reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i);
-        sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
+        if (lane_id_i == NrLanes-1)
+            reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id, cluster_id_i); // Inter cluster
+        // sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
+        sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
 
         alu_state_d = INTRA_LANE_REDUCTION;
       end else begin
@@ -810,7 +824,10 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
         // Initialize reduction-related sequential elements
         first_op_d              = 1'b1;
         reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i);
-        sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
+        if (lane_id_i == NrLanes-1)
+            reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id, cluster_id_i); // Inter cluster
+        // sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
+        sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
 
         issue_cnt_d = vfu_operation_i.vl;
         if (!(vfu_operation_i.op inside {[VMANDNOT:VMXNOR]}))

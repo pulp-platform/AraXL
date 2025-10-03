@@ -62,7 +62,9 @@ int main() {
 
   int64_t runtime_s, runtime_v;
 
-  for (uint64_t avl = 8; avl <= (vsize >> 3); avl *= 8) {
+  // for (uint64_t avl = 32; avl <= (vsize >> 3); avl *= 2) {
+  for (uint64_t avl = (vsize >> 3); avl >=8; avl /= 2) {
+  // uint64_t avl = 4;
     // Dotp
     printf("Calulating 64b dotp with vectors with length = %lu\n", avl);
     start_timer();
@@ -87,80 +89,81 @@ int main() {
     }
   }
 
-  for (uint64_t avl = 8; avl <= (vsize >> 2); avl *= 8) {
-    // Dotp
-    printf("Calulating 32b dotp with vectors with length = %lu\n", avl);
-    start_timer();
-    res32_v = dotp_v32b(v32a, v32b, avl);
-    stop_timer();
-    runtime_v = get_timer();
-    printf("Vector runtime: %ld\n", runtime_v);
+  // for (uint64_t avl = 8; avl <= (vsize >> 2); avl *= 8) {
+  //   // Dotp
+  //   // uint64_t avl = 4;
+  //   printf("Calulating 32b dotp with vectors with length = %lu\n", avl);
+  //   start_timer();
+  //   res32_v = dotp_v32b(v32a, v32b, avl);
+  //   stop_timer();
+  //   runtime_v = get_timer();
+  //   printf("Vector runtime: %ld\n", runtime_v);
 
-    if (SCALAR) {
-      start_timer();
-      res32_s = dotp_s32b(v32a, v32b, avl);
-      stop_timer();
-      runtime_s = get_timer();
-      printf("Scalar runtime: %ld\n", runtime_s);
+  //   if (SCALAR) {
+  //     start_timer();
+  //     res32_s = dotp_s32b(v32a, v32b, avl);
+  //     stop_timer();
+  //     runtime_s = get_timer();
+  //     printf("Scalar runtime: %ld\n", runtime_s);
 
-      if (CHECK) {
-        if (res32_v != res32_s) {
-          printf("Error: v = %ld, g = %ld\n", res32_v, res32_s);
-          return -1;
-        }
-      }
-    }
-  }
+  //     if (CHECK) {
+  //       if (res32_v != res32_s) {
+  //         printf("Error: v = %ld, g = %ld\n", res32_v, res32_s);
+  //         return -1;
+  //       }
+  //     }
+  //   }
+  // }
 
-  for (uint64_t avl = 8; avl <= (vsize >> 1); avl *= 8) {
-    // Dotp
-    printf("Calulating 16b dotp with vectors with length = %lu\n", avl);
-    start_timer();
-    res16_v = dotp_v16b(v16a, v16b, avl);
-    stop_timer();
-    runtime_v = get_timer();
-    printf("Vector runtime: %ld\n", runtime_v);
+  // for (uint64_t avl = 8; avl <= (vsize >> 1); avl *= 8) {
+  //   // Dotp
+  //   printf("Calulating 16b dotp with vectors with length = %lu\n", avl);
+  //   start_timer();
+  //   res16_v = dotp_v16b(v16a, v16b, avl);
+  //   stop_timer();
+  //   runtime_v = get_timer();
+  //   printf("Vector runtime: %ld\n", runtime_v);
 
-    if (SCALAR) {
-      start_timer();
-      res16_s = dotp_s16b(v16a, v16b, avl);
-      stop_timer();
-      runtime_s = get_timer();
-      printf("Scalar runtime: %ld\n", runtime_s);
+  //   if (SCALAR) {
+  //     start_timer();
+  //     res16_s = dotp_s16b(v16a, v16b, avl);
+  //     stop_timer();
+  //     runtime_s = get_timer();
+  //     printf("Scalar runtime: %ld\n", runtime_s);
 
-      if (CHECK) {
-        if (res16_v != res16_s) {
-          printf("Error: v = %ld, g = %ld\n", res16_v, res16_s);
-          return -1;
-        }
-      }
-    }
-  }
+  //     if (CHECK) {
+  //       if (res16_v != res16_s) {
+  //         printf("Error: v = %ld, g = %ld\n", res16_v, res16_s);
+  //         return -1;
+  //       }
+  //     }
+  //   }
+  // }
 
-  for (uint64_t avl = 8; avl <= (vsize >> 0); avl *= 8) {
-    // Dotp
-    printf("Calulating 8b dotp with vectors with length = %lu\n", avl);
-    start_timer();
-    res8_v = dotp_v8b(v8a, v8b, avl);
-    stop_timer();
-    runtime_v = get_timer();
-    printf("Vector runtime: %ld\n", runtime_v);
+  // for (uint64_t avl = 8; avl <= (vsize >> 0); avl *= 8) {
+  //   // Dotp
+  //   printf("Calulating 8b dotp with vectors with length = %lu\n", avl);
+  //   start_timer();
+  //   res8_v = dotp_v8b(v8a, v8b, avl);
+  //   stop_timer();
+  //   runtime_v = get_timer();
+  //   printf("Vector runtime: %ld\n", runtime_v);
 
-    if (SCALAR) {
-      start_timer();
-      res8_s = dotp_s8b(v8a, v8b, avl);
-      stop_timer();
-      runtime_s = get_timer();
-      printf("Scalar runtime: %ld\n", runtime_s);
+  //   if (SCALAR) {
+  //     start_timer();
+  //     res8_s = dotp_s8b(v8a, v8b, avl);
+  //     stop_timer();
+  //     runtime_s = get_timer();
+  //     printf("Scalar runtime: %ld\n", runtime_s);
 
-      if (CHECK) {
-        if (res8_v != res8_s) {
-          printf("Error: v = %ld, g = %ld\n", res8_v, res8_s);
-          return -1;
-        }
-      }
-    }
-  }
+  //     if (CHECK) {
+  //       if (res8_v != res8_s) {
+  //         printf("Error: v = %ld, g = %ld\n", res8_v, res8_s);
+  //         return -1;
+  //       }
+  //     }
+  //   }
+  // }
 
   printf("SUCCESS.\n");
 

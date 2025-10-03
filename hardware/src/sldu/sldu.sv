@@ -1422,6 +1422,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     if (!vinsn_queue_full && pe_req_valid_i && !vinsn_running_q[pe_req_i.id] &&
       (pe_req_i.vfu == VFU_SlideUnit || pe_req_i.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = pe_req_i;
+      // if ((pe_req_i.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]}) && (pe_req_i.vl < NrLanes)) begin
+      //   vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt].vl = NrLanes;
+      // end
       vinsn_running_d[pe_req_i.id]                  = 1'b1;
 
       // Calculate the slide offset inside the vector register

@@ -47,6 +47,8 @@ avl16 = int(vsize)
 # Create the vectors
 v64a = np.random.rand(avl64).astype(np.float64)
 v64b = np.random.rand(avl64).astype(np.float64)
+# v64a = np.ones(avl64, dtype=np.float64)
+# v64b = np.ones(avl64, dtype=np.float64)
 v32a = np.random.rand(avl32).astype(np.float32)
 v32b = np.random.rand(avl32).astype(np.float32)
 v16a = np.random.rand(avl16).astype(np.float16)

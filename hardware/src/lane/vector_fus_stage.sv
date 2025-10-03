@@ -107,6 +107,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .clk_i                (clk_i                          ),
     .rst_ni               (rst_ni                         ),
     .lane_id_i            (lane_id_i                      ),
+    .cluster_id_i         (cluster_id_i                    ),
+    .num_clusters_i       (num_clusters_i                  ),
     // Interface with Dispatcher
     .vxsat_flag_o         (alu_vxsat                      ),
     .alu_vxrm_i           (alu_vxrm_i                     ),

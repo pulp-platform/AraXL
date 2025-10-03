@@ -263,7 +263,11 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
       vfu_operation_valid_d = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
 
       // Vector length calculation
+      // vfu_operation_d.vl = (!pe_req.vl) ? 1 : pe_req.vl / NrLanes;
       vfu_operation_d.vl = pe_req.vl / NrLanes;
+      // For idle reduction case
+      vfu_operation_d.instr_idle = !pe_req.vl;
+
       // If lane_id_i < vl % NrLanes, this lane has to execute one extra micro-operation.
       if (lane_id_i < pe_req.vl[idx_width(NrLanes)-1:0]) vfu_operation_d.vl += 1;
 
@@ -307,6 +311,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             hazard     : pe_req.hazard_vs1 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VREDSUM:VWREDSUM]} ? 1'b1 : 0,
             target_fu  : ALU_SLDU,
+            instr_idle : !pe_req.vl,
             default    : '0
           };
           operand_request_push[AluA] = pe_req.use_vs1;
@@ -328,6 +333,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             hazard     : pe_req.hazard_vs2 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VREDSUM:VWREDSUM]} ? 1'b1 : 0,
             target_fu  : ALU_SLDU,
+            instr_idle : !pe_req.vl,
             default    : '0
           };
           operand_request_push[AluB] = pe_req.use_vs2;
@@ -343,6 +349,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl     : (pe_req.vl / NrLanes / 8) >> int'(pe_req.vtype.vsew),
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           if ((operand_request_i[MaskM].vl << int'(pe_req.vtype.vsew)) *
@@ -362,10 +369,12 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // If reductions and vl == 0, we must replace the operands with neutral
             // values in the opqueues. So, vl must be 1 at least
             vl         : (pe_req.op inside {[VFREDUSUM:VFWREDOSUM]}) ? 1 : vfu_operation_d.vl,
+            // vl         : (pe_req.op inside {[VFREDUSUM:VFWREDOSUM]}) ? (|pe_req.vl ? 1 : 0) : vfu_operation_d.vl,
             vstart     : vfu_operation_d.vstart,
             hazard     : pe_req.hazard_vs1 | pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
+            instr_idle : !pe_req.vl,
             default    : '0
           };
           operand_request_push[MulFPUA] = pe_req.use_vs1;
@@ -388,6 +397,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             pe_req.hazard_vd : (pe_req.hazard_vs2 | pe_req.hazard_vd)),
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           operand_request_push[MulFPUB] = pe_req.swap_vs2_vd_op ?
@@ -404,12 +414,14 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             // values in the opqueues. So, vl must be 1 at least
             vl         : (pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} && vfu_operation_d.vl == '0)
                         ? 1 : vfu_operation_d.vl,
+            // vl         : vfu_operation_d.vl = vfu_operation_d.vl,
             vstart     : vfu_operation_d.vstart,
             vtype      : pe_req.vtype,
             hazard     : pe_req.swap_vs2_vd_op ?
             (pe_req.hazard_vs2 | pe_req.hazard_vd) : pe_req.hazard_vd,
             is_reduct  : pe_req.op inside {[VFREDUSUM:VFWREDOSUM]} ? 1'b1 : 0,
             target_fu  : MFPU_ADDRGEN,
+            instr_idle : !pe_req.vl,
             default : '0
           };
           operand_request_push[MulFPUC] = pe_req.swap_vs2_vd_op ?
@@ -426,6 +438,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl     : (pe_req.vl / NrLanes / 8) >> int'(pe_req.vtype.vsew),
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           if ((operand_request_i[MaskM].vl << int'(pe_req.vtype.vsew)) *
@@ -444,6 +457,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl     : (pe_req.vl / NrLanes / 8) >> int'(pe_req.vtype.vsew),
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           if ((operand_request_i[MaskM].vl << int'(pe_req.vtype.vsew)) *
@@ -462,6 +476,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vstart   : vfu_operation_d.vstart,
             vtype    : pe_req_i.vtype,
             hazard   : pe_req_i.hazard_vs2 | pe_req_i.hazard_vd,
+            instr_idle : !pe_req.vl,
             default  : '0
           };
           // Since this request goes outside of the lane, we might need to request an
@@ -484,6 +499,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl      : pe_req.vl / NrLanes,
             vstart  : vfu_operation_d.vstart,
             hazard  : pe_req.hazard_vs1 | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default : '0
           };
           if (operand_request_i[StA].vl * NrLanes != pe_req.vl) operand_request_i[StA].vl += 1;
@@ -500,6 +516,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl     : (pe_req.vl / NrLanes / 8) >> int'(pe_req.vtype.vsew),
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           if ((operand_request_i[MaskM].vl << int'(pe_req.vtype.vsew)) *
@@ -518,6 +535,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vstart   : vfu_operation_d.vstart,
             vtype    : pe_req_i.vtype,
             hazard   : pe_req_i.hazard_vs2 | pe_req_i.hazard_vd,
+            instr_idle : !pe_req.vl,
             default  : '0
           };
           // Since this request goes outside of the lane, we might need to request an
@@ -538,6 +556,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype    : pe_req.vtype,
             vstart   : vfu_operation_d.vstart,
             hazard   : pe_req.hazard_vs2 | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default  : '0
           };
           operand_request_push[SlideAddrGenA] = pe_req.use_vs2;
@@ -601,6 +620,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype  : pe_req.vtype,
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           operand_request_push[MaskM] = !pe_req.vm;
@@ -647,6 +667,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype   : pe_req.vtype,
             vstart  : vfu_operation_d.vstart,
             hazard  : pe_req.hazard_vs1 | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default : '0
           };
 
@@ -675,6 +696,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype   : pe_req.vtype,
             vstart  : vfu_operation_d.vstart,
             hazard  : pe_req.hazard_vs2 | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default : '0
           };
           // This is an operation that runs normally on the ALU, and then gets *condensed* and
@@ -702,6 +724,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype   : pe_req.vtype,
             vstart  : vfu_operation_d.vstart,
             hazard  : pe_req.hazard_vs1 | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default : '0
           };
 
@@ -718,6 +741,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype   : pe_req.vtype,
             vstart  : vfu_operation_d.vstart,
             hazard  : pe_req.hazard_vs2 | pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default : '0
           };
           // This is an operation that runs normally on the ALU, and then gets *condensed* and
@@ -736,6 +760,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl      : (pe_req.vl / NrLanes / ELEN) << (int'(EW64) - int'(pe_req.vtype.vsew)),
             vstart  : vfu_operation_d.vstart,
             hazard  : pe_req.hazard_vd,
+            instr_idle : !pe_req.vl,
             default : '0
           };
           if (((pe_req.vl / NrLanes / ELEN) * NrLanes * ELEN) !=
@@ -752,6 +777,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl     : (pe_req.vl / NrLanes / ELEN),
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm,
+            instr_idle : !pe_req.vl,
             default: '0
           };
           if ((operand_request_i[MaskM].vl * NrLanes * ELEN) != pe_req.vl) begin
@@ -771,6 +797,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vl         : vfu_operation_d.vl,
             vstart     : vfu_operation_d.vstart,
             hazard     : pe_req.hazard_vs2,
+            instr_idle : !pe_req.vl,
             default    : '0
           };
           operand_request_push[MaskB] = 1'b1;

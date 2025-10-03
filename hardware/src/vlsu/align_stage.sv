@@ -9,6 +9,7 @@
 // This means the alignment in the Load store unit can be removed.
 
 module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
+  parameter  int           unsigned NrLanes             = 0,  // Number of parallel vector lanes.
   parameter  int           unsigned NrClusters          = 0,
   parameter  int           unsigned AxiDataWidth        = 0,
   parameter  int           unsigned AxiAddrWidth        = 0,
@@ -43,6 +44,7 @@ vlen_cl_t vl, vl_d, vl_q;
 vtype_t vtype;
 
 global_dispatcher #(
+  .NrLanes      (NrLanes   ),
   .NrClusters   (NrClusters),
   .vlen_cl_t    (vlen_cl_t )
 ) i_global_dispatcher (
@@ -291,6 +293,9 @@ always_comb begin
       if (be_final_d != '1) begin
         // For unaligned data, this is the last packet.
         axi_resp_o.r.last = 1'b1;
+        if (!data_prev_valid_q) begin
+          axi_resp_o.r_valid  = 1'b1;
+        end
         data_prev_d       = '0;
         data_prev_valid_d = 1'b0;
       end else begin

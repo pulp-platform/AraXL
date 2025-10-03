@@ -10,6 +10,7 @@
 
 module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     parameter int           unsigned NrLanes      = 0,
+    parameter int           unsigned NrClusters   = 0,   // Number of Ara instances
     // Support for floating-point data types
     parameter fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -22,6 +23,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                                 rst_ni,
     // Id
     input num_cluster_t                          num_clusters_i,
+    input  id_cluster_t                          cluster_id_i,
     // Interfaces with Ariane
     input  accelerator_req_t                     acc_req_i,
     output accelerator_resp_t                    acc_resp_o,
@@ -224,7 +226,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   // Is the stride power of two?
   popcount #(
     // .INPUT_WIDTH (idx_width(VLENB << 3))
-    .INPUT_WIDTH (2)
+    // .INPUT_WIDTH (2)
+    .INPUT_WIDTH ($clog2(NrLanes))
   ) i_np2_stride (
     //.data_i    (ara_req_d.stride[idx_width(VLENB << 3)-1:0]),
     .data_i      (ara_req_d.stride[$clog2(NrLanes)-1:0]    ),
@@ -239,6 +242,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
   logic illegal_insn;
   elen_t vfmvfs_result;
+
+  vlen_t total_cluster_pieces;
+  // assign total_cluster_pieces = vlen_t'(acc_req_i.rs1) >> $clog2(VLENB >> vtype_d.vsew);
+  assign total_cluster_pieces = vlen_t'(acc_req_i.rs1) >> $clog2(NrLanes);
+
+  vlen_t check_total_cluster_pieces;
+  assign check_total_cluster_pieces = ((total_cluster_pieces >> $clog2(NrClusters)) + 1) * NrLanes;
 
   always_comb begin: p_decoder
     // Default values
@@ -473,6 +483,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     (signed'($clog2(ELENB)) + signed'(vtype_d.vlmul) < signed'(vtype_d.vsew))) begin
                   vtype_d = '{vill: 1'b1, default: '0};
                   vl_d    = '0;
+                  acc_resp_o.result = vl_d << num_clusters_i;
                 end
 
                 // Update the vector length
@@ -493,23 +504,45 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                   if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
                     vl_d = vlen_t'(insn.vsetivli_type.uimm5) >> num_clusters_i;
+                    acc_resp_o.result = vl_d << num_clusters_i;
                   end else begin // vsetvl || vsetvli
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
                       // Do not update the vector length
                       vl_d = vl_q;
+                      acc_resp_o.result = vl_d << num_clusters_i;
                     end else if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd != '0) begin
                       // Set the vector length to vlmax
                       vl_d = vlmax;
+                      acc_resp_o.result = vl_d << num_clusters_i;
                     end else begin
+                      // // Normal stripmining
+                      // vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) ||
+                      //   ((vlen_t'(acc_req_i.rs1) >> num_clusters_i) > vlmax)) ? vlmax : (vlen_t'(acc_req_i.rs1) >> num_clusters_i);
                       // Normal stripmining
-                      vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) ||
-                        ((vlen_t'(acc_req_i.rs1) >> num_clusters_i) > vlmax)) ? vlmax : (vlen_t'(acc_req_i.rs1) >> num_clusters_i);
+                      if ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) || 
+                        ((vlen_t'(acc_req_i.rs1) >> $clog2(NrClusters)) > vlmax)) begin
+                        vl_d = vlmax;
+                        // Return the new vl
+                        acc_resp_o.result = vl_d << num_clusters_i;
+                      end else begin
+                        if (cluster_id_i < total_cluster_pieces[$clog2(NrClusters) - 1 : 0]) begin
+                          // vl_d = (total_cluster_pieces >> $clog2(NrClusters) + 1) * (VLENB >> vtype_d.vsew);
+                          vl_d = ((total_cluster_pieces >> $clog2(NrClusters)) + 1) * NrLanes;
+                        end else if (cluster_id_i == total_cluster_pieces[$clog2(NrClusters) - 1 : 0]) begin
+                          // vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * (VLENB >> vtype_d.vsew) + 
+                          //         acc_req_i.rs1 % (VLENB >> vtype_d.vsew);
+                          vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * NrLanes + 
+                                  acc_req_i.rs1 % NrLanes;
+                        end else begin
+                          // vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * (VLENB >> vtype_d.vsew);
+                          vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * NrLanes;
+                        end
+                        // Return the new vl
+                        acc_resp_o.result = vlen_t'(acc_req_i.rs1);
+                      end
                     end
                   end
                 end
-
-                // Return the new vl
-                acc_resp_o.result = vl_d << num_clusters_i;
 
                 // If the vtype has changed, wait for the backend before issuing any new instructions.
                 // This is to avoid hazards on implicit register labels when LMUL_old > LMUL_new
@@ -3210,7 +3243,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
-    if (is_decoding && (vl_q == '0 || null_vslideup) && !is_config &&
+    if (is_decoding && (vl_q == '0 || null_vslideup) && !is_config && 
+      !(ara_req_d.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]}) &&
       !ignore_zero_vl_check && !acc_resp_o.error) begin
       // If we are acknowledging a memory operation, we must tell Ariane that the memory
       // operation was resolved (to decrement its pending load/store counter)

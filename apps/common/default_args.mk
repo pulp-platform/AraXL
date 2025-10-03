@@ -1,16 +1,16 @@
 # Default app parameters
 
 # Matrix sizes
-def_args_imatmul     ?= "128 128 128"
-def_args_fmatmul     ?= "128 128 128"
+def_args_imatmul     ?= "64 64 64"
+def_args_fmatmul     ?= "64 64 64"
 # Matrix size, filter size
 def_args_iconv2d     ?= "112 7"
 def_args_fconv2d     ?= "112 7"
 def_args_fconv3d     ?= "112 7"
 # Vector size
-def_args_fdotproduct ?= "512"
+def_args_fdotproduct ?= "8192"
 # Vector size
-def_args_dotproduct  ?= "512"
+def_args_dotproduct  ?= "8192"
 # Matrix padded size 0, matrix padded size 1, onlyvec
 def_args_jacobi2d    ?= "130 130"
 # Vector size

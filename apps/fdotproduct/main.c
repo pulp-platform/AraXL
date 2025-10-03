@@ -72,8 +72,10 @@ int main() {
 
   uint64_t runtime_s, runtime_v;
 
-  //for (uint64_t avl = 8; avl <= (vsize >> 3); avl *= 8) {
-    uint64_t avl = vsize;
+  // for (uint64_t avl = 32; avl <= (vsize >> 3); avl *= 2) {
+  for (uint64_t avl = (vsize >> 3); avl >= 8; avl /= 2) {
+    // uint64_t avl = vsize >> 3;
+    // uint64_t avl = 4;
     printf("Calulating 64b dotp with vectors with length = %lu\n", avl);
     start_timer();
     res64_v = fdotp_v64b(v64a, v64b, avl);
@@ -98,49 +100,49 @@ int main() {
         }
       }
     }
-  // }
+  }
 
-  /*
+
   // for (uint64_t avl = 16; avl <= (vsize); avl *= 2) {
-    uint64_t avl=vsize;
-    printf("Calulating 32b dotp with vectors with length = %lu\n", avl);
-    start_timer();
-    res32_v = fdotp_v32b(v32a, v32b, avl);
-    stop_timer();
-    runtime_v = get_timer();
-    printf("Vector runtime: %ld\n", runtime_v);
+  // for (uint64_t avl = 32; avl <= 32; avl *= 2) {
+    // uint64_t avl=4;
+    // printf("Calulating 32b dotp with vectors with length = %lu\n", avl);
+    // start_timer();
+    // res32_v = fdotp_v32b(v32a, v32b, avl);
+    // stop_timer();
+    // runtime_v = get_timer();
+    // printf("Vector runtime: %ld\n", runtime_v);
 
-    if (SCALAR) {
-      start_timer();
-      res32_s = fdotp_s32b(v32a, v32b, avl);
-      stop_timer();
-      runtime_s = get_timer();
-      printf("Scalar runtime: %ld\n", runtime_s);
-    }
+    // if (SCALAR) {
+    //   start_timer();
+    //   res32_s = fdotp_s32b(v32a, v32b, avl);
+    //   stop_timer();
+    //   runtime_s = get_timer();
+    //   printf("Scalar runtime: %ld\n", runtime_s);
+    // }
 
-    if (CHECK) {
-      if (SCALAR) {
-        printf("Checking results: v = %f, s = %f\n", res32_v, res32_s);
-        if (!similarity_check_32b(res32_v, res32_s, THRESHOLD_32b)) {
-          printf("Error: v = %f, s = %f\n", res32_v, res32_s);
-          return -1;
-        }
-      }
-    }
+    // if (CHECK) {
+    //   if (SCALAR) {
+    //     printf("Checking results: v = %f, s = %f\n", res32_v, res32_s);
+    //     if (!similarity_check_32b(res32_v, res32_s, THRESHOLD_32b)) {
+    //       printf("Error: v = %f, s = %f\n", res32_v, res32_s);
+    //       return -1;
+    //     }
+    //   }
+    // }
 
-    // Dotproduct Arithmetic intensity calculation
-    // Ops = 2N FP32 ops 
-    // Bytes = 2N * 4B = 8N Bytes , AI = 1/4 FP32 Op/B
-    // BW = 32N bits/ cycle = 4N Bytes
-    // Max Perf = N * 2 * 2 FP32op/cycle = 4N FP32 op/cycle
-    // From roofline max perf at the arithmetic intensity = N FP32 op/cycle
-    float performance = avl * 1.0 / runtime_v;
-    float utilization = 100.0 * performance / (NR_LANES * NR_CLUSTERS);
-    printf("The execution took %d cycles.\n", runtime_v);
-    printf("The performance is %f FLOP/cycle (%f%% utilization).\n",
-           performance, utilization);
-
-  // }*/
+    // // Dotproduct Arithmetic intensity calculation
+    // // Ops = 2N FP32 ops 
+    // // Bytes = 2N * 4B = 8N Bytes , AI = 1/4 FP32 Op/B
+    // // BW = 32N bits/ cycle = 4N Bytes
+    // // Max Perf = N * 2 * 2 FP32op/cycle = 4N FP32 op/cycle
+    // // From roofline max perf at the arithmetic intensity = N FP32 op/cycle
+    // float performance = avl * 1.0 / runtime_v;
+    // float utilization = 100.0 * performance / (NR_LANES * NR_CLUSTERS);
+    // printf("The execution took %d cycles.\n", runtime_v);
+    // printf("The performance is %f FLOP/cycle (%f%% utilization).\n",
+    //        performance, utilization);
+  // }
   
   /*
   for (uint64_t avl = 8; avl <= (vsize >> 2); avl *= 8) {

@@ -314,10 +314,10 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         if (SupportReduct) begin
           if (lane_id_i == '0) begin
             unique case (cmd.eew)
-              EW8 : conv_operand = {ntr.w8[7:1] , ibuf_operand[7:0]};
-              EW16: conv_operand = {ntr.w16[3:1], ibuf_operand[15:0]};
-              EW32: conv_operand = {ntr.w32[1:1], ibuf_operand[31:0]};
-              default:;
+              EW8 : conv_operand = (cmd.instr_idle) ? ntr.w8 : {ntr.w8[7:1] , ibuf_operand[7:0]};
+              EW16: conv_operand = (cmd.instr_idle) ? ntr.w16 : {ntr.w16[3:1], ibuf_operand[15:0]};
+              EW32: conv_operand = (cmd.instr_idle) ? ntr.w32 : {ntr.w32[1:1], ibuf_operand[31:0]};
+              default:conv_operand = (cmd.instr_idle) ? ntr.w64 : ibuf_operand;
             endcase
           end else begin
             conv_operand = ntr.w64;
@@ -369,21 +369,24 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       // not to compromise reductions.
       default: begin
         // Pad only the last packet during a reduction, and pad the correct bytes only!
-        if (last_packet && incomplete_packet) begin
+        if (cmd.instr_idle || (last_packet && incomplete_packet)) begin
           if (SupportNtrVal) unique case (cmd.eew)
             EW8 : for (int unsigned b = 0; b < 8; b++) begin
                     automatic int unsigned bs = shuffle_index(b, 1, EW8);
-                    if ((b >> 0) >= cmd.vl[2:0]) conv_operand[8*bs +: 8] = ntr.w8[b];
+                    if (cmd.instr_idle || ((b >> 0) >= cmd.vl[2:0])) conv_operand[8*bs +: 8] = ntr.w8[b];
                   end
             EW16: for (int unsigned b = 0; b < 8; b++) begin
                     automatic int unsigned bs = shuffle_index(b, 1, EW16);
-                    if ((b >> 1) >= cmd.vl[1:0]) conv_operand[8*bs +: 8] = ntr.w8[b];
+                    if (cmd.instr_idle || ((b >> 1) >= cmd.vl[1:0])) conv_operand[8*bs +: 8] = ntr.w8[b];
                   end
             EW32: for (int unsigned b = 0; b < 8; b++) begin
                     automatic int unsigned bs = shuffle_index(b, 1, EW32);
-                    if ((b >> 2) >= cmd.vl[0:0]) conv_operand[8*bs +: 8] = ntr.w8[b];
+                    if (cmd.instr_idle || ((b >> 2) >= cmd.vl[0:0])) conv_operand[8*bs +: 8] = ntr.w8[b];
                   end
-            default:;
+            default:  for (int unsigned b = 0; b < 8; b++) begin
+                        automatic int unsigned bs = shuffle_index(b, 1, EW32);
+                        if (cmd.instr_idle) conv_operand[8*bs +: 8] = ntr.w8[b];
+                      end
           endcase
         end
       end

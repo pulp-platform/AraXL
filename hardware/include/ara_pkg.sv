@@ -1060,6 +1060,9 @@ package ara_pkg;
 
     // Hazards
     logic [NrVInsn-1:0] hazard;
+
+    // Reduction idle case
+    logic instr_idle;
   } operand_request_cmd_t;
 
   typedef struct packed {
@@ -1069,6 +1072,8 @@ package ara_pkg;
     logic [1:0] ntr_red;       // Neutral type for reductions
     logic is_reduct;           // Is this a reduction?
     target_fu_e target_fu;     // Target FU of the opqueue (if it is not clear)
+    // Reduction idle case
+    logic instr_idle;
   } operand_queue_cmd_t;
 
   // This is the interface between the lane's sequencer and the lane's VFUs.
@@ -1100,6 +1105,7 @@ package ara_pkg;
     vlen_t vl;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+    logic instr_idle;
   } vfu_operation_t;
 
   // Due to the shuffled nature of the vector elements inside one lane, the byte enable
