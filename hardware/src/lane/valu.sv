@@ -674,6 +674,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
             end
           end
 
+          alu_state_d = NO_REDUCTION;
+
           // Give the done to the main sequencer
           commit_cnt_d = '0;
         end
@@ -692,6 +694,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               simd_red_cnt_d = simd_red_cnt_q + 1;
               result_queue_d[result_queue_write_pnt_q].wdata = valu_result;
             end else begin
+              alu_state_d = NO_REDUCTION;
               // Bump issue counter and pointers
               vinsn_queue_d.issue_cnt -= 1;
               if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
@@ -789,18 +792,20 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
       // Initialize counters and alu state if needed by the next instruction
       // After a reduction, the next instructions starts after the reduction commits
-      if (is_reduction(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op) && (vinsn_queue_d.issue_cnt != '0)) begin
-        // Initialize reduction-related sequential elements
-        first_op_d              = 1'b1;
-        reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i);
-        if (lane_id_i == NrLanes-1)
-            reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id, cluster_id_i); // Inter cluster
-        // sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
-        sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
-
-        alu_state_d = INTRA_LANE_REDUCTION;
-      end else begin
-        alu_state_d = NO_REDUCTION;
+      if (alu_state_q == NO_REDUCTION) begin
+        if (is_reduction(vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].op) && (vinsn_queue_d.issue_cnt != '0)) begin
+          // Initialize reduction-related sequential elements
+          first_op_d              = 1'b1;
+          reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i);
+          if (lane_id_i == NrLanes-1)
+              reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id, cluster_id_i); // Inter cluster
+          // sldu_transactions_cnt_d = $clog2(NrLanes) + 1;
+          sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
+          
+          alu_state_d = INTRA_LANE_REDUCTION;
+        end else begin
+          alu_state_d = NO_REDUCTION;
+        end
       end
     end
 

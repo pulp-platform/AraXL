@@ -1135,7 +1135,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     slide_data_accepted = '0;
     for (int lane = 0; lane < NrLanes; lane++) begin: result_write
       sldu_result_req_o[lane]   = result_queue_valid_q[result_queue_read_pnt_q][lane] & (~(vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}));
-      sldu_red_valid_o[lane]    = result_queue_valid_q[result_queue_read_pnt_q][lane] & (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu});
+      sldu_red_valid_o[lane]    = result_queue_valid_q[result_queue_read_pnt_q][lane] & vinsn_commit_valid & (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu});
       sldu_result_addr_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].addr;
       sldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id;
       sldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata;
@@ -1160,7 +1160,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     // If this is a reduction, no need for the final grants
     // if (!(|result_queue_valid_d[result_queue_read_pnt_q]) &&
     //   (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu} || (&result_final_gnt_d || commit_cnt_q > (NrLanes * 8))))
-    if (|slide_data_accepted && (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu} || (&result_final_gnt_d || commit_cnt_q >= (NrLanes * 8))))
+    if (|slide_data_accepted && ((vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}) || (&result_final_gnt_d || commit_cnt_q >= (NrLanes * 8))))
       // There is something waiting to be written
       if (!result_queue_empty) begin
         if (!vinsn_commit.is_stride_np2) // if (state_q != SLIDE_NP2_SETUP)
@@ -1205,7 +1205,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // Add packets for inter cluster reduction
         if (vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt].vfu inside {VFU_Alu, VFU_MFpu}) begin
           // results to be committed after receiving from ring, cluster0 commits 1 additional packet for final result
-          commit_cnt_d += (NrLanes * (cluster_reduction_rx_cnt_init(cluster_id_i) - 1 + (cluster_id_i==0 ? 1 : 0))) << EW64;
+          commit_cnt_d += (NrLanes * (cluster_reduction_rx_cnt_init(cluster_id_i))) << EW64;
         end
 
         // Trim vector elements which are not written by the slide unit
@@ -1445,7 +1445,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // Add packets for inter cluster reduction
         if (pe_req_i.vfu inside {VFU_Alu, VFU_MFpu}) begin
           // results to be committed after receiving from ring, cluster0 commits 1 additional packet for final result
-          commit_cnt_d += (NrLanes * (cluster_reduction_rx_cnt_init(cluster_id_i) - 1 + (cluster_id_i==0 ? 1 : 0))) << EW64;
+          // commit_cnt_d += (NrLanes * (cluster_reduction_rx_cnt_init(cluster_id_i) - 1 + (cluster_id_i==0 ? 1 : 0))) << EW64;
+          commit_cnt_d += (NrLanes * (cluster_reduction_rx_cnt_init(cluster_id_i))) << EW64;
         end
 
         // Trim vector elements which are not written by the slide unit

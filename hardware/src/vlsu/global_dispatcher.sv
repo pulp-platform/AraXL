@@ -112,12 +112,12 @@ module global_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                                 // vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) ||
                                 //     (vlen_t'(acc_req_i.rs1) > vlmax)) ? vlmax : vlen_t'(acc_req_i.rs1);
                                 if (((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) ||
-                                    (vlen_t'(acc_req_i.rs1) > vlmax))) begin
+                                    (vlen_cl_t'(acc_req_i.rs1) > vlmax))) begin
                                     vl_d = vlmax;
-                                end else if (vlen_t'(acc_req_i.rs1) < NrClusters * NrLanes) begin
-                                    vl_d = NrClusters * NrLanes;
+                                end else if (|vlen_cl_t'(acc_req_i.rs1[$clog2(NrClusters * NrLanes)-1:0])) begin
+                                    vl_d = vlen_cl_t'(((acc_req_i.rs1 >> $clog2(NrClusters * NrLanes)) + 1) << $clog2(NrClusters * NrLanes));
                                 end else begin
-                                    vl_d = vlen_t'(acc_req_i.rs1);
+                                    vl_d = vlen_cl_t'(acc_req_i.rs1);
                                 end
                             end
                         end

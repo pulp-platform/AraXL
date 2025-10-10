@@ -58,13 +58,15 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   ////////////
 
   vlen_t  vstart_d, vstart_q;
-  vlen_t  vl_d, vl_q;
+  vlen_t  vl_d, vl_q, vl_max_check;
+  vlen_t  vl_ld_d, vl_ld_q;
   vtype_t vtype_d, vtype_q;
   vxsat_e vxsat_d, vxsat_q;
   vxrm_t  vxrm_d, vxrm_q;
 
   `FF(vstart_q, vstart_d, '0)
   `FF(vl_q, vl_d, '0)
+  `FF(vl_ld_q, vl_ld_d, '0)
   `FF(vtype_q, vtype_d, '{vill: 1'b1, default: '0})
   `FF(vxsat_q, vxsat_d, '0)
   `FF(vxrm_q, vxrm_d, '0)
@@ -254,6 +256,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     // Default values
     vstart_d     = vstart_q;
     vl_d         = vl_q;
+    vl_ld_d      = vl_ld_q;
     vtype_d      = vtype_q;
     state_d      = state_q;
     eew_d        = eew_q;
@@ -502,6 +505,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     default:;
                   endcase
 
+                  vl_max_check = vlmax;
+
                   if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
                     vl_d = vlen_t'(insn.vsetivli_type.uimm5) >> num_clusters_i;
                     acc_resp_o.result = vl_d << num_clusters_i;
@@ -526,19 +531,24 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         acc_resp_o.result = vl_d << num_clusters_i;
                       end else begin
                         if (cluster_id_i < total_cluster_pieces[$clog2(NrClusters) - 1 : 0]) begin
-                          // vl_d = (total_cluster_pieces >> $clog2(NrClusters) + 1) * (VLENB >> vtype_d.vsew);
                           vl_d = ((total_cluster_pieces >> $clog2(NrClusters)) + 1) * NrLanes;
                         end else if (cluster_id_i == total_cluster_pieces[$clog2(NrClusters) - 1 : 0]) begin
-                          // vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * (VLENB >> vtype_d.vsew) + 
-                          //         acc_req_i.rs1 % (VLENB >> vtype_d.vsew);
                           vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * NrLanes + 
                                   acc_req_i.rs1 % NrLanes;
                         end else begin
-                          // vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * (VLENB >> vtype_d.vsew);
                           vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * NrLanes;
                         end
                         // Return the new vl
                         acc_resp_o.result = vlen_t'(acc_req_i.rs1);
+                      end
+                      // vector length for load instruction (need to be align with GLSU)
+                      if (((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) ||
+                          ((acc_req_i.rs1 >> num_clusters_i) > vlmax))) begin
+                          vl_ld_d = vlmax;
+                      end else if (|acc_req_i.rs1[$clog2(NrClusters * NrLanes)-1:0]) begin
+                          vl_ld_d = vlen_t'((((acc_req_i.rs1 >> $clog2(NrClusters * NrLanes)) + 1) << $clog2(NrClusters * NrLanes)) >> $clog2(NrClusters));
+                      end else begin
+                          vl_ld_d = vlen_t'(acc_req_i.rs1 >> $clog2(NrClusters));
                       end
                     end
                   end
@@ -2550,6 +2560,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
             acc_resp_o.req_ready = 1'b0;
 
             // These generate a request to Ara's backend
+            ara_req_d.vl        = vl_ld_q;
             ara_req_d.vd        = insn.vmem_type.rd;
             ara_req_d.use_vd    = 1'b1;
             ara_req_d.vm        = insn.vmem_type.vm;
@@ -2610,7 +2621,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   5'b01000:;      // Unit-strided, whole registers
                   5'b01011: begin // Unit-strided, mask load, EEW=1
                     // We operate ceil(vl/8) bytes
-                    ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                    // ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                    ara_req_d.vl         = (vl_ld_q >> 3) + |vl_ld_q[2:0];
                     ara_req_d.vtype.vsew = EW8;
                   end
                   5'b10000: begin // Unit-strided, fault-only first
@@ -2762,6 +2774,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
             ara_req_d.scale_vl = 1'b1;
 
             // These generate a request to Ara's backend
+            ara_req_d.vl        = vl_q;
             ara_req_d.vs1       = insn.vmem_type.rd; // vs3 is encoded in the same position as rd
             ara_req_d.use_vs1   = 1'b1;
             ara_req_d.eew_vs1   = eew_q[insn.vmem_type.rd]; // This is the vs1 EEW
@@ -3243,8 +3256,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
-    if (is_decoding && (vl_q == '0 || null_vslideup) && !is_config && 
-      !(ara_req_d.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]}) &&
+    if (is_decoding && (((vl_q == '0 && (!(ara_req_d.op inside {[VLE:VSXE]}))) || 
+      (vl_ld_q == '0 && (ara_req_d.op inside {[VLE:VSXE]}))) || null_vslideup) && !is_config &&
       !ignore_zero_vl_check && !acc_resp_o.error) begin
       // If we are acknowledging a memory operation, we must tell Ariane that the memory
       // operation was resolved (to decrement its pending load/store counter)
@@ -3252,7 +3265,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       // delay the zero_vl acknowledge by 1 cycle
       acc_resp_o.req_ready  = ~((is_vload & load_complete_q) | (is_vstore & store_complete_q));
       acc_resp_o.resp_valid = ~((is_vload & load_complete_q) | (is_vstore & store_complete_q));
-      ara_req_valid_d  = 1'b0;
+      if (!(ara_req_d.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) begin
+        ara_req_valid_d  = 1'b0;
+      end
       load_zero_vl     = is_vload;
       store_zero_vl    = is_vstore;
     end

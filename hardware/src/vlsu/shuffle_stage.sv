@@ -213,8 +213,9 @@ logic [NumBuffers-1:0] shift_d, shift_q;                           // For each b
 logic [NumBuffers-1:0] buf_valid_d, buf_valid_q;
 logic r_ready_buf, r_ready_buf_q;
 
-logic rd_buffer_en; 
+logic rd_buffer_en, rd_buffer_en_last_stage; 
 assign rd_buffer_en = rd_tracker_q[rd_issue_pnt_q[0]].buffer_en;
+assign rd_buffer_en_last_stage = rd_tracker_q[rd_issue_pnt_q[1]].buffer_en;
 
 // Write packets
 logic [NrClusters-1:0] [ClusterAxiDataWidth*2-1:0]  wrbuf_d, wrbuf_q;
@@ -504,8 +505,10 @@ for (genvar c=0; c < NrClusters; c++) begin
 
   // Reads  
   assign r_data_in[0][c] = rd_buffer_en ? '0 : axi_resp_i[c].r;             // Copy input resp to first stage
-  assign axi_resp_o[c].r = rd_buffer_en ? axi_resp_buf_out[c].r : r_data_out[NumStages-1][c];  // Copy output resp from last stage
-  assign axi_resp_o[c].r_valid = rd_buffer_en ? axi_resp_buf_out[c].r_valid : r_valid_o[c];          // Copy valid from stream fork to output
+  // assign axi_resp_o[c].r = rd_buffer_en ? axi_resp_buf_out[c].r : r_data_out[NumStages-1][c];  // Copy output resp from last stage
+  // assign axi_resp_o[c].r_valid = rd_buffer_en ? axi_resp_buf_out[c].r_valid : r_valid_o[c];          // Copy valid from stream fork to output
+  assign axi_resp_o[c].r = rd_buffer_en_last_stage ? axi_resp_buf_out[c].r : r_data_out[NumStages-1][c];  // Copy output resp from last stage
+  assign axi_resp_o[c].r_valid = rd_buffer_en_last_stage ? axi_resp_buf_out[c].r_valid : r_valid_o[c];          // Copy valid from stream fork to output
 
   // Writes
   assign axi_resp_o[c].w_ready = wr_buffer_en ? ~wrbuf_full[c] : w_ready_o[c];          // Copy ready from stream join output to response
