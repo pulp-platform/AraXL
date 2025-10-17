@@ -514,10 +514,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
                       // Do not update the vector length
                       vl_d = vl_q;
+                      vl_ld_d = vl_ld_q;
                       acc_resp_o.result = vl_d << num_clusters_i;
                     end else if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd != '0) begin
                       // Set the vector length to vlmax
                       vl_d = vlmax;
+                      vl_ld_d = vlmax;
                       acc_resp_o.result = vl_d << num_clusters_i;
                     end else begin
                       // // Normal stripmining
@@ -2561,6 +2563,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
             // These generate a request to Ara's backend
             ara_req_d.vl        = vl_ld_q;
+            ara_req_d.vl_ldst   = vl_q;
             ara_req_d.vd        = insn.vmem_type.rd;
             ara_req_d.use_vd    = 1'b1;
             ara_req_d.vm        = insn.vmem_type.vm;
@@ -2774,7 +2777,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
             ara_req_d.scale_vl = 1'b1;
 
             // These generate a request to Ara's backend
-            ara_req_d.vl        = vl_q;
+            // ara_req_d.vl        = vl_q;
+            ara_req_d.vl        = vl_ld_q;
+            ara_req_d.vl_ldst   = vl_q;
             ara_req_d.vs1       = insn.vmem_type.rd; // vs3 is encoded in the same position as rd
             ara_req_d.use_vs1   = 1'b1;
             ara_req_d.eew_vs1   = eew_q[insn.vmem_type.rd]; // This is the vs1 EEW
@@ -2836,7 +2841,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   5'b01000:;     // Unit-strided, whole registers
                   5'b01011: begin // Unit-strided, mask store, EEW=1
                     // We operate ceil(vl/8) bytes
-                    ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                    // ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                    ara_req_d.vl         = (vl_ld_q >> 3) + |vl_ld_q[2:0];
                     ara_req_d.vtype.vsew = EW8;
                   end
                   default: begin // Reserved
@@ -3141,6 +3147,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
             acc_resp_o.resp_valid = 1'b1;
           end
         endcase
+
+        if (ara_req_d.op inside {VSLIDEUP, VSLIDEDOWN}) begin
+          ara_req_d.vl = vl_ld_q;
+        end
       end
 
       // Check that we have fixed-point support if requested

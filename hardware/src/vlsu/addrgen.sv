@@ -96,6 +96,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     logic is_load;
     logic is_burst; // Unit-strided instructions can be converted into AXI INCR bursts
     vlen_t vstart;
+    vlen_t vl_ldst;  // Meaning that the cluster should pad zero for write data
   } addrgen_req_t;
   addrgen_req_t addrgen_req;
   logic         addrgen_req_valid;
@@ -197,7 +198,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   axi_addr_t lookahead_addr_e_d, lookahead_addr_e_q;
   axi_addr_t lookahead_addr_se_d, lookahead_addr_se_q;
-  vlen_t lookahead_len_d, lookahead_len_q;
+  vlen_t lookahead_len_d, lookahead_len_q, lookahead_len_ldst_d, lookahead_len_ldst_q;
 
   logic [VLEN-1:0] vaddr_start;
 
@@ -208,6 +209,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     lookahead_addr_e_d  = lookahead_addr_e_q;
     lookahead_addr_se_d = lookahead_addr_se_q;
     lookahead_len_d     = lookahead_len_q;
+    lookahead_len_ldst_d = lookahead_len_ldst_q;
 
     // Running vector instructions
     vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
@@ -260,6 +262,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           lookahead_addr_e_d  = pe_req_i.scalar_op + (pe_req_i.vstart << unsigned'(pe_req_i.vtype.vsew));
           lookahead_addr_se_d = pe_req_i.scalar_op + (pe_req_i.vstart * pe_req_i.stride);
           lookahead_len_d     = (pe_req_i.vl - pe_req_i.vstart) << unsigned'(pe_req_i.vtype.vsew[1:0]);
+          // For synchronization among clusters, vl for vse is always multiplier of NrLanes*NrClusters, but actual write vl may 
+          // be smaller. Here we tell vstu module how many data should not be written (i.e. set write enable to zero)
+          lookahead_len_ldst_d = (pe_req_i.vl - pe_req_i.vl_ldst) << unsigned'(pe_req_i.vtype.vsew[1:0]);
 
           case (pe_req_i.op)
             VLXE, VSXE: begin
@@ -348,7 +353,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           is_load : is_load(pe_req_q.op),
           // Unit-strided loads/stores trigger incremental AXI bursts.
           is_burst: (pe_req_q.op inside {VLE, VSE}),
-          vstart  : pe_req_q.vstart
+          vstart  : pe_req_q.vstart,
+          vl_ldst : lookahead_len_ldst_q
         };
 
         // Ara does not support misaligned AXI requests
@@ -410,7 +416,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           is_load : is_load(pe_req_q.op),
           // Unit-strided loads/stores trigger incremental AXI bursts.
           is_burst: 1'b0,
-          vstart  : pe_req_q.vstart
+          vstart  : pe_req_q.vstart,
+          vl_ldst : lookahead_len_ldst_q
         };
         addrgen_req_valid = 1'b1;
 
@@ -625,6 +632,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       lookahead_addr_e_q         <= '0;
       lookahead_addr_se_q        <= '0;
       lookahead_len_q            <= '0;
+      lookahead_len_ldst_q       <= '0;
     end else begin
       state_q            <= state_d;
       pe_req_q           <= pe_req_d;
@@ -638,6 +646,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       lookahead_addr_e_q         <= lookahead_addr_e_d;
       lookahead_addr_se_q        <= lookahead_addr_se_d;
       lookahead_len_q            <= lookahead_len_d;
+      lookahead_len_ldst_q       <= lookahead_len_ldst_d;
     end
   end
 
@@ -680,8 +689,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   //  AXI Request Generation  //
   //////////////////////////////
 
+  // enum logic [1:0] {
+  //   AXI_ADDRGEN_IDLE, AXI_ADDRGEN_MISALIGNED, AXI_ADDRGEN_WAITING, AXI_ADDRGEN_REQUESTING
+  // } axi_addrgen_state_d, axi_addrgen_state_q;
+
   enum logic [1:0] {
-    AXI_ADDRGEN_IDLE, AXI_ADDRGEN_MISALIGNED, AXI_ADDRGEN_WAITING, AXI_ADDRGEN_REQUESTING
+    AXI_ADDRGEN_IDLE, AXI_ADDRGEN_WAITING, AXI_ADDRGEN_REQUESTING
   } axi_addrgen_state_d, axi_addrgen_state_q;
 
   axi_addr_t aligned_start_addr_d, aligned_start_addr_q;
@@ -787,25 +800,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         if (addrgen_req_valid) begin
           axi_addrgen_state_d = core_st_pending_i ? AXI_ADDRGEN_WAITING : AXI_ADDRGEN_REQUESTING;
 
-          // In case of a misaligned store, reduce the effective width of the AXI transaction,
-          // since the store unit does not support misalignments between the AXI bus and the lanes
-          if (axi_addrgen_d.vstart != 0 && !axi_addrgen_d.is_load) begin
-            // vstart > 0 can create problems similar to the ones a misalignment would create.
-            // Limit the effective AXI bus width to the element width to avoid problems.
-            axi_addrgen_state_d = AXI_ADDRGEN_MISALIGNED;
-
-            eff_axi_dw_d     = 1 << axi_addrgen_d.vew;
-            eff_axi_dw_log_d = axi_addrgen_d.vew;
-          end else if ((axi_addrgen_d.addr[clog2_AxiStrobeWidth-1:0] != '0) && !axi_addrgen_d.is_load) begin
-            // Calculate the start and the end addresses in the AXI_ADDRGEN_MISALIGNED state
-            axi_addrgen_state_d = AXI_ADDRGEN_MISALIGNED;
-
-            eff_axi_dw_d     = {1'b0, narrow_axi_data_bwidth};
-            eff_axi_dw_log_d = zeroes_cnt;
-          end else begin
-            eff_axi_dw_d     = AxiDataWidth/8;
-            eff_axi_dw_log_d = clog2_AxiStrobeWidth;
-          end
+          eff_axi_dw_d     = AxiDataWidth/8;
+          eff_axi_dw_log_d = clog2_AxiStrobeWidth;
         end
       end
       // AXI_ADDRGEN_IDLE: begin
@@ -856,24 +852,24 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       //     aligned_end_addr_d = aligned_next_start_addr_d - 1;*/
       //   end
       // end
-      AXI_ADDRGEN_MISALIGNED: begin
-        axi_addrgen_state_d = core_st_pending_i ? AXI_ADDRGEN_WAITING : AXI_ADDRGEN_REQUESTING;
+      // AXI_ADDRGEN_MISALIGNED: begin
+      //   axi_addrgen_state_d = core_st_pending_i ? AXI_ADDRGEN_WAITING : AXI_ADDRGEN_REQUESTING;
 
-        // The start address is found by aligning the original request address by the width of
-        // the memory interface.
-        aligned_start_addr_d = aligned_addr(axi_addrgen_q.addr, eff_axi_dw_log_q);
+      //   // The start address is found by aligning the original request address by the width of
+      //   // the memory interface.
+      //   aligned_start_addr_d = aligned_addr(axi_addrgen_q.addr, eff_axi_dw_log_q);
 
-        set_end_addr (
-          next_2page_msb_q,
-          axi_addrgen_q.len,
-          axi_addrgen_q.addr,
-          eff_axi_dw_q,
-          eff_axi_dw_log_q,
-          aligned_start_addr_d,
-          aligned_end_addr_d,
-          aligned_next_start_addr_d
-        );
-      end
+      //   set_end_addr (
+      //     next_2page_msb_q,
+      //     axi_addrgen_q.len,
+      //     axi_addrgen_q.addr,
+      //     eff_axi_dw_q,
+      //     eff_axi_dw_log_q,
+      //     aligned_start_addr_d,
+      //     aligned_end_addr_d,
+      //     aligned_next_start_addr_d
+      //   );
+      // end
       // AXI_ADDRGEN_MISALIGNED: begin
       //   axi_addrgen_state_d = core_st_pending_i ? AXI_ADDRGEN_WAITING : AXI_ADDRGEN_REQUESTING;
 
@@ -992,7 +988,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 addr         : paddr,
                 len          : burst_length - 1,
                 size         : eff_axi_dw_log_q,
-                is_load      : axi_addrgen_q.is_load
+                is_load      : axi_addrgen_q.is_load,
+                vl_ldst      : axi_addrgen_q.vl_ldst
               };
 
               // Calculate the addresses for the next iteration
@@ -1042,7 +1039,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                 addr         : paddr,
                 size         : axi_addrgen_q.vew,
                 len          : 0,
-                is_load      : axi_addrgen_q.is_load
+                is_load      : axi_addrgen_q.is_load,
+                vl_ldst      : axi_addrgen_q.vl_ldst
               };
 
               // Account for the requested operands
@@ -1104,7 +1102,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                     addr         : idx_final_paddr,
                     size         : axi_addrgen_q.vew,
                     len          : 0,
-                    is_load      : axi_addrgen_q.is_load
+                    is_load      : axi_addrgen_q.is_load,
+                    vl_ldst      : axi_addrgen_q.vl_ldst
                   };
 
                   // Account for the requested operands

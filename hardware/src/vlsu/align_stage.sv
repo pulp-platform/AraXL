@@ -30,6 +30,9 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic              rst_ni,
   // Interfaces with Ariane
   input  accelerator_req_t               acc_req_i,
+  // From global_ldst
+  input  logic                        ar_addrgen_ack_i,
+  input  logic                        aw_addrgen_ack_i,
   
   input  axi_req_t axi_req_i,
   output axi_req_t axi_req_o, 
@@ -40,7 +43,7 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
 
 localparam int unsigned MAXVL_CL = VLEN * NrClusters;
 typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-vlen_cl_t vl, vl_d, vl_q; 
+vlen_cl_t vl_ld, vl_st, rd_vl_d, rd_vl_q; 
 vtype_t vtype;
 
 global_dispatcher #(
@@ -51,7 +54,11 @@ global_dispatcher #(
   .clk_i            (clk_i),
   .rst_ni           (rst_ni),
   .acc_req_i        (acc_req_i),
-  .vl_o             (vl),
+  .acc_req_ready_o  (),
+  .ar_addrgen_ack_i (ar_addrgen_ack_i),
+  .aw_addrgen_ack_i (aw_addrgen_ack_i),
+  .vl_ld_o          (vl_ld),
+  .vl_st_o          (vl_st),
   .vtype_o          (vtype)
 );
 
@@ -92,9 +99,9 @@ be_data_t be_final_d, be_final_q;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
-    vl_q <= '0;
+    rd_vl_q <= '0;
   end else begin
-    vl_q <= vl_d;
+    rd_vl_q <= rd_vl_d;
   end
 end
 
@@ -191,7 +198,7 @@ always_comb begin
   r_pnt_tracker_d = r_pnt_tracker_q;
   data_prev_d = data_prev_q;
   data_prev_valid_d = data_prev_valid_q;
-  vl_d = vl_q;
+  rd_vl_d = rd_vl_q;
  
   // If a request arrives, add to tracker.
   // Assign shift enable for different stages
@@ -199,16 +206,16 @@ always_comb begin
     automatic int       burst        = axi_req_i.ar.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
     automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vtype.vsew;
-    vl_d = vl_q + vlen_request;
+    rd_vl_d = rd_vl_q + vlen_request;
 
     tracker_d[w_pnt_tracker_q].addr  = axi_req_i.ar.addr;
-    tracker_d[w_pnt_tracker_q].len   = vl;
+    tracker_d[w_pnt_tracker_q].len   = vl_ld;
     tracker_d[w_pnt_tracker_q].vew   = vtype.vsew;
     for (int s=0; s < NumStages; s++)
       tracker_d[w_pnt_tracker_q].num_requests[s] += 1;
     
     // If the first request
-    if (vl_q == 0) begin
+    if (rd_vl_q == 0) begin
       for (int s=0; s<NumStages; s++) begin 
         if (axi_req_i.ar.addr & (1<<s)) begin 
           tracker_d[w_pnt_tracker_q].shift_en[s] = 1'b1;
@@ -217,8 +224,8 @@ always_comb begin
     end
 
     // If last request
-    if (vl_d >= vl) begin
-      vl_d = 0;
+    if (rd_vl_d >= vl_ld) begin
+      rd_vl_d = 0;
       w_pnt_tracker_d = w_pnt_tracker_q + 1;
       if (w_pnt_tracker_q == NumTrackers-1) begin 
         w_pnt_tracker_d = 0;
@@ -380,7 +387,7 @@ always_comb begin
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= vl) begin
+    if (wr_vl_d >= vl_st) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end

@@ -96,6 +96,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   fork_req_t  [nlevels : 0] acc_req_fork;
   fork_resp_t [nlevels : 0] acc_resp_fork;
+  accelerator_resp_t        acc_resp_fork_glb;
 
   // Shuffle stage to ARA cuts
   localparam int ShuffleCuts = $clog2(NrClusters);
@@ -104,6 +105,10 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   group_req_t [ShuffleCuts:0] ara_axi_req_shuffle_cut;
   group_resp_t [ShuffleCuts:0] ara_axi_resp_shuffle_cut;
+
+  // GLSU ready to accept new acc req
+  logic acc_req_ready_glsu;
+  logic ar_addrgen_ack, aw_addrgen_ack;
 
   /////////
   // ARA //
@@ -344,7 +349,11 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
       .clk_i              (clk_i                ),
       .rst_ni             (rst_ni               ),
 
-      .acc_req_i          (acc_req_i          ),
+      .acc_req_i          (acc_req_fork[nlevels][0] ),
+
+      // To Shuffle stage and Align stage
+      .ar_addrgen_ack_i   (ar_addrgen_ack       ),
+      .aw_addrgen_ack_i   (aw_addrgen_ack       ),
 
       .axi_req_i          (ara_axi_req_cut      ),
       .axi_resp_o         (ara_axi_resp_cut     ),
@@ -388,7 +397,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   ) i_global_ldst (
     .clk_i              (clk_i              ),
     .rst_ni             (rst_ni             ),
-    .acc_req_i          (acc_req_i          ),
+    .acc_req_i          (acc_req_fork[nlevels][0] ),
+    .acc_req_ready_o    (acc_req_ready_glsu ),
     // To Ara
     .axi_req_i          (ldst_axi_req       ),
     .axi_resp_o         (ldst_axi_resp      ),
@@ -396,6 +406,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     // .axi_req_i       (ara_axi_req_cut    ),
     // .axi_resp_o      (ara_axi_resp_cut   ),
 
+    // To Shuffle stage and Align stage
+    .ar_addrgen_ack_o   (ar_addrgen_ack     ),
+    .aw_addrgen_ack_o   (aw_addrgen_ack     ),
     // To System
     .axi_resp_i         (axi_resp_cut       ),
     .axi_req_o          (axi_req_cut        )
@@ -436,7 +449,11 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     ) i_align_stage (
       .clk_i            (clk_i              ),
       .rst_ni           (rst_ni             ),
-      .acc_req_i        (acc_req_i          ),
+      .acc_req_i        (acc_req_fork[nlevels][0] ),
+
+      // To Shuffle stage and Align stage
+      .ar_addrgen_ack_i (ar_addrgen_ack     ),
+      .aw_addrgen_ack_i (aw_addrgen_ack     ),
 
       // .axi_req_i        (axi_req_cut        ),
       // .axi_resp_o       (axi_resp_cut       ),
@@ -509,6 +526,12 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   `endif
 
+   
+  always_comb begin
+    acc_resp_fork_glb = acc_resp_fork[0][0];
+    acc_resp_fork_glb.req_ready = acc_resp_fork[0][0].req_ready && acc_req_ready_glsu;
+  end
+
   //////////////////
   ////// CVA6 //////
   //////////////////
@@ -541,11 +564,13 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     assign acc_resp_o = resp_cut_o;
 
     assign acc_req_fork[0][0] = req_cut_o;
-    assign resp_cut_i = acc_resp_fork[0][0];
+    // assign resp_cut_i = acc_resp_fork[0][0];
+    assign resp_cut_i = acc_resp_fork_glb;
 
   `else
     assign acc_req_fork[0][0] = acc_req_i;
-    assign acc_resp_o = acc_resp_fork[0][0];
+    // assign acc_resp_o = acc_resp_fork[0][0];
+    assign acc_resp_o = acc_resp_fork_glb;
 
   `endif
 

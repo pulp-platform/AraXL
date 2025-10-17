@@ -30,10 +30,15 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 
   // Interfaces with Ariane
   input  accelerator_req_t               acc_req_i,
+  output logic                           acc_req_ready_o,
   
   // To ARA
   input  cluster_axi_req_t   [NrClusters-1:0] axi_req_i,
   output cluster_axi_resp_t  [NrClusters-1:0] axi_resp_o,
+
+  // To shuffle stage and align stage
+  output logic                          ar_addrgen_ack_o,
+  output logic                          aw_addrgen_ack_o,
   
   // To System AXI 
   input  axi_resp_t                     axi_resp_i,
@@ -42,8 +47,12 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 
 localparam int unsigned MAXVL_CL = VLEN * NrClusters;
 typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-vlen_cl_t vl; 
+vlen_cl_t vl_ld, vl_st; 
 vtype_t vtype;
+
+logic ar_addrgen_ack, aw_addrgen_ack;
+assign ar_addrgen_ack_o = ar_addrgen_ack;
+assign aw_addrgen_ack_o = aw_addrgen_ack;
 
 global_dispatcher #(
   .NrLanes      (NrLanes   ),
@@ -53,7 +62,11 @@ global_dispatcher #(
   .clk_i            (clk_i),
   .rst_ni           (rst_ni),
   .acc_req_i        (acc_req_i),
-  .vl_o             (vl),
+  .acc_req_ready_o  (acc_req_ready_o),
+  .ar_addrgen_ack_i (ar_addrgen_ack),
+  .aw_addrgen_ack_i (aw_addrgen_ack),
+  .vl_ld_o          (vl_ld),
+  .vl_st_o          (vl_st),
   .vtype_o          (vtype)
 );
 
@@ -64,7 +77,7 @@ import axi_pkg::CACHE_MODIFIABLE;
 
 logic w_ready_q, w_ready_d; // If this unit is ready to receive data from ARA
 logic w_valid_d, w_valid_q; // If this unit has a walid write data to System 
-logic w_last_d, w_last_q;   // If this is a last write packer
+// logic w_last_d, w_last_q;   // If this is a last write packer
 
 // Pointers to clusters to which data has to be written or read from
 logic [$clog2(NrClusters)-1:0] cluster_start_r_d, cluster_start_r_q, cluster_start_wr_d, cluster_start_wr_q;
@@ -109,6 +122,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
   end
 end
 
+logic [8:0] w_burst_length, wr_length_check;
+
 always_comb begin : p_global_ldst
   
   // Copy data between ARA<->System
@@ -120,17 +135,20 @@ always_comb begin : p_global_ldst
   w_req_ready = ~w_req_valid_q;
   vl_w_d = vl_w_q;
 
+  ar_addrgen_ack = 1'b0;
+  aw_addrgen_ack = 1'b0;
+
   req_wrmem = '0; 
   req_wrmem.aw_valid = 1'b0; 
   
   if (axi_req_i[0].aw_valid && w_req_ready) begin
     req_d.aw = axi_req_i[0].aw;
     w_req_valid_d = 1'b1;
-    vl_w_d = vl;
+    vl_w_d = vl_st;
   end
 
   if (w_req_valid_d==1'b1 && axi_resp_i.aw_ready) begin
-    automatic logic [8:0] w_burst_length;
+    // automatic logic [8:0] w_burst_length;
     automatic axi_addr_t wr_aligned_start_addr_d, wr_aligned_next_start_addr_d, wr_aligned_end_addr_d;
     automatic logic [($bits(wr_aligned_start_addr_d) - 12)-1:0] wr_next_2page_msb_d;
 
@@ -152,7 +170,8 @@ always_comb begin : p_global_ldst
     end
     // 2 - AXI bursts are at most 256 beats long.
     w_burst_length = MaxAxiBurst;
-    if (w_burst_length > ((wr_aligned_end_addr_d - wr_aligned_start_addr_d) >> size_axi) + 1) begin
+    wr_length_check = ((wr_aligned_end_addr_d - wr_aligned_start_addr_d) >> size_axi) + 1;
+    if (w_burst_length > (((wr_aligned_end_addr_d - wr_aligned_start_addr_d) >> size_axi) + 1)) begin
       w_burst_length = ((wr_aligned_end_addr_d - wr_aligned_start_addr_d) >> size_axi) + 1;
     end else begin
       wr_aligned_next_start_addr_d = wr_aligned_start_addr_d + ((w_burst_length) << size_axi);
@@ -168,6 +187,7 @@ always_comb begin : p_global_ldst
       w_req_valid_d = 1'b1;
     end else begin
       w_req_valid_d = 1'b0;
+      aw_addrgen_ack = 1'b1;
     end
   end
   axi_req_o.aw = req_wrmem.aw;
@@ -191,7 +211,7 @@ always_comb begin : p_global_ldst
   if (axi_req_i[0].ar_valid && r_req_ready) begin 
     req_d.ar = axi_req_i[0].ar;
     r_req_valid_d = 1'b1;
-    vl_req_d = vl;
+    vl_req_d = vl_ld;
   end
 
   if (r_req_valid_d==1'b1 && axi_resp_i.ar_ready) begin
@@ -217,7 +237,9 @@ always_comb begin : p_global_ldst
     end
     // 2 - AXI bursts are at most 256 beats long.
     burst_length = MaxAxiBurst;
-    if (burst_length > ((aligned_end_addr_d - aligned_start_addr_d) >> size_axi) + 1) begin
+    // if (burst_length > ((aligned_end_addr_d - aligned_start_addr_d) >> size_axi) + 1) begin
+    //   burst_length = ((aligned_end_addr_d - aligned_start_addr_d) >> size_axi) + 1;
+    if (burst_length > (((aligned_end_addr_d - aligned_start_addr_d) >> size_axi) + 1)) begin
       burst_length = ((aligned_end_addr_d - aligned_start_addr_d) >> size_axi) + 1;
     end else begin
       aligned_next_start_addr_d = aligned_start_addr_d + ((burst_length) << size_axi);
@@ -233,6 +255,7 @@ always_comb begin : p_global_ldst
     end else begin
       req_d = '0;
       r_req_valid_d = 1'b0;
+      ar_addrgen_ack = 1'b1;
     end
   end
   axi_req_o.ar = req_final.ar;
@@ -243,9 +266,17 @@ always_comb begin : p_global_ldst
   // axi_req_o.ar.len = len_r ? len_r-1 : 0;
   // axi_req_o.ar.size = size_axi;
   // axi_req_o.ar_valid = axi_req_i[0].ar_valid;
+
+
+
+
+
+
   
   // b channel
-  axi_req_o.b_ready = axi_req_i[0].b_ready;                                            
+  axi_req_o.b_ready = 1'b1;
+  for (int i=0; i<NrClusters; i++)
+    axi_req_o.b_ready &= axi_req_i[i].b_ready;                                          
   // r channel
   axi_req_o.r_ready = 1'b1;
   for (int i=0; i<NrClusters; i++)
@@ -313,7 +344,7 @@ always_comb begin : p_global_ldst
     axi_req_data_d[i] = w_cluster_ready_q[i] ? axi_req_i[i] : axi_req_data_q[i];
     w_cluster_last_d[i] = w_cluster_ready_q[i] ? axi_req_i[0].w.last : w_cluster_last_q[i];  // Only expecting last signal from cluster-0
   end
-  w_last_d = w_ready_q ? axi_req_i[0].w.last : w_last_q;
+  // w_last_d = w_ready_q ? axi_req_i[0].w.last : w_last_q;
 
   //if (axi_req_i[0].w_valid) begin : p_valid_write_data
   if (&w_cluster_valid) begin : p_valid_write_data
@@ -347,7 +378,7 @@ always_comb begin : p_global_ldst
         w_valid_d = 1'b0; // We don't have valid data anymore
         if (&w_cluster_last_d) begin
           axi_req_o.w.last = 1'b1;
-          w_last_d = 1'b0;
+          // w_last_d = 1'b0;
           w_cluster_last_d = '0; 
         end
       end
@@ -366,7 +397,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     cluster_start_r_q <= 0;
 
     w_valid_q <= 1'b0;
-    w_last_q <= 1'b0;
+    // w_last_q <= 1'b0;
     cluster_start_wr_q <= 0;
     axi_req_data_q <= '0;
     w_ready_q <= 1'b1;
@@ -378,7 +409,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     cluster_start_r_q <= cluster_start_r_d;
 
     w_valid_q <= w_valid_d;
-    w_last_q <= w_last_d;
+    // w_last_q <= w_last_d;
     cluster_start_wr_q <= cluster_start_wr_d;
     axi_req_data_q <= axi_req_data_d;
     w_ready_q <= w_ready_d;

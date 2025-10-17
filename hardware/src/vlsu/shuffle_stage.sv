@@ -30,6 +30,9 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
 
   // Interfaces with Ariane
   input  accelerator_req_t               acc_req_i,
+  // From global_ldst
+  input  logic                        ar_addrgen_ack_i,
+  input  logic                        aw_addrgen_ack_i,
   
   input   axi_req_t  [NrClusters-1:0] axi_req_i,
   output  axi_req_t  [NrClusters-1:0] axi_req_o,
@@ -43,7 +46,7 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
 
 localparam int unsigned MAXVL_CL = VLEN * NrClusters;
 typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-vlen_cl_t vl, vl_d, vl_q; 
+// vlen_cl_t vl, vl_d, vl_q; 
 vtype_t vtype;
 
 global_dispatcher #(
@@ -54,7 +57,11 @@ global_dispatcher #(
   .clk_i            (clk_i),
   .rst_ni           (rst_ni),
   .acc_req_i        (acc_req_i),
-  .vl_o             (vl),
+  .acc_req_ready_o  (),
+  .ar_addrgen_ack_i (ar_addrgen_ack_i),
+  .aw_addrgen_ack_i (aw_addrgen_ack_i),
+  .vl_ld_o          (),
+  .vl_st_o          (),
   .vtype_o          (vtype)
 );
 
@@ -215,7 +222,7 @@ logic r_ready_buf, r_ready_buf_q;
 
 logic rd_buffer_en, rd_buffer_en_last_stage; 
 assign rd_buffer_en = rd_tracker_q[rd_issue_pnt_q[0]].buffer_en;
-assign rd_buffer_en_last_stage = rd_tracker_q[rd_issue_pnt_q[1]].buffer_en;
+assign rd_buffer_en_last_stage = rd_tracker_q[rd_issue_pnt_q[NumStages-1]].buffer_en;
 
 // Write packets
 logic [NrClusters-1:0] [ClusterAxiDataWidth*2-1:0]  wrbuf_d, wrbuf_q;
@@ -228,8 +235,9 @@ logic [NrClusters-1:0] wrbuf_valid, wrbuf_valid_q;
 logic [NrClusters-1:0] wrbuf_full, wrbuf_full_q;
 logic wr_out_ready, wr_out_valid;
 
-logic wr_buffer_en; 
+logic wr_buffer_en, wr_buffer_en_last_stage; 
 assign wr_buffer_en = wr_tracker_q[wr_issue_pnt_q[0]].buffer_en;
+assign wr_buffer_en_last_stage = wr_tracker_q[wr_issue_pnt_q[NumStages-1]].buffer_en;
 
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -533,8 +541,8 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign w_data_in[0][c] = wr_buffer_en ? '0 : axi_req_i[c].w;              // Copy input write data to first shuffle stage
   assign w_valid_i[c]    = wr_buffer_en ? 1'b0 : axi_req_i[c].w_valid;           // Copy valid signals to stream join
    
-  assign axi_req_o[c].w       = wr_buffer_en ? axi_req_buf_out[c].w       : w_data_out[NumStages-1][c];  // Copy last stage data to req output
-  assign axi_req_o[c].w_valid = wr_buffer_en ? axi_req_buf_out[c].w_valid : w_valid[NumStages-1];   // valid signal is the output valid of stream join
+  assign axi_req_o[c].w       = wr_buffer_en_last_stage ? axi_req_buf_out[c].w       : w_data_out[NumStages-1][c];  // Copy last stage data to req output
+  assign axi_req_o[c].w_valid = wr_buffer_en_last_stage ? axi_req_buf_out[c].w_valid : w_valid[NumStages-1];   // valid signal is the output valid of stream join
 
 end
 assign w_ready[NumStages-1] = axi_resp_i[0].w_ready; // The Global Ld-St is ready to receive write packets together. Hence using only cluster-0 's w_ready.

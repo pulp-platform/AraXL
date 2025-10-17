@@ -317,7 +317,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         // How many bytes are valid in this instruction
         automatic vlen_t vinsn_valid_bytes = issue_cnt_bytes_q - vrf_word_byte_cnt_q;
         // How many bytes are valid in this AXI word
-        automatic vlen_t axi_valid_bytes   = AxiDataWidth/8; // upper_byte - lower_byte - r_pnt_q + 1;
+        automatic vlen_t axi_valid_bytes   = AxiDataWidth / 8; // upper_byte - lower_byte - r_pnt_q + 1;
 
 
         // How many bytes are we committing?

@@ -24,6 +24,7 @@ double fdotp_v64b(const double *a, const double *b, size_t avl) {
 
   size_t orig_avl = avl;
   size_t vl = vsetvl_e64m8(avl);
+  size_t vl_red = vl;
 
   vfloat64m8_t acc, buf_a, buf_b;
   vfloat64m1_t red;
@@ -50,6 +51,7 @@ double fdotp_v64b(const double *a, const double *b, size_t avl) {
     b_ += vl;
   }
 
+  vl = vsetvl_e64m8(vl_red);
   // Reduce and return
   red = vfredusum_vs_f64m8_f64m1(red, acc, red, vl);
   return vfmv_f_s_f64m1_f64(red);
@@ -58,7 +60,9 @@ double fdotp_v64b(const double *a, const double *b, size_t avl) {
 
   size_t orig_avl = avl;
   size_t vl;
+  size_t vl_red;
   asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(avl));
+  vl_red = vl;
 
   double red;
 
@@ -85,6 +89,7 @@ double fdotp_v64b(const double *a, const double *b, size_t avl) {
   }
 
   // Reduce and return
+  asm volatile("vsetvli %0, %1, e64, m8, ta, ma" : "=r"(vl) : "r"(vl_red));
   asm volatile("vfredusum.vs v0, v24, v0");
   asm volatile("vfmv.f.s %0, v0" : "=f"(red));
   return red;
@@ -98,6 +103,7 @@ float fdotp_v32b(const float *a, const float *b, size_t avl) {
 
   size_t orig_avl = avl;
   size_t vl = vsetvl_e32m8(avl);
+  size_t vl_red = vl;
 
   vfloat32m8_t acc, buf_a, buf_b;
   vfloat32m1_t red;
@@ -125,6 +131,7 @@ float fdotp_v32b(const float *a, const float *b, size_t avl) {
   }
 
   // Reduce and return
+  vl = vsetvl_e32m8(vl_red);
   red = vfredusum_vs_f32m8_f32m1(red, acc, red, vl);
   return vfmv_f_s_f32m1_f32(red);
 
@@ -132,7 +139,9 @@ float fdotp_v32b(const float *a, const float *b, size_t avl) {
 
   size_t orig_avl = avl;
   size_t vl;
+  size_t vl_red;
   asm volatile("vsetvli %0, %1, e32, m8, ta, ma" : "=r"(vl) : "r"(avl));
+  vl_red = vl;
 
   float red;
 
@@ -148,7 +157,7 @@ float fdotp_v32b(const float *a, const float *b, size_t avl) {
     asm volatile("vle32.v v8,  (%0)" ::"r"(a_));
     asm volatile("vle32.v v16, (%0)" ::"r"(b_));
     // Multiply and accumulate
-    if (avl == orig_avl) {
+     if (avl == orig_avl) {
       asm volatile("vfmul.vv v24, v8, v16");
     } else {
       asm volatile("vfmacc.vv v24, v8, v16");
@@ -159,9 +168,11 @@ float fdotp_v32b(const float *a, const float *b, size_t avl) {
   }
 
   // Reduce and return
+  asm volatile("vsetvli %0, %1, e32, m8, ta, ma" : "=r"(vl) : "r"(vl_red));
   asm volatile("vfredusum.vs v0, v24, v0");
   asm volatile("vfmv.f.s %0, v0" : "=f"(red));
   return red;
+  // return 1.5;
 
 #endif
 }
@@ -172,6 +183,7 @@ _Float16 fdotp_v16b(const _Float16 *a, const _Float16 *b, size_t avl) {
 
   size_t orig_avl = avl;
   size_t vl = vsetvl_e16m8(avl);
+  size_t vl_red = vl;
 
   vfloat16m8_t acc, buf_a, buf_b;
   vfloat16m1_t red;
@@ -199,6 +211,7 @@ _Float16 fdotp_v16b(const _Float16 *a, const _Float16 *b, size_t avl) {
   }
 
   // Reduce and store
+  vl = vsetvl_e16m8(vl_red);
   red = vfredusum_vs_f16m8_f16m1(red, acc, red, vl);
   return vfmv_f_s_f16m1_f16(red);
 
@@ -206,7 +219,9 @@ _Float16 fdotp_v16b(const _Float16 *a, const _Float16 *b, size_t avl) {
 
   size_t orig_avl = avl;
   size_t vl;
+  size_t vl_red;
   asm volatile("vsetvli %0, %1, e16, m8, ta, ma" : "=r"(vl) : "r"(avl));
+  vl_red = vl;
 
   _Float16 red;
 
@@ -233,6 +248,7 @@ _Float16 fdotp_v16b(const _Float16 *a, const _Float16 *b, size_t avl) {
   }
 
   // Reduce and return
+  asm volatile("vsetvli %0, %1, e16, m8, ta, ma" : "=r"(vl) : "r"(vl_red));
   asm volatile("vfredusum.vs v0, v24, v0");
   asm volatile("vfmv.f.s %0, v0" : "=f"(red));
   return red;

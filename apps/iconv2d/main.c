@@ -31,12 +31,19 @@
 // o = i ° f, with i=[MxN], f=[FxF], o=[MxN]
 // The filter is a square matrix, and F is odd
 
+// // Matrices defined in data.S
+// extern int64_t i[] __attribute__((
+//     aligned(4 * NR_LANES))); // [ (M+floor(F/2)) * (N+floor(F/2)) ]
+// extern int64_t f[] __attribute__((aligned(4 * NR_LANES)));        // [ F*F ]
+// extern int64_t o[] __attribute__((aligned(4 * NR_LANES)));        // [ M*N ]
+// extern int64_t golden_o[] __attribute__((aligned(4 * NR_LANES))); // [ M*N ]
+
 // Matrices defined in data.S
-extern int64_t i[] __attribute__((
-    aligned(4 * NR_LANES))); // [ (M+floor(F/2)) * (N+floor(F/2)) ]
-extern int64_t f[] __attribute__((aligned(4 * NR_LANES)));        // [ F*F ]
-extern int64_t o[] __attribute__((aligned(4 * NR_LANES)));        // [ M*N ]
-extern int64_t golden_o[] __attribute__((aligned(4 * NR_LANES))); // [ M*N ]
+extern int64_t i[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));        // [ (M+floor(F/2)) * (N+floor(F/2)) ]
+extern int64_t f[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));        // [ F*F ]
+extern int64_t o[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));        // [ M*N ]
+extern int64_t golden_o[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS))); // [ M*N ]
+
 // M, N, F defined in data.S
 extern int64_t M;
 extern int64_t N;

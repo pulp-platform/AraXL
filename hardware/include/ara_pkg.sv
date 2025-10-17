@@ -318,6 +318,8 @@ package ara_pkg;
 
     // Vector machine metadata
     vlen_t vl;
+    // Real vector length number assigned for vle and vse
+    vlen_t vl_ldst;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
@@ -416,6 +418,8 @@ package ara_pkg;
 
     // Vector machine metadata
     vlen_t vl;
+    // Actual vector length assigned for vle and vse
+    vlen_t vl_ldst;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
@@ -1158,6 +1162,7 @@ package ara_pkg;
     axi_pkg::size_t size;
     axi_pkg::len_t len;
     logic is_load;
+    vlen_t vl_ldst; // Meaning that vstu should write enable to zero when executing vse (vl-vl_ldst)
   } addrgen_axi_req_t;
 
 
