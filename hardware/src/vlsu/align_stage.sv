@@ -28,11 +28,12 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   // Clock and Reset
   input  logic              clk_i,
   input  logic              rst_ni,
-  // Interfaces with Ariane
-  input  accelerator_req_t               acc_req_i,
-  // From global_ldst
-  input  logic                        ar_addrgen_ack_i,
-  input  logic                        aw_addrgen_ack_i,
+
+  // vew information to align stage
+  input vew_e                           vew_ar_i,
+  input vew_e                           vew_aw_i,
+  input vlen_t                          vl_ldst_rd_i,
+  input vlen_t                          vl_ldst_wr_i,
   
   input  axi_req_t axi_req_i,
   output axi_req_t axi_req_o, 
@@ -43,24 +44,8 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
 
 localparam int unsigned MAXVL_CL = VLEN * NrClusters;
 typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-vlen_cl_t vl_ld, vl_st, rd_vl_d, rd_vl_q; 
-vtype_t vtype;
 
-global_dispatcher #(
-  .NrLanes      (NrLanes   ),
-  .NrClusters   (NrClusters),
-  .vlen_cl_t    (vlen_cl_t )
-) i_global_dispatcher (
-  .clk_i            (clk_i),
-  .rst_ni           (rst_ni),
-  .acc_req_i        (acc_req_i),
-  .acc_req_ready_o  (),
-  .ar_addrgen_ack_i (ar_addrgen_ack_i),
-  .aw_addrgen_ack_i (aw_addrgen_ack_i),
-  .vl_ld_o          (vl_ld),
-  .vl_st_o          (vl_st),
-  .vtype_o          (vtype)
-);
+vlen_cl_t rd_vl_d, rd_vl_q; 
 
 localparam int unsigned NumTrackers=8;
 typedef logic [$clog2(NumTrackers)-1:0] pnt_t; 
@@ -205,12 +190,13 @@ always_comb begin
   if (axi_req_i.ar_valid && axi_resp_o.ar_ready) begin
     automatic int       burst        = axi_req_i.ar.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vtype.vsew;
+    automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew_ar_i;
+    // automatic vlen_cl_t vlen_request = (burst << axi_req_i.ar.size) >> vew_ar_i;
     rd_vl_d = rd_vl_q + vlen_request;
 
     tracker_d[w_pnt_tracker_q].addr  = axi_req_i.ar.addr;
-    tracker_d[w_pnt_tracker_q].len   = vl_ld;
-    tracker_d[w_pnt_tracker_q].vew   = vtype.vsew;
+    tracker_d[w_pnt_tracker_q].len   = vl_ldst_rd_i << $clog2(NrClusters);
+    tracker_d[w_pnt_tracker_q].vew   = vew_ar_i;
     for (int s=0; s < NumStages; s++)
       tracker_d[w_pnt_tracker_q].num_requests[s] += 1;
     
@@ -224,7 +210,7 @@ always_comb begin
     end
 
     // If last request
-    if (rd_vl_d >= vl_ld) begin
+    if (rd_vl_d >= (vl_ldst_rd_i << $clog2(NrClusters))) begin
       rd_vl_d = 0;
       w_pnt_tracker_d = w_pnt_tracker_q + 1;
       if (w_pnt_tracker_q == NumTrackers-1) begin 
@@ -379,7 +365,8 @@ always_comb begin
   if (axi_req_i.aw_valid && axi_resp_o.aw_ready) begin
     automatic int       burst        = axi_req_i.aw.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vtype.vsew;
+    // automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew_aw_i;
+    automatic vlen_cl_t vlen_request = (burst << axi_req_i.aw.size) >> vew_aw_i;
     wr_vl_d = wr_vl_q + vlen_request;
     
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
@@ -387,7 +374,7 @@ always_comb begin
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= vl_st) begin
+    if (wr_vl_d >= (vl_ldst_wr_i << $clog2(NrClusters))) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end

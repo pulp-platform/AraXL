@@ -76,8 +76,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     input logic          ring_data_l_ready_i,
 
     output vew_e              vew_ar_o,
-    output vew_e              vew_aw_o
-
+    output vew_e              vew_aw_o,
+    output vlen_t             vl_ldst_o
   );
 
   `include "common_cells/registers.svh"
@@ -92,6 +92,7 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
   logic         sldu_ready_i, sldu_ready_o;
 
   vew_e vew_ar, vew_aw;
+  vlen_t vl_ldst;
   id_cluster_t cluster_id;
   num_cluster_t num_clusters;
 
@@ -123,6 +124,7 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
 
   `FF(vew_ar_o, vew_ar, vew_e'(1'b0), clk_i, rst_ni);
   `FF(vew_aw_o, vew_aw, vew_e'(1'b0), clk_i, rst_ni);
+  `FF(vl_ldst_o, vl_ldst, '0, clk_i, rst_ni);
   `FF(cluster_id, cluster_id_i, '0, clk_i, rst_ni);
   `FF(num_clusters, num_clusters_i, '0, clk_i, rst_ni);
   
@@ -258,6 +260,7 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
 
     .vew_ar_o        (vew_ar           ),
     .vew_aw_o        (vew_aw           ),
+    .vl_ldst_o       (vl_ldst          ),
     
     // To Ring Routers
     .ring_data_o         (sldu_o             ), 

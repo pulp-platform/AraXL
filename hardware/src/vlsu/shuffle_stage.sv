@@ -27,43 +27,19 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   // Clock and Reset
   input  logic              clk_i,
   input  logic              rst_ni,
-
-  // Interfaces with Ariane
-  input  accelerator_req_t               acc_req_i,
-  // From global_ldst
-  input  logic                        ar_addrgen_ack_i,
-  input  logic                        aw_addrgen_ack_i,
+  
+  input vew_e vew_ar_i,
+  input vew_e vew_aw_i,
   
   input   axi_req_t  [NrClusters-1:0] axi_req_i,
   output  axi_req_t  [NrClusters-1:0] axi_req_o,
 
   input   axi_resp_t [NrClusters-1:0] axi_resp_i,
   output  axi_resp_t [NrClusters-1:0] axi_resp_o
-
-  // input vew_e vew_ar_i,
-  // input vew_e vew_aw_i
 );
 
 localparam int unsigned MAXVL_CL = VLEN * NrClusters;
 typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-// vlen_cl_t vl, vl_d, vl_q; 
-vtype_t vtype;
-
-global_dispatcher #(
-  .NrLanes      (NrLanes   ),
-  .NrClusters   (NrClusters),
-  .vlen_cl_t    (vlen_cl_t )
-) i_global_dispatcher (
-  .clk_i            (clk_i),
-  .rst_ni           (rst_ni),
-  .acc_req_i        (acc_req_i),
-  .acc_req_ready_o  (),
-  .ar_addrgen_ack_i (ar_addrgen_ack_i),
-  .aw_addrgen_ack_i (aw_addrgen_ack_i),
-  .vl_ld_o          (),
-  .vl_st_o          (),
-  .vtype_o          (vtype)
-);
 
 typedef struct packed {
   axi_addr_t addr;
@@ -104,8 +80,8 @@ logic [NrClusters-1:0] r_ready_i, r_valid_o;
 logic [NrClusters-1:0] w_valid_i, w_ready_o;
 
 logic rd_full, wr_full;
-assign rd_full = (rd_cnt_q == NumTrackers);
-assign wr_full = (wr_cnt_q == NumTrackers);
+assign rd_full = (rd_cnt_q >= NumTrackers);
+assign wr_full = (wr_cnt_q >= NumTrackers);
 
 // To handle cases where vlsu of each cluster is ready to 
 // receive read resp or not.
@@ -317,29 +293,29 @@ always_comb begin
 
   // If a request arrives, add to tracker.
   if (axi_req_i[0].ar_valid & axi_resp_o[0].ar_ready) begin
-    rd_tracker_d[rd_accept_pnt_q].vew = vtype.vsew; //vew_ar_i;
+    rd_tracker_d[rd_accept_pnt_q].vew = vew_ar_i; //vew_ar_i;
     for (int c=0; c<NrClusters; c++)
       rd_tracker_d[rd_accept_pnt_q].len[c] = axi_req_i[0].ar.len+1;
     rd_accept_pnt_d = (rd_accept_pnt_q == NumTrackers-1) ? '0 : rd_accept_pnt_q + 1;
     rd_cnt_d += 1;
 
     for (int s=0; s<NumStages; s++) begin
-      rd_tracker_d[rd_accept_pnt_q].shuffle_en[s] = (s >= vtype.vsew) ? 1'b1 : 1'b0;
+      rd_tracker_d[rd_accept_pnt_q].shuffle_en[s] = (s >= vew_ar_i) ? 1'b1 : 1'b0;
     end
-    rd_tracker_d[rd_accept_pnt_q].buffer_en = NumStages < vtype.vsew ? 1'b1 : 1'b0;
+    rd_tracker_d[rd_accept_pnt_q].buffer_en = NumStages < vew_ar_i ? 1'b1 : 1'b0;
   end
 
   if (axi_req_i[0].aw_valid & axi_resp_o[0].aw_ready) begin
-    wr_tracker_d[wr_accept_pnt_q].vew = vtype.vsew; //vew_aw_i;
+    wr_tracker_d[wr_accept_pnt_q].vew = vew_aw_i; //vew_aw_i;
     for (int c=0; c<NrClusters; c++)
       wr_tracker_d[wr_accept_pnt_q].len[c] = axi_req_i[0].aw.len+1;
     wr_accept_pnt_d = (wr_accept_pnt_q == NumTrackers-1) ? '0 : wr_accept_pnt_q + 1; 
     wr_cnt_d += 1;
 
     for (int s=0; s<NumStages; s++) begin
-      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = (s >= vtype.vsew) ? 1'b1 : 1'b0;
+      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = (s >= vew_aw_i) ? 1'b1 : 1'b0;
     end
-    wr_tracker_d[wr_accept_pnt_q].buffer_en = NumStages < vtype.vsew ? 1'b1 : 1'b0;
+    wr_tracker_d[wr_accept_pnt_q].buffer_en = NumStages < vew_aw_i ? 1'b1 : 1'b0;
   end
 
   // Update counters for shuffle stage

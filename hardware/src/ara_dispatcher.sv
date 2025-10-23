@@ -3149,7 +3149,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         endcase
 
         if (ara_req_d.op inside {VSLIDEUP, VSLIDEDOWN}) begin
-          ara_req_d.vl = vl_ld_q;
+          ara_req_d.vl      = vl_ld_q;
+          ara_req_d.vl_ldst = vl_q;
         end
       end
 
@@ -3266,8 +3267,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
-    if (is_decoding && (((vl_q == '0 && (!(ara_req_d.op inside {[VLE:VSXE]}))) || 
-      (vl_ld_q == '0 && (ara_req_d.op inside {[VLE:VSXE]}))) || null_vslideup) && !is_config &&
+    if (is_decoding && (((vl_q == '0 && (!(ara_req_d.op inside {[VLE:VSXE], [VSLIDEUP:VSLIDEDOWN]}))) || 
+      (vl_ld_q == '0 && (ara_req_d.op inside {[VLE:VSXE], [VSLIDEUP:VSLIDEDOWN]}))) || null_vslideup) && !is_config &&
       !ignore_zero_vl_check && !acc_resp_o.error) begin
       // If we are acknowledging a memory operation, we must tell Ariane that the memory
       // operation was resolved (to decrement its pending load/store counter)

@@ -28,6 +28,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output vew_e                           vew_aw_o,
     output logic                           axi_aw_valid_o,
     input  logic                           axi_aw_ready_i,
+    output vlen_t                          vl_ldst_o,
     // Interace with the dispatcher
     input  logic                           core_st_pending_i,
     // Interface with the main sequencer
@@ -198,7 +199,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   axi_addr_t lookahead_addr_e_d, lookahead_addr_e_q;
   axi_addr_t lookahead_addr_se_d, lookahead_addr_se_q;
-  vlen_t lookahead_len_d, lookahead_len_q, lookahead_len_ldst_d, lookahead_len_ldst_q;
+  vlen_t lookahead_len_d, lookahead_len_q, lookahead_len_ldst_left_d, lookahead_len_ldst_left_q;
 
   logic [VLEN-1:0] vaddr_start;
 
@@ -209,7 +210,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     lookahead_addr_e_d  = lookahead_addr_e_q;
     lookahead_addr_se_d = lookahead_addr_se_q;
     lookahead_len_d     = lookahead_len_q;
-    lookahead_len_ldst_d = lookahead_len_ldst_q;
+    lookahead_len_ldst_left_d = lookahead_len_ldst_left_q;
 
     // Running vector instructions
     vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
@@ -264,7 +265,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           lookahead_len_d     = (pe_req_i.vl - pe_req_i.vstart) << unsigned'(pe_req_i.vtype.vsew[1:0]);
           // For synchronization among clusters, vl for vse is always multiplier of NrLanes*NrClusters, but actual write vl may 
           // be smaller. Here we tell vstu module how many data should not be written (i.e. set write enable to zero)
-          lookahead_len_ldst_d = (pe_req_i.vl - pe_req_i.vl_ldst) << unsigned'(pe_req_i.vtype.vsew[1:0]);
+          lookahead_len_ldst_left_d = (pe_req_i.vl - pe_req_i.vl_ldst) << unsigned'(pe_req_i.vtype.vsew[1:0]);
 
           case (pe_req_i.op)
             VLXE, VSXE: begin
@@ -354,7 +355,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           // Unit-strided loads/stores trigger incremental AXI bursts.
           is_burst: (pe_req_q.op inside {VLE, VSE}),
           vstart  : pe_req_q.vstart,
-          vl_ldst : lookahead_len_ldst_q
+          vl_ldst : lookahead_len_ldst_left_q
         };
 
         // Ara does not support misaligned AXI requests
@@ -417,7 +418,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           // Unit-strided loads/stores trigger incremental AXI bursts.
           is_burst: 1'b0,
           vstart  : pe_req_q.vstart,
-          vl_ldst : lookahead_len_ldst_q
+          vl_ldst : lookahead_len_ldst_left_q
         };
         addrgen_req_valid = 1'b1;
 
@@ -632,7 +633,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       lookahead_addr_e_q         <= '0;
       lookahead_addr_se_q        <= '0;
       lookahead_len_q            <= '0;
-      lookahead_len_ldst_q       <= '0;
+      lookahead_len_ldst_left_q       <= '0;
     end else begin
       state_q            <= state_d;
       pe_req_q           <= pe_req_d;
@@ -646,7 +647,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       lookahead_addr_e_q         <= lookahead_addr_e_d;
       lookahead_addr_se_q        <= lookahead_addr_se_d;
       lookahead_len_q            <= lookahead_len_d;
-      lookahead_len_ldst_q       <= lookahead_len_ldst_d;
+      lookahead_len_ldst_left_q       <= lookahead_len_ldst_left_d;
     end
   end
 
@@ -1113,6 +1114,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               end : if_idx_addr_valid_q
             end : indexed_data
 
+            vew_ar_o = vew_e'(axi_addrgen_q.vew);
+            vew_aw_o = vew_e'(axi_addrgen_q.vew);
+            vl_ldst_o = pe_req_q.vl;
             if (axi_addrgen_q.is_burst) begin : unit_stride // UNIT-STRIDED ACCESS
               // AR Channel
               axi_ar_valid_o = axi_addrgen_q.is_load;

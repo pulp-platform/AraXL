@@ -168,8 +168,9 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
   axi_pkg::len_t len_d, len_q;
   // - A pointer to which byte in the full VRF word we are reading data from.
   logic [idx_width(DataWidth*NrLanes/8):0] vrf_pnt_d, vrf_pnt_q;
+
+  // Some data might not be written due to the actual vl non-multiple of NrLanes*NrClusters
   logic [DataWidth * NrLanes / 8 - 1 : 0] st_strb_en;
-  assign st_strb_en = ('1 >> axi_addrgen_req_i.vl_ldst);
 
   always_comb begin: p_vstu
     // Maintain state
@@ -222,6 +223,22 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
       // How many bytes are we committing?
       automatic logic [idx_width(DataWidth*NrLanes/8):0] valid_bytes;
+
+      // Account for the beat we sent
+      len_d      = len_q + 1;
+      // st_strb_en is all 1s by default
+      st_strb_en = '1; 
+      // We wrote all the beats for this AW burst
+      if ($unsigned(len_d) == axi_pkg::len_t'($unsigned(axi_addrgen_req_i.len) + 1)) begin
+        axi_w_o.last            = 1'b1;
+        // // Some data might not be written due to the actual vl non-multiple of NrLanes*NrClusters
+        // st_strb_en = ('1 >> axi_addrgen_req_i.vl_ldst);
+        // Ask for another burst by the address generator
+        axi_addrgen_req_ready_o = 1'b1;
+        // Reset AXI pointers
+        len_d                   = '0;
+      end
+
       valid_bytes = issue_cnt_q < NrLanes * 8     ? vinsn_valid_bytes : vrf_valid_bytes;
       valid_bytes = valid_bytes < axi_valid_bytes ? valid_bytes       : axi_valid_bytes;
 
@@ -243,23 +260,19 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
           // Copy data
           axi_w_o.data[8*axi_byte +: 8] = stu_operand[vrf_lane][8*vrf_offset +: 8];
-          axi_w_o.strb[axi_byte]        = (vinsn_issue_q.vm || mask_i[vrf_lane][vrf_offset]) && st_strb_en[vrf_seq_byte];
           // axi_w_o.strb[axi_byte]        = (vinsn_issue_q.vm || mask_i[vrf_lane][vrf_offset]);
+        end
+
+        if (vrf_seq_byte < (issue_cnt_q - axi_addrgen_req_i.vl_ldst)) begin
+          automatic int vrf_lane   = vrf_byte >> 3;
+          automatic int vrf_offset = vrf_byte[2:0];
+          // Some data might not be written due to the actual vl non-multiple of NrLanes*NrClusters
+          axi_w_o.strb[axi_byte]        = (vinsn_issue_q.vm || mask_i[vrf_lane][vrf_offset]);
         end
       end
 
       // Send the W beat
       axi_w_valid_o = 1'b1;
-      // Account for the beat we sent
-      len_d         = len_q + 1;
-      // We wrote all the beats for this AW burst
-      if ($unsigned(len_d) == axi_pkg::len_t'($unsigned(axi_addrgen_req_i.len) + 1)) begin
-        axi_w_o.last            = 1'b1;
-        // Ask for another burst by the address generator
-        axi_addrgen_req_ready_o = 1'b1;
-        // Reset AXI pointers
-        len_d                   = '0;
-      end
 
       // We consumed a whole word from the lanes
       if (vrf_pnt_d == NrLanes*8 || vrf_pnt_d == issue_cnt_q) begin

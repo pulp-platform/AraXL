@@ -351,9 +351,18 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
             // Copy data and byte strobe
             result_queue_d[result_queue_write_pnt_q][vrf_lane].wdata[8*vrf_offset +: 8] =
               axi_r_i.data[8*axi_byte +: 8];
-            result_queue_d[result_queue_write_pnt_q][vrf_lane].be[vrf_offset] =
-              vinsn_issue_q.vm || mask_q[vrf_lane][vrf_offset];
+            // result_queue_d[result_queue_write_pnt_q][vrf_lane].be[vrf_offset] =
+            //   vinsn_issue_q.vm || mask_q[vrf_lane][vrf_offset];
           end : is_vrf_byte
+
+          if (vrf_seq_byte_cnt < (issue_cnt_bytes_q - axi_addrgen_req_i.vl_ldst) && vrf_seq_byte < (NrLanes * DataWidthB)) begin
+            // At which lane, and what is the byte offset in that lane, of the byte vrf_byte?
+            automatic int unsigned vrf_offset = vrf_byte[2:0];
+            // Make sure this index wraps around the number of lane
+            automatic int unsigned vrf_lane = (vrf_byte >> 3);
+            // Some data might not be written due to the actual vl non-multiple of NrLanes*NrClusters
+            result_queue_d[result_queue_write_pnt_q][vrf_lane].be[vrf_offset] = (vinsn_issue_q.vm || mask_i[vrf_lane][vrf_offset]);
+          end
         end : axi_r_to_result_queue
 
         for (int unsigned lane = 0; lane < NrLanes; lane++) begin : compute_vrf_addr

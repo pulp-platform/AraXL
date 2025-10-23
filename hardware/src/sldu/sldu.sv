@@ -726,7 +726,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               issue_cnt_d = vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew);
 
               // Initialize be-enable-generation ancillary signals
-              output_limit_d = issue_cnt_d;
+              output_limit_d = vinsn_issue_q.vl_ldst << int'(vinsn_issue_q.vtype.vsew);
                            
               // issue_cnt_d -= ((cluster_strides + cluster_id_i) >> num_clusters_i) * 8 * NrLanes;   
 
@@ -767,7 +767,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               //               ((vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew)) + 8*NrLanes);
               issue_cnt_d = (vinsn_issue_q.use_scalar_op || (vinsn_issue_q.stride == 0)) ? (vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew)) : 
                             ((vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew)) + 8*NrLanes);
-              output_limit_d = vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew);
+              // output_limit_d = vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew);
+              output_limit_d = vinsn_issue_q.vl_ldst << int'(vinsn_issue_q.vtype.vsew);
 
             end
             // Ordered sum reductions
@@ -818,17 +819,23 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           out_en = out_en_flat & ({8*NrLanes{vinsn_issue_q.vm | (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu})}} | mask_q);
 
           // Write in the correct bytes
-          if (init_queue_q && !slidedown_extra_flit) begin
+          if (init_queue_q) begin
             // To initialize the queue only once with the local shifted data
             // The ring data is written later on top of the initialized data
             for (int lane = 0; lane < NrLanes; lane++)
               for (int b = 0; b < 8; b++)
                 if (out_en[lane][b]) begin
-                  result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sld_op_dst[lane][8*b +: 8];
+                  // If this is the last extra operand flit that is used for highest few elements of SLIDEDOWN, we dont update the wdata
+                  if (!slidedown_extra_flit) begin
+                    result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sld_op_dst[lane][8*b +: 8];
+                  end
                   result_queue_d[result_queue_write_pnt_q][lane].be[b]           = 1'b1;
                 end else begin
                   // Unchanged policy
-                  result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sldu_operand_ref[lane][8*b +: 8];
+                  // If this is the last extra operand flit that is used for highest few elements of SLIDEDOWN, we dont update the wdata
+                  if (!slidedown_extra_flit) begin
+                    result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sldu_operand_ref[lane][8*b +: 8];
+                  end
                   result_queue_d[result_queue_write_pnt_q][lane].be[b]           = 1'b1;
                 end
             init_queue_d = 1'b0;
@@ -1278,7 +1285,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               result_queue_cnt_d += 1;
             end
             result_queue_d[result_queue_write_pnt_q2][lane_id].id = vinsn_ring.id;
-            result_queue_d[result_queue_write_pnt_q2][lane_id].be = '1;
+            // result_queue_d[result_queue_write_pnt_q2][lane_id].be = '1;
             
             // For the edge clusters, We need to have the current ring packet and the previous ring packet
             // if (is_edge_cluster) begin

@@ -31,6 +31,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     output axi_req_t                axi_req_o,
     output vew_e                    vew_ar_o,
     output vew_e                    vew_aw_o,
+    output vlen_t                   vl_ldst_o,
     input  axi_resp_t               axi_resp_i,
     // Interface with the dispatcher
     input  logic                    core_st_pending_i,
@@ -136,6 +137,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .vew_ar_o                   (vew_ar                     ), 
     .axi_ar_valid_o             (axi_req.ar_valid           ),
     .axi_ar_ready_i             (axi_resp.ar_ready          ),
+    .vl_ldst_o                  (vl_ldst_o                  ),
     // Interface with dispatcher
     .core_st_pending_i          (core_st_pending_i          ),
     // Interface with the sequencer

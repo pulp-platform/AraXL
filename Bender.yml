@@ -52,7 +52,6 @@ sources:
     - hardware/src/vlsu/addrgen.sv
     - hardware/src/vlsu/vldu.sv
     - hardware/src/vlsu/vstu.sv
-    - hardware/src/vlsu/global_dispatcher.sv
     - hardware/src/vlsu/global_ldst.sv
     - hardware/src/vlsu/align_stage.sv
     - hardware/src/vlsu/shuffle_stage.sv

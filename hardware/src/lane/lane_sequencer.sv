@@ -38,6 +38,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     input  logic                 [NrVInsn-1:0]            mfpu_vinsn_done_i
   );
 
+  // vlen_t num_el_check;
+  // vlen_t cluster_stride_check;
+
   id_cluster_t max_cluster_id; 
   assign max_cluster_id = (1 << num_clusters_i) - 1;
 
@@ -574,6 +577,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               automatic vlen_t num_el = (cluster_stride * NrLanes * 8) >> pe_req_i.vtype.vsew;
               operand_request_i[SlideAddrGenA].vl =
               (pe_req.vl - num_el + NrLanes - 1) / NrLanes;
+              // cluster_stride_check = cluster_stride;
+              // num_el_check = num_el;
             end
             VSLIDEDOWN: begin
               // Extra elements to ask, because of the stride
