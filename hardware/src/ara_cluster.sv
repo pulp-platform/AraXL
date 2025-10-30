@@ -399,11 +399,11 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         .mst_req_o   (ldst_axi_req[cluster]),
         .mst_resp_i  (ldst_axi_resp[cluster])
       );
-
-    `FF(vew_ar_cut_glsu, vew_ar_cut, vew_e'(1'b0), clk_i, rst_ni);
-    `FF(vew_aw_cut_glsu, vew_aw_cut, vew_e'(1'b0), clk_i, rst_ni);
-    `FF(vl_ldst_cut_glsu, vl_ldst_cut, '0, clk_i, rst_ni);
   end
+
+  `FF(vew_ar_cut_glsu, vew_ar_cut, vew_e'(1'b0), clk_i, rst_ni);
+  `FF(vew_aw_cut_glsu, vew_aw_cut, vew_e'(1'b0), clk_i, rst_ni);
+  `FF(vl_ldst_cut_glsu, vl_ldst_cut, '0, clk_i, rst_ni);
 
   // Global Ld/St Unit
   global_ldst #(
