@@ -213,6 +213,7 @@ $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell fi
 # Verilate the design
 	$(veril_path)/verilator -f $(veril_library)/bender_script_$(config)           \
   -GNrLanes=$(nr_lanes)                                                         \
+  -GNrClusters=$(nr_clusters)																										\
   -O3                                                                           \
   -Wno-fatal                                                                    \
   -Wno-PINCONNECTEMPTY                                                          \
@@ -235,6 +236,7 @@ $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell fi
   --compiler clang                                                              \
   -CFLAGS "-DTOPLEVEL_NAME=$(veril_top)"                                        \
   -CFLAGS "-DNR_LANES=$(nr_lanes)"                                              \
+  -CFLAGS "-DNR_CLUSTERS=$(nr_clusters)"                                        \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp       \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp \
