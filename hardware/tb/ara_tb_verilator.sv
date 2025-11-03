@@ -25,10 +25,22 @@ module ara_tb_verilator #(
    *  DUT  *
    *********/
 
+  // ara_testharness #(
+  //   .NrLanes     (NrLanes         ),
+  //   .AxiAddrWidth(AxiAddrWidth    ),
+  //   .AxiDataWidth(AxiWideDataWidth)
+  // ) dut (
+  //   .clk_i (clk_i ),
+  //   .rst_ni(rst_ni),
+  //   .exit_o(exit_o)
+  // );
+
   ara_testharness #(
     .NrLanes     (NrLanes         ),
+    .NrClusters  (NrClusters      ),
     .AxiAddrWidth(AxiAddrWidth    ),
-    .AxiDataWidth(AxiWideDataWidth)
+    .AxiDataWidth(AxiWideDataWidth),
+    .ClusterAxiDataWidth(ClusterAxiDataWidth)
   ) dut (
     .clk_i (clk_i ),
     .rst_ni(rst_ni),
