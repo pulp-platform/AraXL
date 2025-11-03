@@ -165,7 +165,7 @@ jobs:
     #   if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
     #   run: make riscv-isa-sim
     - name: Copy Spike
-      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-isa-sim install
+      run: cp -Lr $GITHUB_WORKSPACE/install/riscv-isa-sim install
     - name: Tar Spike
       run: tar -cvf tc-isa-sim.tar install/riscv-isa-sim
     - name: Upload Spike
