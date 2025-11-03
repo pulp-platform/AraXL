@@ -46,12 +46,12 @@ jobs:
         large-packages: true
         docker-images: true
         swap-storage: true
-    # - uses: actions/checkout@v4
-    # - name: Recover the submodule commit hash
-    #   id: recover_hash
-    #   run: |
-    #     git submodule status toolchain/riscv-llvm | cut -d' ' -f1
-    #     echo "tc-llvm-hash=`git submodule status toolchain/riscv-llvm | cut -d' ' -f1`" >> $GITHUB_ENV
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-llvm | cut -d' ' -f1
+        echo "tc-llvm-hash=`git submodule status toolchain/riscv-llvm | cut -d' ' -f1`" >> $GITHUB_ENV
     - name: Cache the LLVM toolchain
       uses: actions/cache@v4
       id: tc-llvm-cache
@@ -62,20 +62,20 @@ jobs:
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-llvm-hash }}
         restore-keys:
           ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-llvm-hash }}
-    # - name: Download the LLVM toolchain
-    #   if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
-    #   run: git submodule update --init --recursive --checkout -- toolchain/riscv-llvm
-    # - name: Download Newlib
-    #   if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
-    #   run: git submodule update --init --recursive --checkout -- toolchain/newlib
-    # - name: Compile LLVM
-    #   if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
-    #   run: |
-    #     sudo apt-get install libmpc-dev
-    #     sudo apt-get install -y ninja-build
-    #     CC=gcc CXX=g++ make toolchain-llvm
-    - name: Copy LLVM tools
-      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-llvm install
+    - name: Download the LLVM toolchain
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive --checkout -- toolchain/riscv-llvm
+    - name: Download Newlib
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive --checkout -- toolchain/newlib
+    - name: Compile LLVM
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install libmpc-dev
+        sudo apt-get install -y ninja-build
+        CC=gcc CXX=g++ make toolchain-llvm
+    # - name: Copy LLVM tools
+    #   run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-llvm install
     - name: Tar LLVM
       run: tar -cvf tc-llvm.tar install/riscv-llvm
     - name: Upload LLVM
@@ -103,12 +103,12 @@ jobs:
         large-packages: true
         docker-images: true
         swap-storage: true
-    # - uses: actions/checkout@v4
-    # - name: Recover the submodule commit hash
-    #   id: recover_hash
-    #   run: |
-    #     git submodule status toolchain/riscv-gnu-toolchain | cut -d' ' -f1
-    #     echo "tc-gcc-hash=`git submodule status toolchain/riscv-gnu-toolchain | cut -d' ' -f1`" >> $GITHUB_ENV
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-gnu-toolchain | cut -d' ' -f1
+        echo "tc-gcc-hash=`git submodule status toolchain/riscv-gnu-toolchain | cut -d' ' -f1`" >> $GITHUB_ENV
     - name: Cache the GCC toolchain
       uses: actions/cache@v4
       id: tc-gcc-cache
@@ -119,16 +119,16 @@ jobs:
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-gcc-hash }}
         restore-keys:
           ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-gcc-hash }}
-    # - name: Download the GCC toolchain
-    #   if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
-    #   run: git submodule update --init --recursive --checkout -- toolchain/riscv-gnu-toolchain
-    # - name: Compile GCC
-    #   if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
-    #   run: |
-    #     sudo apt-get install libmpc-dev
-    #     CC=gcc CXX=g++ make toolchain-gcc
-    - name: Copy GCC tools
-      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-gcc install
+    - name: Download the GCC toolchain
+      if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive --checkout -- toolchain/riscv-gnu-toolchain
+    - name: Compile GCC
+      if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install libmpc-dev
+        CC=gcc CXX=g++ make toolchain-gcc
+    # - name: Copy GCC tools
+    #   run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-gcc install
     - name: Tar GCC
       run: tar -cvf tc-gcc.tar install/riscv-gcc
     - name: Upload GCC
@@ -140,12 +140,12 @@ jobs:
   tc-isa-sim:
     runs-on: ubuntu-22.04
     steps:
-    # - uses: actions/checkout@v4
-    # - name: Recover the submodule commit hash
-    #   id: recover_hash
-    #   run: |
-    #     git submodule status toolchain/riscv-isa-sim | cut -d' ' -f1
-    #     echo "tc-isa-sim-hash=`git submodule status toolchain/riscv-isa-sim | cut -d' ' -f1`" >> $GITHUB_ENV
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-isa-sim | cut -d' ' -f1
+        echo "tc-isa-sim-hash=`git submodule status toolchain/riscv-isa-sim | cut -d' ' -f1`" >> $GITHUB_ENV
     - name: Cache Spike
       uses: actions/cache@v4
       id: tc-isa-sim-cache
@@ -156,16 +156,16 @@ jobs:
         key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-isa-sim-hash }}
         restore-keys:
           ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-isa-sim-hash }}
-    # - name: Download Spike
-    #   if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
-    #   run: |
-    #     git submodule update --init --recursive -- toolchain/riscv-isa-sim
-    #     git submodule foreach --recursive git reset --hard
-    # - name: Compile Spike
-    #   if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
-    #   run: make riscv-isa-sim
-    - name: Copy Spike
-      run: cp -Lr $GITHUB_WORKSPACE/toolchain/riscv-isa-sim install
+    - name: Download Spike
+      if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
+      run: |
+        git submodule update --init --recursive -- toolchain/riscv-isa-sim
+        git submodule foreach --recursive git reset --hard
+    - name: Compile Spike
+      if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
+      run: make riscv-isa-sim
+    # - name: Copy Spike
+    #   run: cp -Lr $GITHUB_WORKSPACE/toolchain/riscv-isa-sim install
     - name: Tar Spike
       run: tar -cvf tc-isa-sim.tar install/riscv-isa-sim
     - name: Upload Spike
@@ -177,12 +177,12 @@ jobs:
   tc-verilator:
     runs-on: ubuntu-22.04
     steps:
-    # - uses: actions/checkout@v4
-    # - name: Recover the submodule commit hash
-    #   id: recover_hash
-    #   run: |
-    #     git submodule status toolchain/verilator | cut -d' ' -f1
-    #     echo "tc-verilator-hash=`git submodule status toolchain/verilator | cut -d' ' -f1`" >> $GITHUB_ENV
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/verilator | cut -d' ' -f1
+        echo "tc-verilator-hash=`git submodule status toolchain/verilator | cut -d' ' -f1`" >> $GITHUB_ENV
     - name: Cache Verilator
       uses: actions/cache@v4
       id: tc-verilator-cache
@@ -193,17 +193,17 @@ jobs:
         key: ${{ runner.os }}-build-llvm10-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
         restore-keys:
           ${{ runner.os }}-build-llvm10-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
-    # - name: Download Verilator
-    #   if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
-    #   run: |
-    #     git submodule update --init --recursive -- toolchain/verilator
-    # - name: Compile Verilator
-    #   if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
-    #   run: |
-    #     sudo apt-get install flex libfl-dev help2man
-    #     make verilator
-    - name: Copy Verilator
-      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/verilator install
+    - name: Download Verilator
+      if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
+      run: |
+        git submodule update --init --recursive -- toolchain/verilator
+    - name: Compile Verilator
+      if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install flex libfl-dev help2man
+        make verilator
+    # - name: Copy Verilator
+    #   run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/verilator install
     - name: Tar Verilator
       run: tar -cvf tc-verilator.tar install/verilator
     - name: Upload Verilator
