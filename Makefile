@@ -27,8 +27,8 @@ ISA_SIM_MOD_INSTALL_DIR ?= ${INSTALL_DIR}/riscv-isa-sim-mod
 VERIL_INSTALL_DIR       ?= ${INSTALL_DIR}/verilator
 RISCV_TESTS_INSTALL_DIR ?= ${INSTALL_DIR}/riscv_tests
 VERIL_VERSION           ?= v5.012
-# DTC_COMMIT              ?= b6910bec11614980a21e46fbccc35934b671bd81
-DTC_COMMIT              ?= 7f3184a6c550bb8fb59e93c9901d75dced889dcf
+DTC_COMMIT              ?= b6910bec11614980a21e46fbccc35934b671bd81
+# DTC_COMMIT              ?= 7f3184a6c550bb8fb59e93c9901d75dced889dcf
 
 CMAKE ?= cmake
 
@@ -146,7 +146,7 @@ ${ISA_SIM_MOD_INSTALL_DIR}: Makefile patches/0003-riscv-isa-sim-patch ${ISA_SIM_
 	# Spike was compiled successfully using gcc and g++ version 7.2.0.
 	cd toolchain/riscv-isa-sim && git stash && git apply ../../patches/0003-riscv-isa-sim-patch && \
 	rm -rf build && mkdir -p build && cd build; \
-	[ -d dtc ] || git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git && cd dtc && git checkout $(DTC_COMMIT); \
+	[ -d dtc ] || git clone https://github.com/dgibson/dtc.git dtc && cd dtc && git checkout $(DTC_COMMIT); \
 	make install SETUP_PREFIX=$(ISA_SIM_MOD_INSTALL_DIR) PREFIX=$(ISA_SIM_MOD_INSTALL_DIR) && \
 	PATH=$(ISA_SIM_MOD_INSTALL_DIR)/bin:$$PATH; cd ..; \
 	../configure --prefix=$(ISA_SIM_MOD_INSTALL_DIR) \
@@ -161,7 +161,7 @@ ${ISA_SIM_INSTALL_DIR}: Makefile
 	# make riscv-isa-sim LDFLAGS="-static-libstdc++"
 	# Spike was compiled successfully using gcc and g++ version 7.2.0.
 	cd toolchain/riscv-isa-sim && rm -rf build && mkdir -p build && cd build; \
-	[ -d dtc ] || git clone https://git.kernel.org/pub/scm/utils/dtc/dtc.git && cd dtc && git checkout $(DTC_COMMIT); \
+	[ -d dtc ] || git clone https://github.com/dgibson/dtc.git dtc && cd dtc && git checkout $(DTC_COMMIT); \
 	make install SETUP_PREFIX=$(ISA_SIM_INSTALL_DIR) PREFIX=$(ISA_SIM_INSTALL_DIR) && \
 	PATH=$(ISA_SIM_INSTALL_DIR)/bin:$$PATH; cd ..; \
 	../configure --prefix=$(ISA_SIM_INSTALL_DIR) \

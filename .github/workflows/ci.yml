@@ -163,7 +163,8 @@ jobs:
         git submodule foreach --recursive git reset --hard
     - name: Compile Spike
       if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
-      run: make riscv-isa-sim
+      # run: make riscv-isa-sim
+      run: make riscv-isa-sim LDFLAGS="-static-libstdc++"
     # - name: Copy Spike
     #   run: cp -Lr $GITHUB_WORKSPACE/toolchain/riscv-isa-sim install
     - name: Tar Spike
