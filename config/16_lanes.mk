@@ -19,6 +19,8 @@
 
 # Number of vector lanes
 nr_lanes ?= 16
+# Number of clusters
+nr_clusters ?= 4
 
 # Length of each vector register (in bits)
 # Constraints: VLEN > 128
