@@ -7,8 +7,8 @@
 # Run functional regression checks
 name: ci
 on: [push, pull_request]
-variables:
-  TOOL_DIR=/usr/scratch2/tokyo/mperotti/tools/arathon/install
+# variables:
+#   TOOL_DIR=/usr/scratch2/tokyo/mperotti/tools/arathon/install
 
 # Only allow one workflow per PR/Branch (the last one)
 # https://docs.github.com/en/actions/learn-github-actions/expressions
@@ -75,7 +75,7 @@ jobs:
     #     sudo apt-get install -y ninja-build
     #     CC=gcc CXX=g++ make toolchain-llvm
     - name: Copy LLVM tools
-      run: cp -Lr ${TOOL_DIR}/riscv-llvm install
+      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-llvm install
     - name: Tar LLVM
       run: tar -cvf tc-llvm.tar install/riscv-llvm
     - name: Upload LLVM
@@ -128,7 +128,7 @@ jobs:
     #     sudo apt-get install libmpc-dev
     #     CC=gcc CXX=g++ make toolchain-gcc
     - name: Copy GCC tools
-      run: cp -Lr ${TOOL_DIR}/riscv-gcc install
+      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-gcc install
     - name: Tar GCC
       run: tar -cvf tc-gcc.tar install/riscv-gcc
     - name: Upload GCC
@@ -165,7 +165,7 @@ jobs:
     #   if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
     #   run: make riscv-isa-sim
     - name: Copy Spike
-      run: cp -Lr ${TOOL_DIR}/riscv-isa-sim install
+      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/riscv-isa-sim install
     - name: Tar Spike
       run: tar -cvf tc-isa-sim.tar install/riscv-isa-sim
     - name: Upload Spike
@@ -203,7 +203,7 @@ jobs:
     #     sudo apt-get install flex libfl-dev help2man
     #     make verilator
     - name: Copy Verilator
-      run: cp -Lr ${TOOL_DIR}/verilator install
+      run: cp -Lr /usr/scratch2/tokyo/mperotti/tools/arathon/install/verilator install
     - name: Tar Verilator
       run: tar -cvf tc-verilator.tar install/verilator
     - name: Upload Verilator
@@ -371,69 +371,69 @@ jobs:
 #  RISC-V Tests stage  #
 ########################
 
-  # riscv-tests-simv:
-  #   runs-on: ubuntu-22.04
-  #   strategy:
-  #     max-parallel: 1
-  #     matrix:
-  #       ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
-  #   needs: ["compile-ara", "compile-riscv-tests"]
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Get Spike artifacts
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: tc-isa-sim
-  #   - name: Untar Spike
-  #     run: tar xvf tc-isa-sim.tar
-  #   - name: Get Verilated model of Ara
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: compile-ara-${{ matrix.ara_config }}
-  #   - name: Untar Verilated model of Ara
-  #     run: tar xvf ara.tar
-  #   - name: Get RISC-V tests
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: compile-riscv-tests-${{ matrix.ara_config }}
-  #       path: apps/bin
-  #   - name: Run tests
-  #     run: config=${{ matrix.ara_config }} make -C hardware -j8 riscv_tests_simv
+  riscv-tests-simv:
+    runs-on: ubuntu-22.04
+    strategy:
+      max-parallel: 1
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+    needs: ["compile-ara", "compile-riscv-tests"]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Get Spike artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-isa-sim
+    - name: Untar Spike
+      run: tar xvf tc-isa-sim.tar
+    - name: Get Verilated model of Ara
+      uses: actions/download-artifact@v4
+      with:
+        name: compile-ara-${{ matrix.ara_config }}
+    - name: Untar Verilated model of Ara
+      run: tar xvf ara.tar
+    - name: Get RISC-V tests
+      uses: actions/download-artifact@v4
+      with:
+        name: compile-riscv-tests-${{ matrix.ara_config }}
+        path: apps/bin
+    - name: Run tests
+      run: config=${{ matrix.ara_config }} make -C hardware -j8 riscv_tests_simv
 
-  # riscv-tests-spike:
-  #   runs-on: ubuntu-22.04
-  #   needs: ["tc-isa-sim", "compile-riscv-tests"]
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Get Spike artifacts
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: tc-isa-sim
-  #   - name: Untar Spike
-  #     run: tar xvf tc-isa-sim.tar
-  #   - name: Download the LLVM toolchain
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: tc-llvm
-  #   - name: Untar LLVM
-  #     run: tar xvf tc-llvm.tar
-  #   - name: Download the GCC toolchain
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: tc-gcc
-  #   - name: Untar GCC
-  #     run: tar xvf tc-gcc.tar
-  #   - name: Run tests
-  #     run: |
-  #       make -C apps/riscv-tests/isa clean
-  #       make -C apps riscv_tests_spike
-  #   - name: Upload dumps
-  #     uses: actions/upload-artifact@v4
-  #     with:
-  #       name: riscv-tests-spike
-  #       path: |
-  #         apps/riscv-tests/isa/*.dump
-  #         apps/riscv-tests/isa/*.out32
+  riscv-tests-spike:
+    runs-on: ubuntu-22.04
+    needs: ["tc-isa-sim", "compile-riscv-tests"]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Get Spike artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-isa-sim
+    - name: Untar Spike
+      run: tar xvf tc-isa-sim.tar
+    - name: Download the LLVM toolchain
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
+    - name: Download the GCC toolchain
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-gcc
+    - name: Untar GCC
+      run: tar xvf tc-gcc.tar
+    - name: Run tests
+      run: |
+        make -C apps/riscv-tests/isa clean
+        make -C apps riscv_tests_spike
+    - name: Upload dumps
+      uses: actions/upload-artifact@v4
+      with:
+        name: riscv-tests-spike
+        path: |
+          apps/riscv-tests/isa/*.dump
+          apps/riscv-tests/isa/*.out32
 
 ###################
 #  Linting stage  #
