@@ -505,57 +505,57 @@ jobs:
 #  Benchmark stage  #
 #####################
 
-  # benchmark:
-  #   runs-on: ubuntu-22.04
-  #   strategy:
-  #     max-parallel: 1
-  #     matrix:
-  #       ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
-  #   needs: ["compile-ara", "compile-apps"]
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - uses: actions/setup-python@v4
-  #     with:
-  #       python-version: 3.12.0
-  #   - name: Install Python requirements
-  #     run: pip install -r python-requirements.txt
-  #   - name: Download the LLVM toolchain
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: tc-llvm
-  #   - name: Untar LLVM
-  #     run: tar xvf tc-llvm.tar
-  #   - name: Get Spike artifacts
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: tc-isa-sim
-  #   - name: Untar Spike
-  #     run: tar xvf tc-isa-sim.tar
-  #   - name: Get Verilated model of Ara
-  #     uses: actions/download-artifact@v4
-  #     with:
-  #       name: compile-ara-${{ matrix.ara_config }}
-  #   - name: Untar Verilated model of Ara
-  #     run: tar xvf ara.tar
-  #   - name: Benchmark Ara
-  #     run: config=${{ matrix.ara_config }} ./scripts/benchmark.sh ci
-  #   - name: Tar [f]dotproduct runtime results
-  #     run: |
-  #       tar -cvf dotproducts-${{ matrix.ara_config }}.tar *dotproduct*.benchmark
-  #       rm *dotproduct*.benchmark
-  #   - name: Tar runtime results
-  #     run: |
-  #       tar -cvf benchmarks-${{ matrix.ara_config }}.tar *.benchmark
-  #   - name: Upload [f]dotproduct runtime results
-  #     uses: actions/upload-artifact@v4
-  #     with:
-  #       name: dotproducts-${{ matrix.ara_config }}
-  #       path: dotproducts-${{ matrix.ara_config }}.tar
-  #   - name: Upload runtime results
-  #     uses: actions/upload-artifact@v4
-  #     with:
-  #       name: benchmark-${{ matrix.ara_config }}
-  #       path: benchmarks-${{ matrix.ara_config }}.tar
+  benchmark:
+    runs-on: ubuntu-22.04
+    strategy:
+      max-parallel: 1
+      matrix:
+        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+    needs: ["compile-ara", "compile-apps"]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v4
+      with:
+        python-version: 3.12.0
+    - name: Install Python requirements
+      run: pip install -r python-requirements.txt
+    - name: Download the LLVM toolchain
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
+    - name: Get Spike artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-isa-sim
+    - name: Untar Spike
+      run: tar xvf tc-isa-sim.tar
+    - name: Get Verilated model of Ara
+      uses: actions/download-artifact@v4
+      with:
+        name: compile-ara-${{ matrix.ara_config }}
+    - name: Untar Verilated model of Ara
+      run: tar xvf ara.tar
+    - name: Benchmark Ara
+      run: config=${{ matrix.ara_config }} ./scripts/benchmark.sh ci
+    - name: Tar [f]dotproduct runtime results
+      run: |
+        tar -cvf dotproducts-${{ matrix.ara_config }}.tar *dotproduct*.benchmark
+        rm *dotproduct*.benchmark
+    - name: Tar runtime results
+      run: |
+        tar -cvf benchmarks-${{ matrix.ara_config }}.tar *.benchmark
+    - name: Upload [f]dotproduct runtime results
+      uses: actions/upload-artifact@v4
+      with:
+        name: dotproducts-${{ matrix.ara_config }}
+        path: dotproducts-${{ matrix.ara_config }}.tar
+    - name: Upload runtime results
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-${{ matrix.ara_config }}
+        path: benchmarks-${{ matrix.ara_config }}.tar
 
   # roofline:
   #   runs-on: ubuntu-22.04
