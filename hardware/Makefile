@@ -212,8 +212,6 @@ $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell fi
 	$(BENDER) script verilator $(bender_targs_veril) $(bender_defs) > $(veril_library)/bender_script_$(config)
 # Verilate the design
 	$(veril_path)/verilator -f $(veril_library)/bender_script_$(config)           \
-  -Gara_tb_verilator.NrLanes=2 																									\
-	-Gara_tb_verilator.NrClusters=4 																							\
   -O3                                                                           \
   -Wno-fatal                                                                    \
   -Wno-PINCONNECTEMPTY                                                          \
