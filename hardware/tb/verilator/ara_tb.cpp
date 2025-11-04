@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   // Initialize the DRAM
   MemAreaLoc l2_mem = {.base=0x80000000, .size=0x00100000};
   memutil.RegisterMemoryArea(
-                             "ram", "TOP.ara_tb_verilator.dut.i_ara_soc.i_dram", 32*Nr_Lanes*Nr_Clusters, &l2_mem);
+                             "ram", "TOP.ara_tb_verilator.dut.i_ara_soc.i_dram", 32*NR_LANES*NR_CLUSTERS, &l2_mem);
   simctrl.RegisterExtension(&memutil);
 
   simctrl.SetInitialResetDelay(5);
