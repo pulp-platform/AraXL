@@ -23,6 +23,7 @@ TESTS_DIR := $(ROOT_DIR)/riscv-tests/isa
 
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(COMMON_DIR)/runtime.mk
+include $(COMMON_DIR)/riscv_tests.mk
 include $(COMMON_DIR)/default_args.mk
 
 # Number of clusters

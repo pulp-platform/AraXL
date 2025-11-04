@@ -246,8 +246,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   elen_t vfmvfs_result;
 
   vlen_t total_cluster_pieces;
+  id_cluster_t total_cluster_pieces_id;
   // assign total_cluster_pieces = vlen_t'(acc_req_i.rs1) >> $clog2(VLENB >> vtype_d.vsew);
   assign total_cluster_pieces = vlen_t'(acc_req_i.rs1) >> $clog2(NrLanes);
+  assign total_cluster_pieces_id = (NrClusters > 1) ? total_cluster_pieces[$clog2(NrClusters) - 1 : 0] : 0;
 
   vlen_t check_total_cluster_pieces;
   assign check_total_cluster_pieces = ((total_cluster_pieces >> $clog2(NrClusters)) + 1) * NrLanes;
@@ -532,9 +534,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         // Return the new vl
                         acc_resp_o.result = vl_d << num_clusters_i;
                       end else begin
-                        if (cluster_id_i < total_cluster_pieces[$clog2(NrClusters) - 1 : 0]) begin
+                        if (cluster_id_i < total_cluster_pieces_id) begin
                           vl_d = ((total_cluster_pieces >> $clog2(NrClusters)) + 1) * NrLanes;
-                        end else if (cluster_id_i == total_cluster_pieces[$clog2(NrClusters) - 1 : 0]) begin
+                        end else if (cluster_id_i == total_cluster_pieces_id) begin
                           vl_d = (total_cluster_pieces >> $clog2(NrClusters)) * NrLanes + 
                                   acc_req_i.rs1 % NrLanes;
                         end else begin
