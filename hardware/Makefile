@@ -202,6 +202,7 @@ simc: compile
 # RISC-V Tests simulation
 APPS_DIR := $(abspath $(ROOT_DIR)/../apps)
 TESTS_DIR := $(APPS_DIR)/riscv-tests/isa
+include $(APPS_DIR)/common/riscv_tests.mk
 
 tests := $(ara_tests) $(cva6_tests)
 
