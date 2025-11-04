@@ -7,8 +7,8 @@
 // Description: Top level testbench module for Verilator.
 
 module ara_tb_verilator #(
-    parameter int unsigned NrLanes = 0,
-    parameter int unsigned NrClusters = 0
+    parameter int unsigned NrLanes    = `NR_LANES,
+    parameter int unsigned NrClusters = `NR_CLUSTERS
   )(
     input  logic        clk_i,
     input  logic        rst_ni,
