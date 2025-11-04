@@ -38,7 +38,7 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   output  axi_resp_t [NrClusters-1:0] axi_resp_o
 );
 
-if (NrClusters == 1) begin 
+if (NrClusters == 1) begin
   assign axi_req_o  = axi_req_i;
   assign axi_resp_o = axi_resp_i;
 end else begin
