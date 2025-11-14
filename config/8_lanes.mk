@@ -18,7 +18,7 @@
 #         Matheus Cavalcante, ETH Zurich
 
 # Number of vector lanes
-nr_lanes ?= 8
+nr_lanes ?= 4
 # Number of clusters
 nr_clusters ?= 2
 
