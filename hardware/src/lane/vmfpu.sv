@@ -1310,6 +1310,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     mfpu_red_idle_d        = mfpu_red_idle_q;
 
     // Inform our status to the lane controller
+    // mfpu_ready_o      = !vinsn_queue_full && 
+    //                     (((!(vfu_operation_i.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) || (mfpu_red_idle_glb_i)));
     mfpu_ready_o      = !vinsn_queue_full;
     mfpu_vinsn_done_o = '0;
 
@@ -1392,6 +1394,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     intra_op_rx_cnt_en      = 1'b0;
 
     osum_issue_cnt_d        = osum_issue_cnt_q;
+
+    mfpu_red_idle_d         = mfpu_red_idle_q;
 
     // Don't prevent commit by default
     prevent_commit = 1'b0;
