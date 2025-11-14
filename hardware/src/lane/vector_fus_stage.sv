@@ -60,6 +60,9 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     output elen_t                             mfpu_result_wdata_o,
     output strb_t                             mfpu_result_be_o,
     input  logic                              mfpu_result_gnt_i,
+    // No reductiomn operation ongoing in the MFPU
+    output logic                              mfpu_red_idle_o,
+    input  logic                              mfpu_red_idle_glb_i,
     // Interface with the Slide Unit
     input  elen_t                             sldu_operand_i,
     output logic                              sldu_alu_req_valid_o,
@@ -195,7 +198,10 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .mask_operand_ready_i (mask_operand_ready_i[MaskFUMFpu]),
     .mask_i               (mask_i                          ),
     .mask_valid_i         (mask_valid_i                    ),
-    .mask_ready_o         (mfpu_mask_ready                 )
+    .mask_ready_o         (mfpu_mask_ready                 ),
+    // No reductiomn operation ongoing in the MFPU
+    .mfpu_red_idle_o      (mfpu_red_idle_o                 ),
+    .mfpu_red_idle_glb_i  (mfpu_red_idle_glb_i             )
   );
 
 endmodule : vector_fus_stage

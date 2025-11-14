@@ -107,6 +107,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   vlen_t                  vl_ldst_cut, vl_ldst_cut_glsu, vl_ldst_rd_glsu2align, vl_ldst_wr_glsu2align, 
                           vl_ldst_rd_align, vl_ldst_wr_align;
 
+  logic [NrClusters-1:0]  mfpu_red_idle;
+  logic                   mfpu_red_idle_glb;
+
   typedef vew_e [NrClusters-1:0] vew_group_t;
   typedef vlen_t [NrClusters-1:0] vlen_group_t;
 
@@ -140,6 +143,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   localparam int idx_no_ring_cut_left[8] = '{1, 3, 5, 7, 9, 11, 13, 15};
   localparam int idx_no_ring_cut_right[8] = '{0, 2, 4, 6, 8, 10, 12, 14};
+
+  assign mfpu_red_idle_glb = &mfpu_red_idle;
 
   for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster
       ara_macro #(
@@ -181,6 +186,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         .vew_ar_o        (vew_ar[cluster]         ),
         .vew_aw_o        (vew_aw[cluster]         ),
         .vl_ldst_o       (vl_ldst[cluster]        ),
+        .mfpu_red_idle_o (mfpu_red_idle[cluster]  ),
+        .mfpu_red_idle_glb_i (mfpu_red_idle_glb       ),
 
         // Ring
         .ring_data_r_i       (ring_data_l_cut        [cluster == NrClusters-1 ? 0 : cluster + 1]     ),

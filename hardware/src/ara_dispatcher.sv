@@ -64,12 +64,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   vxsat_e vxsat_d, vxsat_q;
   vxrm_t  vxrm_d, vxrm_q;
 
+  // Meaning that this is the final element that is actually needed in the computation, used for SLIDE1DOWN
+  // to tell which cluster should we insert the scalar operand at the end
+  logic   is_final_elem_d, is_final_elem_q;
+
+  // if (NrClusters > 1) begin
+  //   logic [$clog2(NrClusters)-1:0] final_elem_cluster_id;
+  // end else begin
+  //   logic final_elem_cluster_id;
+  // end
+
+  logic [$clog2(NrClusters)-1:0] final_elem_cluster_id;
+
   `FF(vstart_q, vstart_d, '0)
   `FF(vl_q, vl_d, '0)
   `FF(vl_ld_q, vl_ld_d, '0)
   `FF(vtype_q, vtype_d, '{vill: 1'b1, default: '0})
   `FF(vxsat_q, vxsat_d, '0)
   `FF(vxrm_q, vxrm_d, '0)
+  `FF(is_final_elem_q, is_final_elem_d, 1'b0)
   // Converts between the internal representation of `vtype_t` and the full XLEN-bit CSR.
   function automatic riscv::xlen_t xlen_vtype(vtype_t vtype);
     xlen_vtype = {vtype.vill, {riscv::XLEN-9{1'b0}}, vtype.vma, vtype.vta, vtype.vsew,
@@ -270,6 +283,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     eew_valid_d  = eew_valid_q;
     lmul_vs2     = vtype_q.vlmul;
     lmul_vs1     = vtype_q.vlmul;
+    is_final_elem_d = is_final_elem_q;
 
     reshuffle_req_d  = reshuffle_req_q;
     eew_old_buffer_d = eew_old_buffer_q;
@@ -536,9 +550,19 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       if ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) || 
                         ((vlen_t'(acc_req_i.rs1) >> $clog2(NrClusters)) > vlmax)) begin
                         vl_d = vlmax;
+                        // This is not the final ieteration, so this is not the final element
+                        is_final_elem_d = 1'b0;
                         // Return the new vl
                         acc_resp_o.result = vl_d << num_clusters_i;
                       end else begin
+                        // This is the final iteration, so we need to determine in which cluster the final element is
+                        if (NrClusters > 1) begin
+                          final_elem_cluster_id = acc_req_i.rs1[$clog2(NrLanes)+:$clog2(NrClusters)] - !(|(acc_req_i.rs1[$clog2(NrLanes)-1:0]));
+                        end else begin
+                          final_elem_cluster_id = 0;
+                        end
+                        // This cluster has the last element and we are processing it this iteration
+                        is_final_elem_d = (cluster_id_i == final_elem_cluster_id);
                         if (cluster_id_i < total_cluster_pieces_id) begin
                           vl_d = ((total_cluster_pieces >> $clog2(NrClusters)) + 1) * NrLanes;
                         end else if (cluster_id_i == total_cluster_pieces_id) begin
@@ -3158,6 +3182,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         if (ara_req_d.op inside {VSLIDEUP, VSLIDEDOWN}) begin
           ara_req_d.vl      = vl_ld_q;
           ara_req_d.vl_ldst = vl_q;
+          ara_req_d.is_final_elem = is_final_elem_q;
         end
       end
 

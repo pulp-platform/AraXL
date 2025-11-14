@@ -77,7 +77,12 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
 
     output vew_e              vew_ar_o,
     output vew_e              vew_aw_o,
-    output vlen_t             vl_ldst_o
+    output vlen_t             vl_ldst_o,
+
+    // Interface with other clusters for reduction operations
+    output logic              mfpu_red_idle_o,
+    // MFPU reduction idle signal
+    input logic               mfpu_red_idle_glb_i
   );
 
   `include "common_cells/registers.svh"
@@ -261,6 +266,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     .vew_ar_o        (vew_ar           ),
     .vew_aw_o        (vew_aw           ),
     .vl_ldst_o       (vl_ldst          ),
+    .mfpu_red_idle_o (mfpu_red_idle_o  ),
+    .mfpu_red_idle_glb_i (mfpu_red_idle_glb_i),
     
     // To Ring Routers
     .ring_data_o         (sldu_o             ), 

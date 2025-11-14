@@ -94,7 +94,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     // Interface between the Mask unit and the VFUs
     input  strb_t                                          mask_i,
     input  logic                                           mask_valid_i,
-    output logic                                           mask_ready_o
+    output logic                                           mask_ready_o,
+    // Interface with other clusters for reduction operations
+    output logic                                           mfpu_red_idle_o,
+    input  logic                                           mfpu_red_idle_glb_i
   );
 
   /////////////////
@@ -133,6 +136,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic                 [NrVInsn-1:0]         alu_vinsn_done;
   logic                                       mfpu_ready;
   logic                 [NrVInsn-1:0]         mfpu_vinsn_done;
+  logic                                       mfpu_red_idle;
+
+  assign mfpu_red_idle = mfpu_red_idle_o;
 
   lane_sequencer #(.NrLanes(NrLanes)) i_lane_sequencer (
     .clk_i                  (clk_i                ),
@@ -158,7 +164,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .alu_ready_i            (alu_ready            ),
     .alu_vinsn_done_i       (alu_vinsn_done       ),
     .mfpu_ready_i           (mfpu_ready           ),
-    .mfpu_vinsn_done_i      (mfpu_vinsn_done      )
+    .mfpu_vinsn_done_i      (mfpu_vinsn_done      ),
+    .mfpu_red_idle_i        (mfpu_red_idle        )
   );
 
   /////////////////////////
@@ -314,6 +321,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .clk_i                            (clk_i                              ),
     .rst_ni                           (rst_ni                             ),
     .lane_id_i                        (lane_id_i                          ),
+    .cluster_id_i                     (cluster_id_i                       ),
     // Interface with the Vector Register File
     .operand_i                        (vrf_operand                        ),
     .operand_valid_i                  (vrf_operand_valid                  ),
@@ -397,6 +405,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .mfpu_result_wdata_o  (mfpu_result_wdata                      ),
     .mfpu_result_be_o     (mfpu_result_be                         ),
     .mfpu_result_gnt_i    (mfpu_result_gnt                        ),
+    .mfpu_red_idle_o      (mfpu_red_idle_o                        ),
+    .mfpu_red_idle_glb_i  (mfpu_red_idle_glb_i                    ),
     // Interface with the Slide Unit
     .sldu_alu_req_valid_o (sldu_alu_req_valid_o                   ),
     .sldu_alu_valid_i     (sldu_alu_valid                         ),

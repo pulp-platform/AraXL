@@ -35,7 +35,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     input  logic                                          alu_ready_i,
     input  logic                 [NrVInsn-1:0]            alu_vinsn_done_i,
     input  logic                                          mfpu_ready_i,
-    input  logic                 [NrVInsn-1:0]            mfpu_vinsn_done_i
+    input  logic                 [NrVInsn-1:0]            mfpu_vinsn_done_i,
+    input  logic                                          mfpu_red_idle_i
   );
 
   // vlen_t num_el_check;
@@ -164,6 +165,12 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
   // Running instructions
   logic [NrVInsn-1:0] vinsn_done_d, vinsn_done_q;
   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
+  // Pending reduction
+  logic mfpu_reduction_pending_d, mfpu_reduction_pending_q;
+  logic mfpu_reduction_done, mfpu_reduction_done_q;
+
+  // Pulse that signals finish of a reduction
+  assign mfpu_reduction_done = mfpu_red_idle_i && (!mfpu_reduction_done_q);
 
   // VFU operation
   vfu_operation_t vfu_operation_d;
@@ -186,6 +193,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
   always_comb begin: sequencer
     // Running loops
     vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
+    // pending reduction
+    mfpu_reduction_pending_d  = mfpu_reduction_pending_q;
 
     // Ready to accept a new request, by default
     pe_req_ready = 1'b1;
@@ -204,6 +213,10 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
     vfu_operation_d       = '0;
     vfu_operation_valid_d = 1'b0;
 
+    if (mfpu_reduction_done) begin
+      mfpu_reduction_pending_d = 1'b0;
+    end
+
     // If the operand requesters are busy, abort the request and wait for another cycle.
     if (pe_req_valid) begin
       unique case (pe_req.vfu)
@@ -216,7 +229,8 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           pe_req_ready = !(operand_request_valid_o[MulFPUA] ||
             operand_request_valid_o[MulFPUB] ||
             operand_request_valid_o[MulFPUC] ||
-            operand_request_valid_o[MaskM]);
+            operand_request_valid_o[MaskM]) &&
+            ((!(pe_req.op inside {[VFREDUSUM:VFWREDOSUM]})) || (!mfpu_reduction_pending_q));
         end
         VFU_LoadUnit : pe_req_ready = !(operand_request_valid_o[MaskM] ||
             (pe_req_i.op == VLXE && operand_request_valid_o[SlideAddrGenA]));
@@ -263,6 +277,11 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
         vtype          : pe_req.vtype,
         default        : '0
       };
+
+      if (vfu_operation_d.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]}) begin
+        mfpu_reduction_pending_d = 1'b1;
+      end
+
       vfu_operation_valid_d = (vfu_operation_d.vfu != VFU_None) ? 1'b1 : 1'b0;
 
       // Vector length calculation
@@ -822,6 +841,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
       alu_vinsn_done_o  <= 1'b0;
       mfpu_vinsn_done_o <= 1'b0;
+
+      mfpu_reduction_pending_q <= 1'b0;
+      mfpu_reduction_done_q    <= 1'b0;
     end else begin
       vinsn_done_q    <= vinsn_done_d;
       vinsn_running_q <= vinsn_running_d;
@@ -831,6 +853,9 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
       alu_vinsn_done_o  <= alu_vinsn_done_d;
       mfpu_vinsn_done_o <= mfpu_vinsn_done_d;
+
+      mfpu_reduction_pending_q <= mfpu_reduction_pending_d;
+      mfpu_reduction_done_q    <= mfpu_red_idle_i;
     end
   end
 

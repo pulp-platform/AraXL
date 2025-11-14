@@ -325,6 +325,10 @@ package ara_pkg;
 
     // Request token, for registration in the sequencer
     logic token;
+
+    // Indicates that this is the final element that is actually needed in the computation
+    // e.g. it an be used in SLIDE1DOWN to tell which cluster should we insert the scalar operand at the end
+    logic is_final_elem;
   } ara_req_t;
 
   typedef struct packed {
@@ -428,6 +432,10 @@ package ara_pkg;
     logic [NrVInsn-1:0] hazard_vs2;
     logic [NrVInsn-1:0] hazard_vm;
     logic [NrVInsn-1:0] hazard_vd;
+
+    // Indicates that this is the final element that is actually needed in the computation
+    // e.g. it an be used in SLIDE1DOWN to tell which cluster should we insert the scalar operand at the end
+    logic is_final_elem;
   } pe_req_t;
 
   typedef struct packed {

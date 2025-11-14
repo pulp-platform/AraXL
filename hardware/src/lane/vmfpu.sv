@@ -63,7 +63,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  logic                         mask_operand_ready_i,
     input  strb_t                        mask_i,
     input  logic                         mask_valid_i,
-    output logic                         mask_ready_o
+    output logic                         mask_ready_o,
+    // No reductiomn operation ongoing in the MFPU
+    output logic                         mfpu_red_idle_o,
+    input  logic                         mfpu_red_idle_glb_i
   );
 
   // Power gating registers
@@ -645,6 +648,11 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // e.g. assume EEW=16, there are four elements in the operand data (4 * 16bits = 64 bits), the osum_issue_cnt counts from 0 to 3
   logic [3:0] osum_issue_cnt_d, osum_issue_cnt_q;
 
+  // No reduction is being executed
+  logic mfpu_red_idle_d, mfpu_red_idle_q;
+  // No reduction is waiting to be executed or being executed
+  logic reduction_pending_d, reduction_pending_q;
+
   // This function returns 1'b1 if `op` is a reduction instruction, i.e.,
   // it must accumulate the result (intra-lane reduction) before sending it to the
   // sliding unit (inter-lane and SIMD reduction).
@@ -655,14 +663,26 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   endfunction: is_reduction
 
   // This function returns the next mfpu_state for the next instruction
+  // function automatic mfpu_state_e next_mfpu_state(ara_op_e op);
+  //   if (op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM} && mfpu_red_idle_glb_i) begin
+  //     next_mfpu_state = INTRA_LANE_REDUCTION;
+  //   end else if (op inside {VFREDOSUM, VFWREDOSUM} && mfpu_red_idle_glb_i) begin
+  //     next_mfpu_state = OSUM_REDUCTION;
+  //   end else begin
+  //     next_mfpu_state = NO_REDUCTION;
+  //   end
+  // endfunction : next_mfpu_state
   function automatic mfpu_state_e next_mfpu_state(ara_op_e op);
-    if (op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM})
+    if (op inside {VFREDUSUM, VFREDMIN, VFREDMAX, VFWREDUSUM}) begin
       next_mfpu_state = INTRA_LANE_REDUCTION;
-    else if (op inside {VFREDOSUM, VFWREDOSUM})
+    end else if (op inside {VFREDOSUM, VFWREDOSUM}) begin
       next_mfpu_state = OSUM_REDUCTION;
-    else
+    end else begin
       next_mfpu_state = NO_REDUCTION;
+    end
   endfunction : next_mfpu_state
+
+  assign mfpu_red_idle_o = mfpu_red_idle_q;
 
   // Deactivate all masked or position disabled elements
   function automatic elen_t processed_red_operand(elen_t mfpu_operand, logic is_masked, strb_t mask, logic [3:0] issue_element_cnt, elen_t ntr_val);
@@ -1286,6 +1306,9 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     narrowing_select_in_d  = narrowing_select_in_q;
     narrowing_select_out_d = narrowing_select_out_q;
 
+    reduction_pending_d    = reduction_pending_q;
+    mfpu_red_idle_d        = mfpu_red_idle_q;
+
     // Inform our status to the lane controller
     mfpu_ready_o      = !vinsn_queue_full;
     mfpu_vinsn_done_o = '0;
@@ -1635,7 +1658,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             first_result_op_valid_d = 1'b1;
 
             // Finished processing the micro-operations of this vector instruction
-            if (to_process_cnt_d == '0) mfpu_state_d = INTER_LANES_REDUCTION_TX;
+            if (to_process_cnt_d == '0) begin 
+              mfpu_state_d = INTER_LANES_REDUCTION_TX;
+              mfpu_red_idle_d = 1'b0;
+            end
           end else
             result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
 
@@ -1893,6 +1919,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
       end
       OSUM_REDUCTION: begin
+        mfpu_red_idle_d = 1'b0;
         // Short Note: Only one lane is allowed to be active (only one lane has all operands valid)
         operand_c = processed_osum_operand(mfpu_operand_i[2], osum_issue_cnt_q, vinsn_issue_q.vtype.vsew, ~vinsn_issue_q.vm, mask_i, ntr_val);
         operand_b = (first_op_q && (lane_id_i == '0)) ?
@@ -2002,6 +2029,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         end
       end
       MFPU_WAIT: begin
+        mfpu_red_idle_d = 1'b1;
+        reduction_pending_d = 1'b0;
         // If lane 0, wait for the grant before starting a new instructions and overwriting the commit counter
         if (lane_id_i == '0) begin
           if (mfpu_result_gnt_i)
@@ -2010,7 +2039,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // Give the done to the main sequencer
           commit_cnt_d = '0;
 
-        if (commit_cnt_d == '0) begin
+        if (commit_cnt_d == '0 && mfpu_red_idle_glb_i) begin
           vinsn_queue_d.processing_cnt -= 1;
           // Bump issue processing pointers
           if (vinsn_queue_q.processing_pnt == VInsnQueueDepth-1) vinsn_queue_d.processing_pnt = '0;
@@ -2093,7 +2122,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     end
 
     // Finished committing the results of a vector instruction
-    if (vinsn_commit_valid && (commit_cnt_d == '0) && !prevent_commit) begin
+    if (vinsn_commit_valid && (commit_cnt_d == '0) && (!is_reduction(vinsn_commit.op) || mfpu_red_idle_glb_i) && !prevent_commit) begin
+    // if (vinsn_commit_valid && (commit_cnt_d == '0) && !prevent_commit) begin
       // Mark the vector instruction as being done
       mfpu_vinsn_done_o[vinsn_commit.id] = 1'b1;
 
@@ -2140,9 +2170,15 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     //  Accept new instruction  //
     //////////////////////////////
 
-    if (!vinsn_queue_full && vfu_operation_valid_i &&
+    // if (!vinsn_queue_full && vfu_operation_valid_i &&
+    //   (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]})) begin
+    if (mfpu_ready_o && vfu_operation_valid_i &&
       (vfu_operation_i.vfu == VFU_MFpu || vfu_operation_i.op inside {[VMFEQ:VMFGE]})) begin
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = vfu_operation_i;
+
+      if (is_reduction(vfu_operation_i.op)) begin
+        reduction_pending_d = 1'b1;
+      end
 
       // Initialize counters
       if (vinsn_queue_d.issue_cnt == '0 && !prevent_commit) begin
@@ -2240,6 +2276,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       osum_issue_cnt_q        <= '0;
       mfpu_vxsat_q            <= '0;
       clkgate_en_q            <= 1'b0;
+      mfpu_red_idle_q         <= 1'b1;
+      reduction_pending_q     <= 1'b0;
     end else begin
       issue_cnt_q             <= issue_cnt_d;
       to_process_cnt_q        <= to_process_cnt_d;
@@ -2264,6 +2302,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       osum_issue_cnt_q        <= osum_issue_cnt_d;
       mfpu_vxsat_q            <= mfpu_vxsat_d;
       clkgate_en_q            <= clkgate_en_d;
+      mfpu_red_idle_q         <= mfpu_red_idle_d;
+      reduction_pending_q     <= reduction_pending_d;
     end
   end
 

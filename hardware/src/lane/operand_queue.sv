@@ -30,6 +30,7 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     input  logic                              rst_ni,
     // Lane ID
     input  logic [idx_width(NrLanes)-1:0]     lane_id_i,
+    input  id_cluster_t                       cluster_id_i,
     // Interface with the Operand Requester
     input  operand_queue_cmd_t                operand_queue_cmd_i,
     input  logic                              operand_queue_cmd_valid_i,
@@ -312,7 +313,8 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
       OpQueueReductionZExt: begin
         if (SupportReduct) begin
-          if (lane_id_i == '0) begin
+          // if (lane_id_i == '0) begin
+          if ((cluster_id_i || lane_id_i) == '0) begin
             unique case (cmd.eew)
               EW8 : conv_operand = (cmd.instr_idle) ? ntr.w8 : {ntr.w8[7:1] , ibuf_operand[7:0]};
               EW16: conv_operand = (cmd.instr_idle) ? ntr.w16 : {ntr.w16[3:1], ibuf_operand[15:0]};

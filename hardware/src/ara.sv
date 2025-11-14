@@ -55,6 +55,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     output vew_e              vew_aw_o,
     // vl upper rounded to multiple of NrLanes and each cluster has the same vl_ldst
     output vlen_t             vl_ldst_o,
+    // Interface with other clusters for reduction operations
+    output logic              mfpu_red_idle_o,
+    input  logic              mfpu_red_idle_glb_i,
 
     // Interface with Ring Interconnect
     output remote_data_t ring_data_o,
@@ -181,6 +184,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .ara_resp_o            (ara_resp                 ),
     .ara_resp_valid_o      (ara_resp_valid           ),
     .ara_idle_o            (ara_idle                 ),
+    // Interface with other clusters for reduction operations
+    .mfpu_red_idle_glb_i   (mfpu_red_idle_glb_i      ),
     // Interface with the PEs
     .pe_req_o              (pe_req                   ),
     .pe_req_valid_o        (pe_req_valid             ),
@@ -251,6 +256,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   strb_t     [NrLanes-1:0]                     masku_result_be;
   logic      [NrLanes-1:0]                     masku_result_gnt;
   logic      [NrLanes-1:0]                     masku_result_final_gnt;
+
+  logic      [NrLanes-1:0]                     mfpu_red_idle;
 
   for (genvar lane = 0; lane < NrLanes; lane++) begin: gen_lanes
     lane #(
@@ -323,9 +330,14 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .masku_result_final_gnt_o        (masku_result_final_gnt[lane]        ),
       .mask_i                          (mask[lane]                          ),
       .mask_valid_i                    (mask_valid[lane] & mask_valid_lane  ),
-      .mask_ready_o                    (lane_mask_ready[lane]               )
+      .mask_ready_o                    (lane_mask_ready[lane]               ),
+      // Interface with other clusters for reduction operations
+      .mfpu_red_idle_o                 (mfpu_red_idle[lane]                 ),
+      .mfpu_red_idle_glb_i             (mfpu_red_idle_glb_i                 )
     );
   end: gen_lanes
+
+  assign mfpu_red_idle_o = &mfpu_red_idle;
 
 
   //////////////////////////////
@@ -432,6 +444,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_mux_sel_o          (sldu_mux_sel                     ),
     .sldu_red_valid_o        (sldu_red_valid                   ),
     .sldu_result_final_gnt_i (sldu_result_final_gnt            ),
+    .mfpu_red_idle_glb_i     (mfpu_red_idle_glb_i              ),
     // Interface with the Mask unit
     .mask_i                  (mask                             ),
     .mask_valid_i            (mask_valid                       ),

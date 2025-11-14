@@ -24,6 +24,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     output ara_resp_t                       ara_resp_o,
     output logic                            ara_resp_valid_o,
     output logic                            ara_idle_o,
+    // Interface with MFPU to know if reduction operations are idle
+    input  logic                            mfpu_red_idle_glb_i,
     // Interface with the processing elements
     output pe_req_t                         pe_req_o,
     output logic                            pe_req_valid_o,
@@ -291,7 +293,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       IDLE: begin
         // Sent a request, but the operand requesters are not ready
         // Do not trap here the instructions that do not need any operands at all
-        if (pe_req_valid_o && !(&operand_requester_ready || (is_load(pe_req_o.op) && pe_req_o.vm))) begin
+        // if (pe_req_valid_o && !(&operand_requester_ready || (is_load(pe_req_o.op) && pe_req_o.vm))) begin
+        if (pe_req_valid_o && (!(&operand_requester_ready || (is_load(pe_req_o.op) && pe_req_o.vm)) || 
+        ((pe_req_o.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]}) && !pe_req_ready_i[NrLanes+OffsetSlide]))) begin
           // Maintain output
           pe_req_d               = pe_req_o;
           pe_req_valid_d         = pe_req_valid_o;
@@ -368,6 +372,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,
               hazard_vs2    : pe_req_d.hazard_vs2,
+              is_final_elem : ara_req_i.is_final_elem,
               default       : '0
             };
 
