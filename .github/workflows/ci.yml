@@ -254,7 +254,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     needs: ["tc-llvm", "tc-gcc", "tc-isa-sim"]
     steps:
     - uses: actions/checkout@v4
@@ -293,7 +293,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     needs: ["tc-verilator", "tc-isa-sim"]
     steps:
     - uses: actions/checkout@v4
@@ -344,7 +344,7 @@ jobs:
       max-parallel: 1
       matrix:
         app:        [hello_world, imatmul, fmatmul, iconv2d, fconv2d, jacobi2d, exp, softmax, dotproduct, fdotproduct, fconv3d, pathfinder, roi_align, lavamd, dwt, dropout, fft, gemv]
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     needs: ["compile-ara", "compile-apps"]
     steps:
     - uses: actions/checkout@v4
@@ -377,7 +377,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     needs: ["compile-ara", "compile-riscv-tests"]
     steps:
     - uses: actions/checkout@v4
@@ -511,7 +511,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     needs: ["compile-ara", "compile-apps"]
     steps:
     - uses: actions/checkout@v4
@@ -569,10 +569,10 @@ jobs:
     - name: Install Python requirements
       run: pip install -r python-requirements.txt
     - uses: actions/checkout@v4
-    - name: Get [f]dotproduct results (2 lanes)
-      uses: actions/download-artifact@v4
-      with:
-        name: dotproducts-2_lanes
+    # - name: Get [f]dotproduct results (2 lanes)
+    #   uses: actions/download-artifact@v4
+    #   with:
+    #     name: dotproducts-2_lanes
     - name: Get [f]dotproduct results (4 lanes)
       uses: actions/download-artifact@v4
       with:
@@ -585,10 +585,10 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: dotproducts-16_lanes
-    - name: Get benchmark results (2 lanes)
-      uses: actions/download-artifact@v4
-      with:
-        name: benchmark-2_lanes
+    # - name: Get benchmark results (2 lanes)
+    #   uses: actions/download-artifact@v4
+    #   with:
+    #     name: benchmark-2_lanes
     - name: Get benchmark results (4 lanes)
       uses: actions/download-artifact@v4
       with:
@@ -603,13 +603,13 @@ jobs:
         name: benchmark-16_lanes
     - name: Untar the [f]dotproduct results
       run: |
-        tar xvf dotproducts-2_lanes.tar
+        # tar xvf dotproducts-2_lanes.tar
         tar xvf dotproducts-4_lanes.tar
         tar xvf dotproducts-8_lanes.tar
         tar xvf dotproducts-16_lanes.tar
     - name: Untar the results
       run: |
-        tar xvf benchmarks-2_lanes.tar
+        # tar xvf benchmarks-2_lanes.tar
         tar xvf benchmarks-4_lanes.tar
         tar xvf benchmarks-8_lanes.tar
         tar xvf benchmarks-16_lanes.tar
@@ -736,7 +736,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     if: always()
     # needs: ["simulate", "riscv-tests-spike", "riscv-tests-simv"]
     needs: ["simulate"]
