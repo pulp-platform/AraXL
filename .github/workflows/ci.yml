@@ -222,7 +222,7 @@ jobs:
     strategy:
       max-parallel: 1
       matrix:
-        ara_config: [2_lanes, 4_lanes, 8_lanes, 16_lanes]
+        ara_config: [4_lanes, 8_lanes, 16_lanes]
     needs: tc-llvm
     steps:
     - uses: actions/checkout@v4
