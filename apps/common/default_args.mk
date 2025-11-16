@@ -5,7 +5,7 @@ def_args_imatmul     ?= "32 32 32"
 def_args_fmatmul     ?= "32 32 32"
 # Matrix size, filter size
 def_args_iconv2d     ?= "32 3"
-def_args_fconv2d     ?= "128 128 3"
+def_args_fconv2d     ?= "112 112 7"
 # def_args_fconv2d     ?= "128 128 7"
 def_args_fconv3d     ?= "112 7"
 # Vector size

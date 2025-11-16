@@ -897,36 +897,32 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           
           scalar_op_lane_d = slidedown_scalar_start_pnt_flat / 8;
           scalar_op_byte_d = slidedown_scalar_start_pnt_flat % 8;
-          scalar_op_valid_d |= ((vinsn_issue_q.op == VSLIDEDOWN) && vinsn_issue_q.use_scalar_op && vinsn_issue_q.is_final_elem && (!slidedown_scalar_start_pnt_nvalid));
+          scalar_op_valid_d |= ((vinsn_issue_q.op == VSLIDEDOWN) && vinsn_issue_q.use_scalar_op && (vinsn_issue_q.is_final_elem || (|is_edge_lane)) && (!slidedown_scalar_start_pnt_nvalid));
 
           // Mask the output enable with the mask vector
           out_en = out_en_flat & ({8*NrLanes{vinsn_issue_q.vm | (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu})}} | mask_q);
 
           // Write in the correct bytes
-          if (init_queue_q) begin
+          if (init_queue_q && (!slidedown_extra_flit)) begin
             // To initialize the queue only once with the local shifted data
             // The ring data is written later on top of the initialized data
             for (int lane = 0; lane < NrLanes; lane++) begin
               for (int b = 0; b < 8; b++) begin
                 if (out_en[lane][b]) begin
                   // If this is the last extra operand flit that is used for highest few elements of SLIDEDOWN, we dont update the wdata
-                  if (!slidedown_extra_flit) begin
-                    result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sld_op_dst[lane][8*b +: 8];
-                  end
-                  // For SLIDEDOWN, if this byte is among the highest few elements that should keep its reference value
-                  // TODO: Current policy is to keep the original data for the upper most elements, 
-                  //       but shall we use the data from the source operand instead?
-                  if ((vinsn_issue_q.op == VSLIDEDOWN) && slidedown_keep_ref_flat[8*lane+b]) begin
-                    result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = '0;
-                  end
+                  result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sld_op_dst[lane][8*b +: 8];
+                  // // For SLIDEDOWN, if this byte is among the highest few elements that should keep its reference value
+                  // // TODO: Current policy is to keep the original data for the upper most elements, 
+                  // //       but shall we use the data from the source operand instead?
+                  // if ((vinsn_issue_q.op == VSLIDEDOWN) && slidedown_keep_ref_flat[8*lane+b]) begin
+                  //   result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sldu_operand_ref[lane][8*b +: 8];
+                  // end
                   result_queue_d[result_queue_write_pnt_q][lane].be[b]           = 1'b1;
                 end else begin
                   // Unchanged policy
                   // If this is the last extra operand flit that is used for highest few elements of SLIDEDOWN, we dont update the wdata
-                  if (!slidedown_extra_flit) begin
-                    result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sldu_operand_ref[lane][8*b +: 8];
-                  end
-                  result_queue_d[result_queue_write_pnt_q][lane].be[b]             = (vinsn_issue_q.op == VSLIDEUP) ? 1'b1 : 1'b0;
+                  result_queue_d[result_queue_write_pnt_q][lane].wdata[8*b +: 8] = sldu_operand_ref[lane][8*b +: 8];
+                  result_queue_d[result_queue_write_pnt_q][lane].be[b]           = 1'b1;
                 end
               end
             end
@@ -1093,19 +1089,34 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             // Update result queue pointers, the the ring has another point, so we dont have collision between inter-lane
             // and inter-cluster (ring) sliding
             if (!slidedown_extra_flit) begin
-              result_queue_write_pnt_d = result_queue_write_pnt_q+1;
+              result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
               if (result_queue_write_pnt_q == ResultQueueDepth-1)
                 result_queue_write_pnt_d = '0;
               // Indicate a pending result which is waiting for ring to modify
               data_pending_ring_d += 1;
+              // Increment VRF address
+              vrf_pnt_d = vrf_pnt_q + 1;
             end
             // Initialize the queue for the next word
             init_queue_d = 1'b1;
-            // Increment VRF address
-            vrf_pnt_d = vrf_pnt_q + 1;
+            // // Increment VRF address
+            // vrf_pnt_d = vrf_pnt_q + 1;
             // For the last issue only lesser packets need to be send
             n_ring_out_d = n_ring_out_init_d;
             src_lane_d = '0;
+
+            // For the next incoming packet reset ring to send to lane 0 dst first
+            // reset the counter for number of ring packets
+            
+            // Left-rotate the logarithmic counter. Hacky way to write it, but it's to
+            // deal with the 2-lanes design without complaints from Verilator...
+            // wide signal to please the tool
+            red_stride_cnt_d_wide = {red_stride_cnt_q, red_stride_cnt_q[idx_width(NrLanes)-1]};
+            red_stride_cnt_d      = red_stride_cnt_d_wide[idx_width(NrLanes)-1:0];
+
+            // Reset the pointer
+            out_pnt_d = vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} ? {'0, red_stride_cnt_d, 3'b0} : '0;
+
             // Reset the input data mux
             np2_loop_mux_sel_d = NP2_EXT_SEL;
 
@@ -1273,6 +1284,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       // There is something waiting to be written
       if (!result_queue_empty) begin
         if (!vinsn_commit.is_stride_np2) begin// if (state_q != SLIDE_NP2_SETUP)
+          // initialize result queue
+          result_queue_d[result_queue_read_pnt_q] = '0;
           // Increment the read pointer
           if (result_queue_read_pnt_q == ResultQueueDepth-1) begin
             result_queue_read_pnt_d = 0;
@@ -1349,7 +1362,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     if ((((is_edge_cluster && vinsn_ring.op==VSLIDEDOWN && (vinsn_ring.stride == 0) && |ring_data_prev_valid_q) || scalar_op_valid_q) && (ring_cnt_q <= 8*NrLanes))) begin
       use_fifo_inp = 1'b0;
     end
-    
+
     if ((ring_cnt_d > 0) &&
       (((vinsn_queue_d.issue_pnt != vinsn_queue_d.ring_pnt) || ((issue_cnt_d <= ring_cnt_d) && (vinsn_queue_d.issue_pnt == vinsn_queue_d.ring_pnt))) || 
       is_ring_reduction)) begin
@@ -1461,8 +1474,25 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                   endcase
                   n_ring_in_d = n_ring_in_q - 1;
                   slide_data_valid = (n_ring_in_q == 1) ? 1'b1 : 1'b0;
-                  // For non-edge lanes in slide1down, we dont have the step to assign the scalar op, so we can directly reduce ring count here
+                  // For non-edge lanes in slide1down, so we can directly reduce ring count here
                   if (vinsn_ring.op==VSLIDEDOWN && (vinsn_ring.use_scalar_op) && (ring_cnt_q == 16*NrLanes)) begin
+                    if (scalar_op_valid_q) begin
+                      scalar_op_valid_d = 1'b0;
+                      unique case (vinsn_ring.vtype.vsew)
+                      EW8: begin
+                        result_queue_d[result_queue_write_pnt_q2][scalar_op_lane_q].wdata[8*scalar_op_byte_q +: 8] = vinsn_ring.scalar_op[7:0];
+                      end
+                      EW16: begin
+                        result_queue_d[result_queue_write_pnt_q2][scalar_op_lane_q].wdata[8*scalar_op_byte_q +: 16] = vinsn_ring.scalar_op[15:0];
+                      end
+                      EW32: begin
+                        result_queue_d[result_queue_write_pnt_q2][scalar_op_lane_q].wdata[8*scalar_op_byte_q +: 32] = vinsn_ring.scalar_op[31:0];
+                      end
+                      EW64: begin
+                        result_queue_d[result_queue_write_pnt_q2][scalar_op_lane_q].wdata = vinsn_ring.scalar_op[63:0];
+                      end
+                    endcase
+                    end
                     ring_cnt_d = ring_cnt_q - 8*NrLanes;
                   end
                 end
@@ -1501,7 +1531,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           n_ring_in_d = n_ring_in_q - 1;
           update_oup_op_pnt = (n_ring_in_q == 1) ? 1'b1 : 1'b0;
       end else begin
-          // For the last data for slide1down use the scalar op
           // if (cluster_id_i == max_cluster_id && vinsn_ring.op==VSLIDEDOWN && (ring_cnt_q <= 8*NrLanes) && |ring_data_prev_valid_q && issue_cnt_q==0) begin
           if (cluster_id_i == max_cluster_id && vinsn_ring.op==VSLIDEDOWN && (vinsn_ring.stride == 0) && (ring_cnt_q <= 8*NrLanes) && |ring_data_prev_valid_q && issue_cnt_q==0) begin
             automatic elen_t ring_data_prev = ring_data_prev_q[edge_lane_id];
@@ -1520,30 +1549,30 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       end
     end
 
-    // Sldu can start writing next data packet
-    if (update_oup_op_pnt) begin
-      out_pnt_d   = NrLanes * 8;
-    end
-    // Filled up a word to the VRF or finished the instruction
-    // We need to make sure that:
-    // 1. All data sent to other clusters are received (implied by "in_pnt_d == NrLanes * 8")
-    // 2. The cluster has received all data from other clusters (implied by "out_pnt_d == NrLanes * 8")
-    if (out_pnt_d == NrLanes * 8) begin
-      // For the next incoming packet reset ring to send to lane 0 dst first
-      // reset the counter for number of ring packets
+    // // Sldu can start writing next data packet
+    // if (update_oup_op_pnt) begin
+    //   out_pnt_d   = NrLanes * 8;
+    // end
+    // // Filled up a word to the VRF or finished the instruction
+    // // We need to make sure that:
+    // // 1. All data sent to other clusters are received (implied by "in_pnt_d == NrLanes * 8")
+    // // 2. The cluster has received all data from other clusters (implied by "out_pnt_d == NrLanes * 8")
+    // if (out_pnt_d == NrLanes * 8) begin
+    //   // For the next incoming packet reset ring to send to lane 0 dst first
+    //   // reset the counter for number of ring packets
       
-      // Left-rotate the logarithmic counter. Hacky way to write it, but it's to
-      // deal with the 2-lanes design without complaints from Verilator...
-      // wide signal to please the tool
-      red_stride_cnt_d_wide = {red_stride_cnt_q, red_stride_cnt_q[idx_width(NrLanes)-1]};
-      red_stride_cnt_d      = red_stride_cnt_d_wide[idx_width(NrLanes)-1:0];
+    //   // Left-rotate the logarithmic counter. Hacky way to write it, but it's to
+    //   // deal with the 2-lanes design without complaints from Verilator...
+    //   // wide signal to please the tool
+    //   red_stride_cnt_d_wide = {red_stride_cnt_q, red_stride_cnt_q[idx_width(NrLanes)-1]};
+    //   red_stride_cnt_d      = red_stride_cnt_d_wide[idx_width(NrLanes)-1:0];
 
-      // Reset the pointer
-      out_pnt_d = vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} ? {'0, red_stride_cnt_d, 3'b0} : '0;
+    //   // Reset the pointer
+    //   out_pnt_d = vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} ? {'0, red_stride_cnt_d, 3'b0} : '0;
 
-      // if (state_q == SLIDE_NP2_COMMIT) 
-      //   state_d = SLIDE_NP2_WAIT;
-    end
+    //   // if (state_q == SLIDE_NP2_COMMIT) 
+    //   //   state_d = SLIDE_NP2_WAIT;
+    // end
 
     // // Consume extra ring element;
     // if ((result_queue_cnt_d || issue_cnt_d==0) && (ring_cnt_d == 0) && fifo_ring_valid_inp && use_fifo_inp) begin
