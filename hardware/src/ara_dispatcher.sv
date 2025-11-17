@@ -3195,64 +3195,64 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       if (ara_req_valid_d && (ara_req_d.op inside {VFREC7, VFRSQRT7}) && (FPExtSupport == FPExtSupportDisable))
         illegal_insn = 1'b1;
 
-      // Check if we need to reshuffle our vector registers involved in the operation
-      // This operation is costly when occurs, so avoid it if possible
-      if (ara_req_valid_d && !acc_resp_o.error) begin
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+      // // Check if we need to reshuffle our vector registers involved in the operation
+      // // This operation is costly when occurs, so avoid it if possible
+      // if (ara_req_valid_d && !acc_resp_o.error) begin
+      //   automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
-        // Is the instruction an in-lane one and could it be subject to reshuffling?
-        in_lane_op = ara_req_d.op inside {[VADD:VMERGE]} || ara_req_d.op inside {[VREDSUM:VMSBC]} ||
-                     ara_req_d.op inside {[VMANDNOT:VMXNOR]} || ara_req_d.op inside {VSLIDEUP, VSLIDEDOWN};
-        // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
-        // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
-        // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
-        reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op,
-                           ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op,
-                           ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew)};
+      //   // Is the instruction an in-lane one and could it be subject to reshuffling?
+      //   in_lane_op = ara_req_d.op inside {[VADD:VMERGE]} || ara_req_d.op inside {[VREDSUM:VMSBC]} ||
+      //                ara_req_d.op inside {[VMANDNOT:VMXNOR]} || ara_req_d.op inside {VSLIDEUP, VSLIDEDOWN};
+      //   // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
+      //   // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
+      //   // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
+      //   reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op,
+      //                      ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op,
+      //                      ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew)};
 
-        // Prepare the information to reshuffle the vector registers during the next cycles
-        // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
-        unique casez (reshuffle_req_d)
-          3'b??1: begin
-            eew_old_buffer_d = eew_q[insn.vmem_type.rd];
-            eew_new_buffer_d = ara_req_d.vtype.vsew;
-            vs_buffer_d      = insn.varith_type.rd;
-          end
-          3'b?10: begin
-            eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
-            eew_new_buffer_d = ara_req_d.eew_vs2;
-            vs_buffer_d      = insn.varith_type.rs2;
-          end
-          3'b100: begin
-            eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
-            eew_new_buffer_d = ara_req_d.eew_vs1;
-            vs_buffer_d      = insn.varith_type.rs1;
-          end
-          default:;
-        endcase
-      end
+      //   // Prepare the information to reshuffle the vector registers during the next cycles
+      //   // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
+      //   unique casez (reshuffle_req_d)
+      //     3'b??1: begin
+      //       eew_old_buffer_d = eew_q[insn.vmem_type.rd];
+      //       eew_new_buffer_d = ara_req_d.vtype.vsew;
+      //       vs_buffer_d      = insn.varith_type.rd;
+      //     end
+      //     3'b?10: begin
+      //       eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
+      //       eew_new_buffer_d = ara_req_d.eew_vs2;
+      //       vs_buffer_d      = insn.varith_type.rs2;
+      //     end
+      //     3'b100: begin
+      //       eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
+      //       eew_new_buffer_d = ara_req_d.eew_vs1;
+      //       vs_buffer_d      = insn.varith_type.rs1;
+      //     end
+      //     default:;
+      //   endcase
+      // end
 
-      // Reshuffle if at least one of the three registers needs a reshuffle
-      if (|reshuffle_req_d) begin
-        // Instruction is of one of the RVV types
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+      // // Reshuffle if at least one of the three registers needs a reshuffle
+      // if (|reshuffle_req_d) begin
+      //   // Instruction is of one of the RVV types
+      //   automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
-        // Stall the interface, and inject a reshuffling instruction
-        acc_resp_o.req_ready  = 1'b0;
-        acc_resp_o.resp_valid = 1'b0;
-        ara_req_valid_d  = 1'b0;
+      //   // Stall the interface, and inject a reshuffling instruction
+      //   acc_resp_o.req_ready  = 1'b0;
+      //   acc_resp_o.resp_valid = 1'b0;
+      //   ara_req_valid_d  = 1'b0;
 
-        // Initialize the reshuffle counter limit to handle LMUL > 1
-        unique case (ara_req_d.emul)
-          LMUL_2:  rs_lmul_cnt_limit_d = 1;
-          LMUL_4:  rs_lmul_cnt_limit_d = 3;
-          LMUL_8:  rs_lmul_cnt_limit_d = 7;
-          default: rs_lmul_cnt_limit_d = 0;
-        endcase
+      //   // Initialize the reshuffle counter limit to handle LMUL > 1
+      //   unique case (ara_req_d.emul)
+      //     LMUL_2:  rs_lmul_cnt_limit_d = 1;
+      //     LMUL_4:  rs_lmul_cnt_limit_d = 3;
+      //     LMUL_8:  rs_lmul_cnt_limit_d = 7;
+      //     default: rs_lmul_cnt_limit_d = 0;
+      //   endcase
 
-        // Reshuffle
-        state_d = RESHUFFLE;
-      end
+      //   // Reshuffle
+      //   state_d = RESHUFFLE;
+      // end
     end
 
     // Raise an illegal instruction exception
