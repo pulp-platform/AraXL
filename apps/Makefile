@@ -19,7 +19,7 @@ SHELL = /usr/bin/env bash
 ROOT_DIR := $(patsubst %/,%, $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 APPS_DIR := $(ROOT_DIR)
 COMMON_DIR := $(ROOT_DIR)/common
-TESTS_DIR := $(ROOT_DIR)/riscv-tests/isa
+TESTS_DIR := $(ROOT_DIR)
 
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(COMMON_DIR)/runtime.mk
@@ -36,8 +36,10 @@ CVA6_EXTENSIONS := rv64ui rv64uc rv64um rv64uf rv64ud rv64si
 # Atomics are messy, since there is currently no memory region capable of handling them
 # CVA6_EXTENSIONS := rv64ua
 CVA6_BINARIES := $(addprefix bin/, $(cva6_tests))
-ARA_EXTENSIONS := rv64uv
-ARA_BINARIES := $(addprefix bin/, $(ara_tests))
+
+ARA_EXTENSIONS := rvv-tests
+include rvv-tests/Makefrag
+ARA_BINARIES := $(addprefix bin/rvv-tests-ara-, $(ara_tests))
 
 # FFT requires special treatment because of its header files
 ifeq ($(ENV_DEFINES),)
@@ -116,7 +118,7 @@ TESTS_$(1) := $(addprefix bin/, $($(addsuffix _ara_tests, $1)))
 
 bin/$(1)-ara-%: $(TESTS_DIR)/$(1)/%.$(2) $(RUNTIME_GCC) linker_script
 	mkdir -p bin/
-	$$(RISCV_CC_GCC) -Iinclude -I$$(TESTS_DIR)/macros/scalar -I$$(TESTS_DIR)/macros/vector $$(RISCV_CCFLAGS_GCC) $$(RISCV_LDFLAGS_GCC) -o $$@ $$< $(RUNTIME_GCC) -T$$(CURDIR)/common/link.ld
+	$$(RISCV_CC_GCC) -Iinclude -I$$(TESTS_DIR)/common/macros/scalar -I$$(TESTS_DIR)/common/macros/vector $$(RISCV_CCFLAGS_GCC) $$(RISCV_LDFLAGS_GCC) -o $$@ $$< $(RUNTIME_GCC) -T$$(CURDIR)/common/link.ld
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 endef
@@ -126,7 +128,7 @@ TESTS_$(1) := $(addprefix bin/, $($(addsuffix _ara_tests, $1)))
 
 bin/$(1)-ara-%: $(TESTS_DIR)/$(1)/%.$(2) $(RUNTIME_LLVM) linker_script
 	mkdir -p bin/
-	$$(RISCV_CC) -Iinclude -I$$(TESTS_DIR)/macros/scalar -I$$(TESTS_DIR)/macros/vector $$(RISCV_CCFLAGS) $$(RISCV_LDFLAGS) -o $$@ $$< $(RUNTIME_LLVM) -T$$(CURDIR)/common/link.ld
+	$$(RISCV_CC) -Iinclude -I$$(TESTS_DIR)/common/macros/scalar -I$$(TESTS_DIR)/common/macros/vector $$(RISCV_CCFLAGS) $$(RISCV_LDFLAGS) -o $$@ $$< $(RUNTIME_LLVM) -T$$(CURDIR)/common/link.ld
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 endef
@@ -165,7 +167,7 @@ $(foreach app,$(APPS),$(eval $(call run_benchmark_spike,$(app))))
 riscv_tests_spike_clean:
 	make -C riscv-tests/isa clean
 
-# Compile standardized riscv tests
+# Compile Standardized RISC-V tests
 .PHONY: riscv_tests_compile
 riscv_tests_compile:
 	cd riscv-tests && \

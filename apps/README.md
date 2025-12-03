@@ -34,8 +34,15 @@ make bin/fconv2d OUT_MTX_SIZE=112 F_SIZE=7
 
 ### Standard RISC-V tests
 
-To compile the standardized riscv tests
+To compile the standardized riscv tests from https://github.com/riscv/riscv-tests
 ```bash
 cd apps
 make riscv_tests_compile
+```
+
+### RISC-V vector tests
+To compile and run handwritten test cases for RISC-V vector ISA
+```bash
+cd apps
+make riscv_tests
 ```
