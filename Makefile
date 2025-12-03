@@ -180,16 +180,16 @@ ${VERIL_INSTALL_DIR}: Makefile
 		./configure --prefix=$(VERIL_INSTALL_DIR) && make -j8 && make install
 
 # RISC-V Tests
-.PHONY: riscv_tests
-riscv_tests:
+.PHONY: riscv_unit_tests
+riscv_unit_tests:
 	cd apps && \
-	git clone https://github.com/riscv/riscv-tests && \
+	([ -d riscv-tests ] || (git clone https://github.com/riscv/riscv-tests && \
 	cd riscv-tests && \
 	git submodule update --init --recursive && \
 	autoconf && \
 	./configure target_alias=${GCC_INSTALL_DIR}/bin/riscv64-unknown-elf --prefix=${RISCV_TESTS_INSTALL_DIR}/target && \
-	cd env/p && git apply ../../../patches/eoc.patch
-	cd apps && make riscv_tests_compile
+	cd env/p && git apply ../../../patches/eoc.patch &&\
+	cd ../../../ && make riscv_tests_compile))
 
 # Helper targets
 .PHONY: clean

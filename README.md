@@ -109,7 +109,7 @@ make spike-run-hello_world
 ### RISC-V Tests
 To run the standardized [https://github.com/riscv-software-src/riscv-tests](https://github.com/riscv-software-src/riscv-tests) for AraXL, run
 ```bash
-make riscv_tests
+make riscv_unit_tests
 ```
 This downloads the latest repository containing standardized riscv tests and build all the unit tests and the benchmarks.
 
