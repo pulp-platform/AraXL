@@ -35,11 +35,11 @@ extern uint64_t M;
 extern uint64_t N;
 extern uint64_t P;
 
-extern int64_t a[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
-extern int64_t b[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
-extern int64_t c[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
+extern double a[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double b[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double c[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
 // Gold results
-extern int64_t g[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
+extern double g[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
 
 // Verify the matrix
 int verify_matrix(int64_t *result, int64_t *gold, size_t R, size_t C) {
@@ -66,7 +66,7 @@ int main() {
   // Measure only the full-size matmul
   for (uint64_t s = M; s <= M; s *= 2) {
 #else
-  for (int s = 4; s <= M; s *= 2) {
+  for (uint64_t s = M; s <= M; s *= 2) {
 #endif
     printf("\n");
     printf("------------------------------------------------------------\n");

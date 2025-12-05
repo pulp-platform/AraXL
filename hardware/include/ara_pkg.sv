@@ -32,6 +32,7 @@ package ara_pkg;
   
   // Maximum number of clusters that Ara can support.
   localparam int unsigned MaxNrClusters = 32;
+  // localparam int unsigned NrClusters    = 4;
   typedef logic [$clog2(MaxNrClusters)-1:0] id_cluster_t;
   typedef logic [$clog2(MaxNrLanes)-1:0] id_lane_t;
   typedef logic [cf_math_pkg::idx_width($clog2(MaxNrClusters))-1:0] num_cluster_t;
@@ -317,6 +318,8 @@ package ara_pkg;
 
     // Vector machine metadata
     vlen_t vl;
+    // Real vector length number assigned for vle and vse
+    vlen_t vl_ldst;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
@@ -415,6 +418,8 @@ package ara_pkg;
 
     // Vector machine metadata
     vlen_t vl;
+    // Actual vector length assigned for vle and vse
+    vlen_t vl_ldst;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
@@ -1060,6 +1065,9 @@ package ara_pkg;
 
     // Hazards
     logic [NrVInsn-1:0] hazard;
+
+    // Reduction idle case
+    logic instr_idle;
   } operand_request_cmd_t;
 
   typedef struct packed {
@@ -1069,6 +1077,8 @@ package ara_pkg;
     logic [1:0] ntr_red;       // Neutral type for reductions
     logic is_reduct;           // Is this a reduction?
     target_fu_e target_fu;     // Target FU of the opqueue (if it is not clear)
+    // Reduction idle case
+    logic instr_idle;
   } operand_queue_cmd_t;
 
   // This is the interface between the lane's sequencer and the lane's VFUs.
@@ -1100,6 +1110,7 @@ package ara_pkg;
     vlen_t vl;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+    logic instr_idle;
   } vfu_operation_t;
 
   // Due to the shuffled nature of the vector elements inside one lane, the byte enable
@@ -1151,6 +1162,7 @@ package ara_pkg;
     axi_pkg::size_t size;
     axi_pkg::len_t len;
     logic is_load;
+    vlen_t vl_ldst; // Meaning that vstu should write enable to zero when executing vse (vl-vl_ldst)
   } addrgen_axi_req_t;
 
 

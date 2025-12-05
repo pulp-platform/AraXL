@@ -62,7 +62,9 @@ int main() {
 
   int64_t runtime_s, runtime_v;
 
-  for (uint64_t avl = 8; avl <= (vsize >> 3); avl *= 8) {
+  for (uint64_t avl = 8; avl <= (vsize); avl *= 2) {
+  // for (uint64_t avl = (vsize >> 3); avl >=8; avl /= 2) {
+  // uint64_t avl = 4;
     // Dotp
     printf("Calulating 64b dotp with vectors with length = %lu\n", avl);
     start_timer();
@@ -87,8 +89,9 @@ int main() {
     }
   }
 
-  for (uint64_t avl = 8; avl <= (vsize >> 2); avl *= 8) {
+  for (uint64_t avl = 8; avl <= (vsize); avl *= 2) {
     // Dotp
+    // uint64_t avl = 4;
     printf("Calulating 32b dotp with vectors with length = %lu\n", avl);
     start_timer();
     res32_v = dotp_v32b(v32a, v32b, avl);
@@ -112,7 +115,7 @@ int main() {
     }
   }
 
-  for (uint64_t avl = 8; avl <= (vsize >> 1); avl *= 8) {
+  for (uint64_t avl = 8; avl <= (vsize); avl *= 2) {
     // Dotp
     printf("Calulating 16b dotp with vectors with length = %lu\n", avl);
     start_timer();
@@ -137,7 +140,7 @@ int main() {
     }
   }
 
-  for (uint64_t avl = 8; avl <= (vsize >> 0); avl *= 8) {
+  for (uint64_t avl = 8; avl <= (vsize); avl *= 2) {
     // Dotp
     printf("Calulating 8b dotp with vectors with length = %lu\n", avl);
     start_timer();

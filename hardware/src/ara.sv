@@ -9,6 +9,7 @@
 module ara import ara_pkg::*; import rvv_pkg::*; #(
     // RVV Parameters
     parameter  int           unsigned NrLanes      = 0,  // Number of parallel vector lanes.
+    parameter  int           unsigned NrClusters   = 0,   // Number of Ara instances
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -52,6 +53,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     input  axi_resp_t         axi_resp_i,
     output vew_e              vew_ar_o,
     output vew_e              vew_aw_o,
+    // vl upper rounded to multiple of NrLanes and each cluster has the same vl_ldst
+    output vlen_t             vl_ldst_o,
 
     // Interface with Ring Interconnect
     output remote_data_t ring_data_o,
@@ -104,12 +107,14 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   vxrm_t     [NrLanes-1:0]      alu_vxrm;
 
   ara_dispatcher #(
-    .NrLanes     (NrLanes    )
+    .NrLanes     (NrLanes    ),
+    .NrClusters  (NrClusters )
   ) i_dispatcher (
     .clk_i             (clk_i           ),
     .rst_ni            (rst_ni          ),
     // Id
     .num_clusters_i    (num_clusters_i  ),
+    .cluster_id_i      (cluster_id_i    ),
     // Interface with Ariane
     .acc_req_i         (acc_req_i       ),
     .acc_resp_o        (acc_resp_o      ),
@@ -351,6 +356,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .axi_resp_i                 (axi_resp_i                                            ),
     .vew_ar_o                   (vew_ar_o                                              ),
     .vew_aw_o                   (vew_aw_o                                              ),
+    .vl_ldst_o                  (vl_ldst_o                                             ),
     // Interface with the dispatcher
     .core_st_pending_i          (core_st_pending                                       ),
     .load_complete_o            (load_complete                                         ),

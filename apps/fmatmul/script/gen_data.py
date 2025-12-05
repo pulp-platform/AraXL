@@ -54,6 +54,7 @@ dtype = np.float64
 # Matrices and results
 A = np.random.rand(M, N).astype(dtype)
 B = np.random.rand(N, P).astype(dtype)
+# C = np.zeros([M+1, P+1], dtype=dtype)
 C = np.zeros([M, P], dtype=dtype)
 # Golden result matrix
 G = np.matmul(A, B).astype(dtype)

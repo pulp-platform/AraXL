@@ -594,7 +594,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   logic prevent_commit;
 
   // Count how many transactions we must do in total to complete the reduction operation
-  logic [idx_width($clog2(NrLanes)+1):0] sldu_transactions_cnt_d, sldu_transactions_cnt_q;
+  // logic [idx_width($clog2(NrLanes)+1):0] sldu_transactions_cnt_d, sldu_transactions_cnt_q;
+  logic [idx_width(NrLanes*MaxNrClusters/2):0] sldu_transactions_cnt_d, sldu_transactions_cnt_q;
 
   // Handshake synchronizer
   // Since the SLDU must receive a valid signals also from lanes that should not send anything,

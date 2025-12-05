@@ -52,6 +52,7 @@ int verify_matrix(double *result, double *gold, size_t R, size_t C,
     for (uint64_t j = 0; j < C; ++j) {
       uint64_t idx = i * C + j;
       if (!similarity_check(result[idx], gold[idx], threshold)) {
+      // if (!similarity_check(result[idx+1], gold[idx], threshold)) {
         return (i + j) == 0 ? -1 : idx;
       }
     }
@@ -119,6 +120,7 @@ int main() {
     printf("Calculating fmatmul 64-bit...\n");
     start_timer();
     fmatmul(c, a, b, s, N, P);
+    // fmatmul(c+1, a, b, s, N, P);
     stop_timer();
 #endif
 

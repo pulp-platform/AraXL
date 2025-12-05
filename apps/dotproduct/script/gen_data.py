@@ -48,6 +48,8 @@ avl8  = int(vsize)
 # Create the vectors
 v64a = np.random.randint(-2**(50), high=2**(50)-1, size=avl64, dtype=np.int64)
 v64b = np.random.randint(-2**(50), high=2**(50)-1, size=avl64, dtype=np.int64)
+# v64a = np.random.randint(1, 2, size=avl64, dtype=np.int64)
+# v64b = np.random.randint(1, 2, size=avl64, dtype=np.int64)
 v32a = np.random.randint(-2**(20), high=2**(20)-1, size=avl32, dtype=np.int32)
 v32b = np.random.randint(-2**(20), high=2**(20)-1, size=avl32, dtype=np.int32)
 v16a = np.random.randint(-2**(10), high=2**(10)-1, size=avl16, dtype=np.int16)
