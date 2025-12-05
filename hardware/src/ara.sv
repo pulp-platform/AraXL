@@ -110,6 +110,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .rst_ni            (rst_ni          ),
     // Id
     .num_clusters_i    (num_clusters_i  ),
+    .cluster_id_i      (cluster_id_i    ),
     // Interface with Ariane
     .acc_req_i         (acc_req_i       ),
     .acc_resp_o        (acc_resp_o      ),

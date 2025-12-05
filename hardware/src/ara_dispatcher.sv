@@ -22,6 +22,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                                 rst_ni,
     // Id
     input num_cluster_t                          num_clusters_i,
+    input  id_cluster_t                          cluster_id_i,
     // Interfaces with Ariane
     input  accelerator_req_t                     acc_req_i,
     output accelerator_resp_t                    acc_resp_o,
@@ -57,12 +58,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
   vlen_t  vstart_d, vstart_q;
   vlen_t  vl_d, vl_q;
+  vlen_cluster_t vl_cluster_d, vl_cluster_q;
   vtype_t vtype_d, vtype_q;
   vxsat_e vxsat_d, vxsat_q;
   vxrm_t  vxrm_d, vxrm_q;
 
   `FF(vstart_q, vstart_d, '0)
   `FF(vl_q, vl_d, '0)
+  `FF(vl_cluster_q, vl_cluster_d, '0)
   `FF(vtype_q, vtype_d, '{vill: 1'b1, default: '0})
   `FF(vxsat_q, vxsat_d, '0)
   `FF(vxrm_q, vxrm_d, '0)
@@ -244,6 +247,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     // Default values
     vstart_d     = vstart_q;
     vl_d         = vl_q;
+    vl_cluster_d = vl_cluster_q;
     vtype_d      = vtype_q;
     state_d      = state_q;
     eew_d        = eew_q;
@@ -473,43 +477,79 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     (signed'($clog2(ELENB)) + signed'(vtype_d.vlmul) < signed'(vtype_d.vsew))) begin
                   vtype_d = '{vill: 1'b1, default: '0};
                   vl_d    = '0;
+                  vl_cluster_d = '0;
                 end
 
                 // Update the vector length
                 else begin
                   // Maximum vector length. VLMAX = LMUL * VLEN / SEW.
                   automatic int unsigned vlmax = VLENB >> vtype_d.vsew;
+                  automatic int unsigned vlmax_cluster = vlmax << num_clusters_i;
                   unique case (vtype_d.vlmul)
-                    LMUL_1  : vlmax <<= 0;
-                    LMUL_2  : vlmax <<= 1;
-                    LMUL_4  : vlmax <<= 2;
-                    LMUL_8  : vlmax <<= 3;
+                    LMUL_1  : begin 
+                              vlmax <<= 0; 
+                              vlmax_cluster <<= 0;
+                              end
+                    LMUL_2  : begin 
+                              vlmax <<= 1;  
+                              vlmax_cluster <<= 1;
+                              end
+                    LMUL_4  : begin 
+                              vlmax <<= 2;
+                              vlmax_cluster <<= 2;
+                              end
+                    LMUL_8  : begin 
+                              vlmax <<= 3;
+                              vlmax_cluster <<= 3;
+                              end
                     // Fractional LMUL
-                    LMUL_1_2: vlmax >>= 1;
-                    LMUL_1_4: vlmax >>= 2;
-                    LMUL_1_8: vlmax >>= 3;
+                    LMUL_1_2: begin 
+                              vlmax >>= 1;
+                              vlmax_cluster >>= 1;
+                              end
+                    LMUL_1_4: begin 
+                              vlmax >>= 2;
+                              vlmax_cluster >>= 2;
+                              end
+                    LMUL_1_8: begin 
+                              vlmax >>= 3;
+                              vlmax_cluster >>= 3;
+                              end
                     default:;
                   endcase
 
                   if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
-                    vl_d = vlen_t'(insn.vsetivli_type.uimm5) >> num_clusters_i;
+                    automatic int unsigned vl_tot = vlen_cluster_t'(insn.vsetivli_type.uimm5);
+                    automatic int unsigned vl_rem = vl_tot & ((1 << num_clusters_i << $clog2(NrLanes)) - 1);
+                    automatic int unsigned vl_base = (vl_tot & ('1 << (num_clusters_i + $clog2(NrLanes)))) >> num_clusters_i;
+                    automatic int unsigned vl_rem_diff = vl_rem - (cluster_id_i * NrLanes);
+                    vl_d = ((vl_tot >> num_clusters_i) >= vlmax) ? vlmax : vl_base;
+                    vl_d += (vl_rem >= (cluster_id_i+1) * NrLanes) ? NrLanes : (vl_rem >= (cluster_id_i * NrLanes)) ? vl_rem_diff : '0;
+                    vl_cluster_d = (vl_tot >= vlmax_cluster) ? vlmax_cluster : vl_tot;
                   end else begin // vsetvl || vsetvli
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
                       // Do not update the vector length
                       vl_d = vl_q;
+                      vl_cluster_d = vl_cluster_q;
                     end else if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd != '0) begin
                       // Set the vector length to vlmax
                       vl_d = vlmax;
+                      vl_cluster_d = vlmax_cluster;
                     end else begin
                       // Normal stripmining
-                      vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_d)]) ||
-                        ((vlen_t'(acc_req_i.rs1) >> num_clusters_i) > vlmax)) ? vlmax : (vlen_t'(acc_req_i.rs1) >> num_clusters_i);
+                      automatic int unsigned vl_tot = vlen_cluster_t'(acc_req_i.rs1);
+                      automatic int unsigned vl_rem = vl_tot & ((1 << num_clusters_i << $clog2(NrLanes)) - 1);
+                      automatic int unsigned vl_base = (vl_tot & ('1 << (num_clusters_i + $clog2(NrLanes)))) >> num_clusters_i;
+                      automatic int unsigned vl_rem_diff = vl_rem - (cluster_id_i * NrLanes);
+                      vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_cluster_d)]) || (vl_tot >= vlmax_cluster)) ? vlmax : vl_base;
+                      vl_d += (vl_rem >= (cluster_id_i+1) * NrLanes) ? NrLanes : (vl_rem >= (cluster_id_i * NrLanes)) ? vl_rem_diff : '0;
+                      vl_cluster_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_cluster_d)]) || (vl_tot >= vlmax_cluster)) ? vlmax_cluster : vlen_cluster_t'(acc_req_i.rs1);
                     end
                   end
                 end
 
                 // Return the new vl
-                acc_resp_o.result = vl_d << num_clusters_i;
+                acc_resp_o.result = vl_cluster_d;
 
                 // If the vtype has changed, wait for the backend before issuing any new instructions.
                 // This is to avoid hazards on implicit register labels when LMUL_old > LMUL_new
@@ -2953,7 +2993,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_q;
+                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
                     else acc_resp_o.error                                 = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
@@ -2986,7 +3026,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_q;
+                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
                     else acc_resp_o.error                                 = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
@@ -3035,7 +3075,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_q;
+                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
                     else acc_resp_o.error                                 = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
@@ -3065,7 +3105,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_q;
+                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
                     else acc_resp_o.error                                 = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
