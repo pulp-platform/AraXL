@@ -110,6 +110,7 @@ package ara_pkg;
   ///////////////////
 
   typedef logic [$clog2(MAXVL+1)-1:0] vlen_t;
+  typedef logic [$clog2(MAXVL*MaxNrClusters+1)-1:0] vlen_cluster_t;
   typedef logic [$clog2(NrVInsn)-1:0] vid_t;
   typedef logic [ELEN-1:0] elen_t;
 
