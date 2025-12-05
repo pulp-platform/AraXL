@@ -1,0 +1,203 @@
+# Copyright 2025 ETH Zurich and University of Bologna.
+# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+# SPDX-License-Identifier: SHL-0.51
+#
+# Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
+
+# Run functional regression checks
+name: ci
+on: [push, pull_request]
+
+# Only allow one workflow per PR/Branch (the last one)
+# https://docs.github.com/en/actions/learn-github-actions/expressions
+# https://docs.github.com/en/actions/learn-github-actions/contexts#github-context
+# https://docs.github.com/en/actions/using-jobs/using-concurrency
+concurrency:
+  # github.workflow: name of the workflow
+  # github.event.pull_request.number || github.ref: pull request number or branch name if not a pull request
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Cancel in-progress runs when a new workflow with the same group name is triggered
+  cancel-in-progress: true
+
+jobs:
+
+#####################
+#  Toolchain stage  #
+#####################
+
+  tc-llvm:
+    runs-on: ubuntu-22.04
+    steps:
+    # LLVM and GCC installations require plenty of disk space
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # this might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB
+        tool-cache: false
+
+        # all of these default to true, but feel free to set to
+        # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-llvm | cut -d' ' -f1
+        echo "tc-llvm-hash=`git submodule status toolchain/riscv-llvm | cut -d' ' -f1`" >> $GITHUB_ENV
+    - name: Cache the LLVM toolchain
+      uses: actions/cache@v4
+      id: tc-llvm-cache
+      env:
+        cache-name: cache-llvm
+      with:
+        path: install/riscv-llvm
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-llvm-hash }}
+        restore-keys:
+          ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-llvm-hash }}
+    - name: Download the LLVM toolchain
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive --checkout -- toolchain/riscv-llvm
+    - name: Download Newlib
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive --checkout -- toolchain/newlib
+    - name: Compile LLVM
+      if: steps.tc-llvm-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install libmpc-dev
+        sudo apt-get install -y ninja-build
+        CC=gcc CXX=g++ make toolchain-llvm
+    - name: Tar LLVM
+      run: tar -cvf tc-llvm.tar install/riscv-llvm
+    - name: Upload LLVM
+      uses: actions/upload-artifact@v4
+      with:
+        name: tc-llvm
+        path: tc-llvm.tar
+  
+  tc-gcc:
+    runs-on: ubuntu-22.04
+    steps:
+    # LLVM and GCC installations require plenty of disk space
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        # this might remove tools that are actually needed,
+        # if set to "true" but frees about 6 GB
+        tool-cache: false
+
+        # all of these default to true, but feel free to set to
+        # "false" if necessary for your workflow
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-gnu-toolchain | cut -d' ' -f1
+        echo "tc-gcc-hash=`git submodule status toolchain/riscv-gnu-toolchain | cut -d' ' -f1`" >> $GITHUB_ENV
+    - name: Cache the GCC toolchain
+      uses: actions/cache@v4
+      id: tc-gcc-cache
+      env:
+        cache-name: cache-gcc
+      with:
+        path: install/riscv-gcc
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-gcc-hash }}
+        restore-keys:
+          ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-gcc-hash }}
+    - name: Download the GCC toolchain
+      if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
+      run: git submodule update --init --recursive --checkout -- toolchain/riscv-gnu-toolchain
+    - name: Compile GCC
+      if: steps.tc-gcc-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install libmpc-dev
+        CC=gcc CXX=g++ make toolchain-gcc
+    - name: Tar GCC
+      run: tar -cvf tc-gcc.tar install/riscv-gcc
+    - name: Upload GCC
+      uses: actions/upload-artifact@v4
+      with:
+        name: tc-gcc
+        path: tc-gcc.tar
+
+  tc-isa-sim:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/riscv-isa-sim | cut -d' ' -f1
+        echo "tc-isa-sim-hash=`git submodule status toolchain/riscv-isa-sim | cut -d' ' -f1`" >> $GITHUB_ENV
+    - name: Cache Spike
+      uses: actions/cache@v4
+      id: tc-isa-sim-cache
+      env:
+        cache-name: cache-spike
+      with:
+        path: install/riscv-isa-sim
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-isa-sim-hash }}
+        restore-keys:
+          ${{ runner.os }}-build-${{ env.cache-name }}-${{ env.tc-isa-sim-hash }}
+    - name: Download Spike
+      if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
+      run: |
+        git submodule update --init --recursive -- toolchain/riscv-isa-sim
+        git submodule foreach --recursive git reset --hard
+    - name: Compile Spike
+      if: steps.tc-isa-sim-cache.outputs.cache-hit != 'true'
+      run: make riscv-isa-sim
+    - name: Tar Spike
+      run: tar -cvf tc-isa-sim.tar install/riscv-isa-sim
+    - name: Upload Spike
+      uses: actions/upload-artifact@v4
+      with:
+        name: tc-isa-sim
+        path: tc-isa-sim.tar
+
+  tc-verilator:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status toolchain/verilator | cut -d' ' -f1
+        echo "tc-verilator-hash=`git submodule status toolchain/verilator | cut -d' ' -f1`" >> $GITHUB_ENV
+    - name: Cache Verilator
+      uses: actions/cache@v4
+      id: tc-verilator-cache
+      env:
+        cache-name: cache-verilator
+      with:
+        path: install/verilator
+        key: ${{ runner.os }}-build-llvm10-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
+        restore-keys:
+          ${{ runner.os }}-build-llvm10-${{ env.cache-name }}-${{ env.tc-verilator-hash }}
+    - name: Download Verilator
+      if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
+      run: |
+        git submodule update --init --recursive -- toolchain/verilator
+    - name: Compile Verilator
+      if: steps.tc-verilator-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt-get install flex libfl-dev help2man
+        make verilator
+    - name: Tar Verilator
+      run: tar -cvf tc-verilator.tar install/verilator
+    - name: Upload Verilator
+      uses: actions/upload-artifact@v4
+      with:
+        name: tc-verilator
+        path: tc-verilator.tar
