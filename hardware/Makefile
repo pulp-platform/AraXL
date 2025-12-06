@@ -129,6 +129,8 @@ ifneq ($(ring_latency), 0)
 endif
 
 bender_defs += --define USE_EEW1
+bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
+
 #use_eew1 ?= 0
 #ifneq ($(use_eew1), 0)
 #	bender_defs += --define USE_EEW1
@@ -209,10 +211,9 @@ verilate: $(buildpath) bender $(veril_library)/V$(veril_top)
 
 $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell find src -type f) $(shell find ../config -type f) $(shell find include -type f) $(shell find tb -type f) $(shell find deps -type f)
 	rm -rf $(veril_library); mkdir -p $(veril_library)
-	$(BENDER) script verilator $(bender_targs_veril) $(bender_defs) > $(veril_library)/bender_script_$(config)
+	$(BENDER) script verilator $(bender_targs_veril) $(bender_defs_veril) > $(veril_library)/bender_script_$(config)
 # Verilate the design
 	$(veril_path)/verilator -f $(veril_library)/bender_script_$(config)           \
-  -GNrLanes=$(nr_lanes)                                                         \
   -O3                                                                           \
   -Wno-fatal                                                                    \
   -Wno-PINCONNECTEMPTY                                                          \
@@ -235,6 +236,7 @@ $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell fi
   --compiler clang                                                              \
   -CFLAGS "-DTOPLEVEL_NAME=$(veril_top)"                                        \
   -CFLAGS "-DNR_LANES=$(nr_lanes)"                                              \
+  -CFLAGS "-DNR_CLUSTERS=$(nr_clusters)"                                        \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp       \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp \

@@ -7,7 +7,8 @@
 // Description: Top level testbench module for Verilator.
 
 module ara_tb_verilator #(
-    parameter int unsigned NrLanes = 0
+    parameter int unsigned NrLanes    = `NR_LANES,
+    parameter int unsigned NrClusters = `NR_CLUSTERS
   )(
     input  logic        clk_i,
     input  logic        rst_ni,
@@ -18,8 +19,9 @@ module ara_tb_verilator #(
    *  Definitions  *
    *****************/
 
-  localparam AxiAddrWidth     = 64;
-  localparam AxiWideDataWidth = 64 * NrLanes / 2;
+  localparam AxiAddrWidth          = 64;
+  localparam AxiWideDataWidth      = 32 * NrLanes * NrClusters;
+  localparam ClusterAxiDataWidth   = 32 * NrLanes;
 
   /*********
    *  DUT  *
@@ -27,8 +29,10 @@ module ara_tb_verilator #(
 
   ara_testharness #(
     .NrLanes     (NrLanes         ),
+    .NrClusters  (NrClusters      ),
     .AxiAddrWidth(AxiAddrWidth    ),
-    .AxiDataWidth(AxiWideDataWidth)
+    .AxiDataWidth(AxiWideDataWidth),
+    .ClusterAxiDataWidth(ClusterAxiDataWidth)
   ) dut (
     .clk_i (clk_i ),
     .rst_ni(rst_ni),
