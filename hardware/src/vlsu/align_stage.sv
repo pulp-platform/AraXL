@@ -291,6 +291,7 @@ always_comb begin
       if (be_final_d != '1) begin
         // For unaligned data, this is the last packet.
         axi_resp_o.r.last = 1'b1;
+        axi_resp_o.r_valid  = 1'b1;
         data_prev_d       = '0;
         data_prev_valid_d = 1'b0;
       end else begin
