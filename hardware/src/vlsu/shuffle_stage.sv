@@ -164,7 +164,7 @@ for (genvar s=0; s<NumStages; s++) begin : p_stage
     .NrClusters          (NrClusters                  ),  
     .ClusterAxiDataWidth (ClusterAxiDataWidth         ),
     .T                   (stage_w_t                   ),
-    .scale               (s                           ),
+    .scale               (NumStages - s -1            ),
     .isRead              (0                           )
   ) i_shuffle_wr (
     .data_i       ( w_data_in  [s]    ),
@@ -327,7 +327,7 @@ always_comb begin
     wr_cnt_d += 1;
 
     for (int s=0; s<NumStages; s++) begin
-      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = (s >= vtype.vsew) ? 1'b1 : 1'b0;
+      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = ((NumStages -s -1) >= vtype.vsew) ? 1'b1 : 1'b0;
     end
     wr_tracker_d[wr_accept_pnt_q].buffer_en = NumStages < vtype.vsew ? 1'b1 : 1'b0;
   end
@@ -344,6 +344,7 @@ always_comb begin
       // In the last stage, reset the shift enable for the tracker instance
       if (s==NumStages-1) begin
         rd_tracker_d[rd_issue_pnt_q[s]].shuffle_en = '0;
+        rd_tracker_d[rd_issue_pnt_q[s]].buffer_en = '0;
         rd_cnt_d -= 1'b1;
       end
     end
@@ -354,6 +355,7 @@ always_comb begin
       // In the last stage, reset the shift enable for the tracker instance
       if (s==NumStages-1) begin
         wr_tracker_d[wr_issue_pnt_q[s]].shuffle_en = '0;
+        wr_tracker_d[wr_issue_pnt_q[s]].buffer_en = '0;
         wr_cnt_d -= 1'b1;
       end
     end
@@ -421,8 +423,11 @@ always_comb begin
 
     // If the last cluster sends the data, remove request from tracker
     if (axi_resp_buf_out[NrClusters-1].r_valid & axi_resp_buf_out[NrClusters-1].r.last) begin
-      for (int s= 0; s < NumStages ; s++)
+      for (int s= 0; s < NumStages ; s++) begin
         rd_issue_pnt_d[s] = (rd_issue_pnt_q[s] == NumTrackers-1) ? '0 : rd_issue_pnt_q[s] + 1;
+        rd_tracker_d[rd_issue_pnt_q[s]].shuffle_en = '0;
+        rd_tracker_d[rd_issue_pnt_q[s]].buffer_en = '0;
+      end
       rd_cnt_d -= 1'b1;
     end
   end
@@ -483,8 +488,11 @@ always_comb begin
 
     // If the last cluster sends the data, remove request from tracker
     if (axi_req_buf_out[0].w_valid & axi_req_buf_out[0].w.last) begin
-      for (int s=0; s < NumStages ; s++)
+      for (int s=0; s < NumStages ; s++) begin
         wr_issue_pnt_d[s] = (wr_issue_pnt_q[s] == NumTrackers-1) ? '0 : wr_issue_pnt_q[s] + 1;
+        wr_tracker_d[wr_issue_pnt_q[s]].shuffle_en = '0;
+        wr_tracker_d[wr_issue_pnt_q[s]].buffer_en = '0;
+      end
       wr_cnt_d -= 1'b1;
     end
   end
@@ -557,35 +565,57 @@ module shuffle import rvv_pkg::*; #(
 );
 
   logic [TotalDataWidth-1:0] data_in, data_out;
+  logic [TotalDataWidth/8-1:0] be_in, be_out;
+  
+  if (!isRead) begin
+    always_comb begin
+      data_o = data_i;
 
-  always_comb begin
-    data_o = data_i;
-
-    if (enable_i) begin  
       for (int c=0; c<NrClusters; c++) begin 
+        be_in[c*ClusterAxiDataWidth/8 +: ClusterAxiDataWidth/8] = data_i[c].strb; 
         data_in[c*ClusterAxiDataWidth +: ClusterAxiDataWidth] = data_i[c].data;
       end
-      
-      if (!isRead) begin
-        // For writes
-        for (int i=0; i < 2; i++) begin                           
-          for (int j=0; j < Iterations; j++) begin                
-              data_out[(i * Iterations + j)*BlockSize +: BlockSize] = data_in[(j * 2 + i)*BlockSize  +: BlockSize];
+
+      if (enable_i) begin
+
+        for (int k=0; k<(Iterations/2); k++) begin
+          for (int i=0; i<2; i++) begin
+            for (int j=0; j<2; j++) begin
+              be_out[(k * 4 + 2 * i + j)*(BlockSize/8) +: BlockSize/8] = be_in[(k * 4 + j * 2 + i)*(BlockSize/8)  +: BlockSize/8];
+              data_out[(k * 4 + 2 * i + j)*BlockSize +: BlockSize] = data_in[(k * 4 + j * 2 + i)*BlockSize  +: BlockSize];
+            end
           end
         end
-      end else begin
-        // For Reads
-        for (int i=0; i < Iterations; i++) begin                 
-          for (int j=0; j < 2; j++) begin                        
-              data_out[(i * 2 + j)*BlockSize +: BlockSize] = data_in[(j * Iterations + i)*BlockSize  +: BlockSize];
-          end
+
+        for (int c=0; c<NrClusters; c++) begin
+          data_o[c].strb = be_out[c*ClusterAxiDataWidth/8 +: ClusterAxiDataWidth/8];
+          data_o[c].data = data_out[c*ClusterAxiDataWidth +: ClusterAxiDataWidth];
         end
       end
 
-      for (int c=0; c<NrClusters; c++) begin 
-        data_o[c].data = data_out[c*ClusterAxiDataWidth +: ClusterAxiDataWidth];
-      end
     end
+  end else begin
+    always_comb begin
+      data_o = data_i;
+
+      if (enable_i) begin
+        for (int c=0; c<NrClusters; c++) begin 
+          data_in[c*ClusterAxiDataWidth +: ClusterAxiDataWidth] = data_i[c].data;
+        end
+
+        for (int k=0; k<(Iterations/2); k++) begin
+          for (int i=0; i<2; i++) begin
+            for (int j=0; j<2; j++) begin
+              data_out[(k * 4 + 2 * i + j)*BlockSize +: BlockSize] = data_in[(k * 4 + j * 2 + i)*BlockSize  +: BlockSize];
+            end
+          end
+        end
+
+        for (int c=0; c<NrClusters; c++) begin
+          data_o[c].data = data_out[c*ClusterAxiDataWidth +: ClusterAxiDataWidth];
+        end
+      end
+    end 
   end
 
   if (ClusterAxiDataWidth > 64*NrLanes)
