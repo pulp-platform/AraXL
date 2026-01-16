@@ -297,6 +297,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     ara_req_d = '{
       vl           : vl_q,
+      vl_cluster   : vl_cluster_q,
       vstart       : vstart_q,
       vtype        : vtype_q,
       emul         : vtype_q.vlmul,

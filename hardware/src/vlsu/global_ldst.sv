@@ -28,8 +28,14 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic                           clk_i,
   input  logic                           rst_ni,
 
-  // Interfaces with Ariane
-  input  accelerator_req_t               acc_req_i,
+  // eew, vl from cluster vlsu
+  input vew_e                           vew_ar_i,
+  input vew_e                           vew_aw_i,
+  input vlen_cluster_t                  vl_ldst_i,
+
+  // eew, vl to align stage
+  output vew_e                           vew_ar_o,
+  output vew_e                           vew_aw_o,
   
   // To ARA
   input  cluster_axi_req_t   [NrClusters-1:0] axi_req_i,
@@ -38,22 +44,6 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
   // To System AXI 
   input  axi_resp_t                     axi_resp_i,
   output axi_req_t                      axi_req_o
-);
-
-localparam int unsigned MAXVL_CL = VLEN * NrClusters;
-typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-vlen_cl_t vl; 
-vtype_t vtype;
-
-global_dispatcher #(
-  .NrClusters   (NrClusters),
-  .vlen_cl_t    (vlen_cl_t )
-) i_global_dispatcher (
-  .clk_i            (clk_i),
-  .rst_ni           (rst_ni),
-  .acc_req_i        (acc_req_i),
-  .vl_o             (vl),
-  .vtype_o          (vtype)
 );
 
 import cf_math_pkg::idx_width;
@@ -69,11 +59,9 @@ logic w_last_d, w_last_q;   // If this is a last write packer
 logic [$clog2(NrClusters)-1:0] cluster_start_r_d, cluster_start_r_q, cluster_start_wr_d, cluster_start_wr_q;
 
 cluster_axi_resp_t [NrClusters-1:0] cluster_axi_resp_data_d, cluster_axi_resp_data_q;
-cluster_axi_resp_t [NrClusters-1:0] cluster_axi_resp_data_shuffle;
 cluster_axi_req_t  [NrClusters-1:0] axi_req_data_d, axi_req_data_q; 
 
 // For Shuffling
-logic [NrClusters-1:0] data_valid;
 logic [NrClusters-1:0] w_cluster_valid;
 logic [NrClusters-1:0] w_cluster_ready_d, w_cluster_ready_q;
 logic [NrClusters-1:0] w_cluster_last_d, w_cluster_last_q; 
@@ -84,27 +72,36 @@ int len_r, len_w;
 cluster_axi_req_t req_d, req_q;
 axi_req_t req_final;
 logic r_req_valid_d, r_req_valid_q, r_req_ready;
-vlen_cl_t vl_req_d, vl_req_q, vl_done;
+vlen_cluster_t vl_done;
 
 axi_req_t req_wrmem;
 logic w_req_valid_d, w_req_valid_q, w_req_ready;
-vlen_cl_t vl_w_d, vl_w_q, vl_w_done;
+vlen_cluster_t vl_w_done;
+
+vew_e vew_ar_d, vew_ar_q, vew_aw_d, vew_aw_q;
+vlen_cluster_t vl_ldst_rd_d, vl_ldst_rd_q, vl_ldst_wr_d, vl_ldst_wr_q;
+
+// These are updated only when a new aw/ar is accepted
+assign vew_ar_o = vew_ar_d;
+assign vew_aw_o = vew_aw_d;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
     r_req_valid_q <= 1'b0;
     req_q         <= '0;
-    vl_req_q      <= '0;
-
     w_req_valid_q <= 1'b0;
-    vl_w_q        <= '0;
+    vew_ar_q      <= vew_e'(0);
+    vew_aw_q      <= vew_e'(0);
+    vl_ldst_rd_q  <= '0;
+    vl_ldst_wr_q  <= '0;
   end else begin
     r_req_valid_q <= r_req_valid_d;
     req_q         <= req_d;
-    vl_req_q      <= vl_req_d;
-
     w_req_valid_q <= w_req_valid_d;
-    vl_w_q        <= vl_w_d;
+    vew_ar_q      <= vew_ar_d;
+    vew_aw_q      <= vew_aw_d;
+    vl_ldst_rd_q  <= vl_ldst_rd_d;
+    vl_ldst_wr_q  <= vl_ldst_wr_d;
   end
 end
 
@@ -117,7 +114,11 @@ always_comb begin : p_global_ldst
   req_d = req_q;
   w_req_valid_d = w_req_valid_q;
   w_req_ready = ~w_req_valid_q;
-  vl_w_d = vl_w_q;
+
+  vew_aw_d = vew_aw_q;
+  vew_ar_d = vew_ar_q;
+  vl_ldst_rd_d = vl_ldst_rd_q;
+  vl_ldst_wr_d = vl_ldst_wr_q;
 
   req_wrmem = '0; 
   req_wrmem.aw_valid = 1'b0; 
@@ -125,7 +126,8 @@ always_comb begin : p_global_ldst
   if (axi_req_i[0].aw_valid && w_req_ready) begin
     req_d.aw = axi_req_i[0].aw;
     w_req_valid_d = 1'b1;
-    vl_w_d = vl;
+    vew_aw_d = vew_aw_i;
+    vl_ldst_wr_d = vl_ldst_i;
   end
 
   if (w_req_valid_d==1'b1 && axi_resp_i.aw_ready) begin
@@ -141,7 +143,7 @@ always_comb begin : p_global_ldst
 
     // Check if the address is unaligned for AxiDataWidth bits
     wr_aligned_start_addr_d = aligned_addr(req_wrmem.aw.addr, size_axi);
-    wr_aligned_next_start_addr_d = aligned_addr(req_wrmem.aw.addr + (vl_w_d << vtype.vsew) -1, size_axi) + AxiDataWidth/8;
+    wr_aligned_next_start_addr_d = aligned_addr(req_wrmem.aw.addr + (vl_ldst_wr_d << vew_aw_d) -1, size_axi) + AxiDataWidth/8;
     wr_aligned_end_addr_d = wr_aligned_next_start_addr_d - 1;
     wr_next_2page_msb_d = wr_aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
     // 1 - Check for 4KB page boundary
@@ -160,9 +162,9 @@ always_comb begin : p_global_ldst
 
     req_wrmem.aw.len = w_burst_length - 1;
 
-    vl_w_done = (wr_aligned_next_start_addr_d - req_d.aw.addr) >> int'(vtype.vsew);
-    if (vl_w_d > vl_w_done) begin
-      vl_w_d -= vl_w_done;
+    vl_w_done = (wr_aligned_next_start_addr_d - req_d.aw.addr) >> int'(vew_aw_d);
+    if (vl_ldst_wr_d > vl_w_done) begin
+      vl_ldst_wr_d -= vl_w_done;
       req_d.aw.addr = wr_aligned_next_start_addr_d;     // Update request state
       w_req_valid_d = 1'b1;
     end else begin
@@ -182,7 +184,6 @@ always_comb begin : p_global_ldst
   // ar channel
   r_req_valid_d = r_req_valid_q;
   r_req_ready = ~r_req_valid_q;     // As long as a request is valid, not ready to receive another request
-  vl_req_d = vl_req_q;
 
   req_final = '0;                   // Request to be send on AXI
   req_final.ar_valid = 1'b0;
@@ -190,7 +191,8 @@ always_comb begin : p_global_ldst
   if (axi_req_i[0].ar_valid && r_req_ready) begin 
     req_d.ar = axi_req_i[0].ar;
     r_req_valid_d = 1'b1;
-    vl_req_d = vl;
+    vew_ar_d = vew_ar_i;
+    vl_ldst_rd_d = vl_ldst_i;
   end
 
   if (r_req_valid_d==1'b1 && axi_resp_i.ar_ready) begin
@@ -206,7 +208,7 @@ always_comb begin : p_global_ldst
 
     // Check if the address is unaligned for AxiDataWidth bits
     aligned_start_addr_d = aligned_addr(req_final.ar.addr, size_axi);
-    aligned_next_start_addr_d = aligned_addr(req_final.ar.addr + (vl_req_d << vtype.vsew) -1, size_axi) + AxiDataWidth/8;
+    aligned_next_start_addr_d = aligned_addr(req_final.ar.addr + (vl_ldst_rd_d << vew_ar_d) -1, size_axi) + AxiDataWidth/8;
     aligned_end_addr_d = aligned_next_start_addr_d - 1;
     next_2page_msb_d = aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
     // 1 - Check for 4KB page boundary
@@ -224,9 +226,9 @@ always_comb begin : p_global_ldst
     end
 
     req_final.ar.len = burst_length - 1;
-    vl_done = (aligned_next_start_addr_d - req_d.ar.addr) >> int'(vtype.vsew);
-    if (vl_req_d > vl_done) begin
-      vl_req_d -= vl_done;
+    vl_done = (aligned_next_start_addr_d - req_d.ar.addr) >> int'(vew_ar_d);
+    if (vl_ldst_rd_d > vl_done) begin
+      vl_ldst_rd_d -= vl_done;
       req_d.ar.addr = aligned_next_start_addr_d;     // Update request state
       r_req_valid_d = 1'b1;
     end else begin

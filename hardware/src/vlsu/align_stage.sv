@@ -27,30 +27,17 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   // Clock and Reset
   input  logic              clk_i,
   input  logic              rst_ni,
-  // Interfaces with Ariane
-  input  accelerator_req_t               acc_req_i,
+
+  input vew_e               vew_ar_i,
+  input vew_e               vew_aw_i,
+  input vlen_cluster_t      vl_ldst_rd_i,
+  input vlen_cluster_t      vl_ldst_wr_i,
   
   input  axi_req_t axi_req_i,
   output axi_req_t axi_req_o, 
 
   input  axi_resp_t axi_resp_i, 
   output axi_resp_t axi_resp_o
-);
-
-localparam int unsigned MAXVL_CL = VLEN * NrClusters;
-typedef logic [$clog2(MAXVL_CL+1)-1:0] vlen_cl_t;
-vlen_cl_t vl, vl_d, vl_q; 
-vtype_t vtype;
-
-global_dispatcher #(
-  .NrClusters   (NrClusters),
-  .vlen_cl_t    (vlen_cl_t )
-) i_global_dispatcher (
-  .clk_i            (clk_i),
-  .rst_ni           (rst_ni),
-  .acc_req_i        (acc_req_i),
-  .vl_o             (vl),
-  .vtype_o          (vtype)
 );
 
 localparam int unsigned NumTrackers=8;
@@ -87,6 +74,8 @@ logic last_q, last_d;
 typedef logic [AxiDataWidth/8-1:0] be_data_t;
 be_data_t [NumStages:0] be_d, be_q;
 be_data_t be_final_d, be_final_q;
+
+vlen_cluster_t vl_d, vl_q;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
@@ -196,12 +185,12 @@ always_comb begin
   if (axi_req_i.ar_valid && axi_resp_o.ar_ready) begin
     automatic int       burst        = axi_req_i.ar.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vtype.vsew;
+    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew_ar_i;
     vl_d = vl_q + vlen_request;
 
     tracker_d[w_pnt_tracker_q].addr  = axi_req_i.ar.addr;
-    tracker_d[w_pnt_tracker_q].len   = vl;
-    tracker_d[w_pnt_tracker_q].vew   = vtype.vsew;
+    tracker_d[w_pnt_tracker_q].len   = vl_ldst_rd_i;
+    tracker_d[w_pnt_tracker_q].vew   = vew_ar_i;
     for (int s=0; s < NumStages; s++)
       tracker_d[w_pnt_tracker_q].num_requests[s] += 1;
     
@@ -215,7 +204,7 @@ always_comb begin
     end
 
     // If last request
-    if (vl_d >= vl) begin
+    if (vl_d >= vl_ldst_rd_i) begin
       vl_d = 0;
       w_pnt_tracker_d = w_pnt_tracker_q + 1;
       if (w_pnt_tracker_q == NumTrackers-1) begin 
@@ -313,8 +302,8 @@ pnt_t wr_pnt_d, wr_pnt_q;
 pnt_t wr_commit_pnt_d, wr_commit_pnt_q; 
 cnt_t wr_cnt_d, wr_cnt_q;
 
-vlen_cl_t wr_vl_d, wr_vl_q;
-vlen_cl_t wr_commit_len_d, wr_commit_len_q;
+vlen_cluster_t wr_vl_d, wr_vl_q;
+vlen_cluster_t wr_commit_len_d, wr_commit_len_q;
 
 typedef struct packed {
   cnt_t count;
@@ -368,7 +357,7 @@ always_comb begin
   if (axi_req_i.aw_valid && axi_resp_o.aw_ready) begin
     automatic int       burst        = axi_req_i.aw.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cl_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vtype.vsew;
+    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew_aw_i;
     wr_vl_d = wr_vl_q + vlen_request;
     
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
@@ -376,7 +365,7 @@ always_comb begin
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= vl) begin
+    if (wr_vl_d >= vl_ldst_wr_i) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end
