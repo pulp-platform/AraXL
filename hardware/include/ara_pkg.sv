@@ -318,6 +318,7 @@ package ara_pkg;
 
     // Vector machine metadata
     vlen_t vl;
+    vlen_cluster_t vl_cluster;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
@@ -416,6 +417,7 @@ package ara_pkg;
 
     // Vector machine metadata
     vlen_t vl;
+    vlen_cluster_t vl_cluster;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 

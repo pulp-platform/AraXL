@@ -28,6 +28,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output vew_e                           vew_aw_o,
     output logic                           axi_aw_valid_o,
     input  logic                           axi_aw_ready_i,
+    output vlen_cluster_t                  vl_ldst_o,
     // Interace with the dispatcher
     input  logic                           core_st_pending_i,
     // Interface with the main sequencer
@@ -474,6 +475,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     vew_ar_o = vew_e'('0); // To be removed
     vew_aw_o = vew_e'('0); // To be removed
+    vl_ldst_o = pe_req_q.vl_cluster;
 
     case (axi_addrgen_state_q)
       AXI_ADDRGEN_IDLE: begin
