@@ -314,6 +314,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .clk_i                            (clk_i                              ),
     .rst_ni                           (rst_ni                             ),
     .lane_id_i                        (lane_id_i                          ),
+    .cluster_id_i                     (cluster_id_i                       ),
     // Interface with the Vector Register File
     .operand_i                        (vrf_operand                        ),
     .operand_valid_i                  (vrf_operand_valid                  ),
