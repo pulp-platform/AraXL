@@ -1687,6 +1687,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     ara_req_d.vl      = |vl_q ? 1 : '0;
                     // This instruction ignores LMUL checks
                     skip_lmul_checks  = 1'b1;
+                    // Use scalar operand only for cluster 0
+                    ara_req_d.use_scalar_op = (cluster_id_i == 0) ? 1'b1 : 1'b0;
                   end
                   // Divide instructions
                   6'b100000: ara_req_d.op = ara_pkg::VDIVU;
@@ -2358,6 +2360,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       ara_req_d.vl      = |vl_q ? 1 : '0;
                       // This instruction ignores LMUL checks
                       skip_lmul_checks  = 1'b1;
+                      // Use scalar operand only for cluster 0
+                      ara_req_d.use_scalar_op = (cluster_id_i == 0) ? 1'b1 : 1'b0;
                     end
                     6'b010111: ara_req_d.op = ara_pkg::VMERGE;
                     6'b011000: ara_req_d.op = ara_pkg::VMFEQ;
