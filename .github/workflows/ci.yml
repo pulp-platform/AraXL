@@ -238,6 +238,45 @@ jobs:
         name: compile-apps-${{ matrix.ara_config }}
         path: apps/bin
 
+  compile-riscv-tests:
+    runs-on: ubuntu-22.04
+    strategy:
+      max-parallel: 1
+      matrix:
+        ara_config: [4_lanes]
+    needs: ["tc-llvm", "tc-gcc", "tc-isa-sim"]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Download Spike
+      run: |
+        git submodule update --init --recursive -- toolchain/riscv-isa-sim
+        git submodule foreach --recursive git reset --hard
+    - name: Get Spike artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-isa-sim
+    - name: Untar Spike
+      run: tar xvf tc-isa-sim.tar
+    - name: Get LLVM toolchain artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-llvm
+    - name: Untar LLVM
+      run: tar xvf tc-llvm.tar
+    - name: Get GCC toolchain artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-gcc
+    - name: Untar GCC
+      run: tar xvf tc-gcc.tar
+    - name: Compile applications
+      run: config=${{ matrix.ara_config }} make -C apps riscv_tests
+    - name: Upload applications
+      uses: actions/upload-artifact@v4
+      with:
+        name: compile-riscv-tests-${{ matrix.ara_config }}
+        path: apps/bin
+
   compile-ara:
     runs-on: ubuntu-22.04
     strategy:
@@ -319,3 +358,32 @@ jobs:
         path: apps/bin
     - name: Run test
       run: config=${{ matrix.ara_config }} app=${{ matrix.app }} make -C hardware simv
+
+  riscv-tests-simv:
+    runs-on: ubuntu-22.04
+    strategy:
+      max-parallel: 1
+      matrix:
+        ara_config: [4_lanes]
+    needs: ["compile-ara", "compile-riscv-tests"]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Get Spike artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-isa-sim
+    - name: Untar Spike
+      run: tar xvf tc-isa-sim.tar
+    - name: Get Verilated model of Ara
+      uses: actions/download-artifact@v4
+      with:
+        name: compile-ara-${{ matrix.ara_config }}
+    - name: Untar Verilated model of Ara
+      run: tar xvf ara.tar
+    - name: Get RISC-V tests
+      uses: actions/download-artifact@v4
+      with:
+        name: compile-riscv-tests-${{ matrix.ara_config }}
+        path: apps/bin
+    - name: Run tests
+      run: config=${{ matrix.ara_config }} make -C hardware -j8 riscv_tests_simv

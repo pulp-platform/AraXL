@@ -201,9 +201,11 @@ simc: compile
 
 # RISC-V Tests simulation
 APPS_DIR := $(abspath $(ROOT_DIR)/../apps)
-TESTS_DIR := $(APPS_DIR)/riscv-tests/isa
+TESTS_DIR := $(APPS_DIR)/rvv-tests
+include $(TESTS_DIR)/Makefrag
+ARA_BINARIES := $(addprefix rvv-tests-ara-, $(ara_tests))
 
-tests := $(ara_tests) $(cva6_tests)
+tests := $(ARA_BINARIES)
 
 # Verilator
 .PHONY: verilate

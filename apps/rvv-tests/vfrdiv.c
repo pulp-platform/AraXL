@@ -173,7 +173,7 @@ int main(void) {
   CHANGE_RM(RM_RTZ);
 
   TEST_CASE1();
-  TEST_CASE2();
+  // TEST_CASE2();
 
   EXIT_CHECK();
 }

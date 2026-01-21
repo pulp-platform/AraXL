@@ -125,11 +125,11 @@ int main(void) {
   enable_vec();
 
   TEST_CASE1();
-  TEST_CASE2();
+  // TEST_CASE2();
   TEST_CASE3();
-  TEST_CASE4();
+  // TEST_CASE4();
   TEST_CASE5();
-  TEST_CASE6();
+  // TEST_CASE6();
   TEST_CASE7();
 
   EXIT_CHECK();

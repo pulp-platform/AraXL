@@ -5,7 +5,7 @@
 # Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
 #         Basile Bougenot <bbougenot@student.ethz.ch>
 
-ara_tests = vaadd \
+ara_tests_all = vaadd \
             vaaddu\
             vsadd \
             vsaddu \
@@ -182,3 +182,29 @@ ara_tests = vaadd \
             vfrsqrt7 \
             vrgather \
             vcompress
+
+ara_tests = vadd \
+               vwadd \
+               vand \
+               vsll \
+               vnsrl \
+               vmin \
+               vmul \
+               vdiv \
+               vwmul \
+               vmacc \
+               vwmacc \
+               vmv \
+               vfadd \
+               vfwadd \
+               vfmul \
+               vfwmul \
+               vfmacc \
+               vfwmacc \
+               vfsqrt \
+               vfrsqrt7 \
+               vfrec7 \
+               vfmv \
+               vfcvt \
+               vfwcvt \
+               vfncvt

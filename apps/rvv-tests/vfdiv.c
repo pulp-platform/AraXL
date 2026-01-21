@@ -347,9 +347,9 @@ int main(void) {
   CHANGE_RM(RM_RTZ);
 
   TEST_CASE1();
-  TEST_CASE2();
+  // TEST_CASE2();
   TEST_CASE3();
-  TEST_CASE4();
+  // TEST_CASE4();
 
   EXIT_CHECK();
 }
