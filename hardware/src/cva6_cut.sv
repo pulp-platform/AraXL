@@ -8,25 +8,28 @@
 // Module to cut the request interface from CVA6
 
 module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
-  parameter int unsigned NrCuts = 1
+  parameter int unsigned NrCuts = 1, 
+
+  parameter type         cva6_to_acc_t      = logic,
+  parameter type         acc_to_cva6_t      = logic
 ) (
     // Clock and Reset
     input  logic              clk_i,
     input  logic              rst_ni,
 
     // Interface with Ariane
-    input  accelerator_req_t  acc_req_i,
-    output accelerator_resp_t acc_resp_o,
+    input  cva6_to_acc_t  acc_req_i,
+    output acc_to_cva6_t acc_resp_o,
 
     // Interface with ARA
-    output  accelerator_req_t  acc_req_o,
-    input accelerator_resp_t acc_resp_i
+    output  cva6_to_acc_t  acc_req_o,
+    input acc_to_cva6_t acc_resp_i
 );
     `include "common_cells/registers.svh"
 
     typedef struct packed {
-        accelerator_req_t  acc_req;
-        accelerator_resp_t acc_resp;
+        cva6_to_acc_t  acc_req;
+        acc_to_cva6_t acc_resp;
 
         //// Request signals
         logic                                 req_valid;
@@ -53,7 +56,7 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
     for (genvar cut=0; cut < NrCuts; cut++) begin
         // Cut Request interface
         spill_register #(
-            .T(accelerator_req_t)
+            .T(cva6_to_acc_t)
         ) i_cva6_req_cut (
             .clk_i  (clk_i                         ),
             .rst_ni (rst_ni                        ),
@@ -69,7 +72,7 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
 
         // Cut Response interface
         spill_register #(
-            .T(accelerator_resp_t)
+            .T(acc_to_cva6_t)
         ) i_cva6_resp_cut (
             .clk_i  (clk_i                ),
             .rst_ni (rst_ni               ),
@@ -111,44 +114,44 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
 
     always_comb begin
         //// Resp to CVA6
-        acc_resp_o                = cva6_cuts[0].acc_resp;
-        acc_resp_o.req_ready      = cva6_cuts[0].req_ready;
-        acc_resp_o.resp_valid     = cva6_cuts[0].resp_valid;
-        acc_resp_o.load_complete  = cva6_cuts[0].load_complete;
-        acc_resp_o.store_complete = cva6_cuts[0].store_complete;
-        acc_resp_o.store_pending  = cva6_cuts[0].store_pending;
-        acc_resp_o.fflags_valid   = cva6_cuts[0].fflags_valid;
-        acc_resp_o.fflags         = cva6_cuts[0].fflags;
-        acc_resp_o.inval_valid    = cva6_cuts[0].inval_valid;
-        acc_resp_o.inval_addr     = cva6_cuts[0].inval_addr;
+        acc_resp_o                         = cva6_cuts[0].acc_resp;
+        acc_resp_o.acc_resp.req_ready      = cva6_cuts[0].req_ready;
+        acc_resp_o.acc_resp.resp_valid     = cva6_cuts[0].resp_valid;
+        acc_resp_o.acc_resp.load_complete  = cva6_cuts[0].load_complete;
+        acc_resp_o.acc_resp.store_complete = cva6_cuts[0].store_complete;
+        acc_resp_o.acc_resp.store_pending  = cva6_cuts[0].store_pending;
+        acc_resp_o.acc_resp.fflags_valid   = cva6_cuts[0].fflags_valid;
+        acc_resp_o.acc_resp.fflags         = cva6_cuts[0].fflags;
+        acc_resp_o.acc_resp.inval_valid    = cva6_cuts[0].inval_valid;
+        acc_resp_o.acc_resp.inval_addr     = cva6_cuts[0].inval_addr;
 
         //// Resp from ARA
         cva6_cuts[NrCuts].acc_resp       = acc_resp_i;
-        cva6_cuts[NrCuts].req_ready      = acc_resp_i.req_ready;
-        cva6_cuts[NrCuts].resp_valid     = acc_resp_i.resp_valid;
-        cva6_cuts[NrCuts].load_complete  = acc_resp_i.load_complete;
-        cva6_cuts[NrCuts].store_complete = acc_resp_i.store_complete;
-        cva6_cuts[NrCuts].store_pending  = acc_resp_i.store_pending;
-        cva6_cuts[NrCuts].fflags_valid   = acc_resp_i.fflags_valid;
-        cva6_cuts[NrCuts].fflags         = acc_resp_i.fflags;
-        cva6_cuts[NrCuts].inval_valid    = acc_resp_i.inval_valid;
-        cva6_cuts[NrCuts].inval_addr     = acc_resp_i.inval_addr;
+        cva6_cuts[NrCuts].req_ready      = acc_resp_i.acc_resp.req_ready;
+        cva6_cuts[NrCuts].resp_valid     = acc_resp_i.acc_resp.resp_valid;
+        cva6_cuts[NrCuts].load_complete  = acc_resp_i.acc_resp.load_complete;
+        cva6_cuts[NrCuts].store_complete = acc_resp_i.acc_resp.store_complete;
+        cva6_cuts[NrCuts].store_pending  = acc_resp_i.acc_resp.store_pending;
+        cva6_cuts[NrCuts].fflags_valid   = acc_resp_i.acc_resp.fflags_valid;
+        cva6_cuts[NrCuts].fflags         = acc_resp_i.acc_resp.fflags;
+        cva6_cuts[NrCuts].inval_valid    = acc_resp_i.acc_resp.inval_valid;
+        cva6_cuts[NrCuts].inval_addr     = acc_resp_i.acc_resp.inval_addr;
 
         //// Request to ARA
-        acc_req_o                 = cva6_cuts[NrCuts].acc_req;
-        acc_req_o.req_valid       = cva6_cuts[NrCuts].req_valid;
-        acc_req_o.resp_ready      = cva6_cuts[NrCuts].resp_ready;
-        acc_req_o.inval_ready     = cva6_cuts[NrCuts].inval_ready;
-        acc_req_o.store_pending   = cva6_cuts[NrCuts].store_pending_req;
-        acc_req_o.acc_cons_en     = cva6_cuts[NrCuts].acc_cons_en;
+        acc_req_o                         = cva6_cuts[NrCuts].acc_req;
+        acc_req_o.acc_req.req_valid       = cva6_cuts[NrCuts].req_valid;
+        acc_req_o.acc_req.resp_ready      = cva6_cuts[NrCuts].resp_ready;
+        acc_req_o.acc_req.inval_ready     = cva6_cuts[NrCuts].inval_ready;
+        acc_req_o.acc_req.store_pending   = cva6_cuts[NrCuts].store_pending_req;
+        acc_req_o.acc_req.acc_cons_en     = cva6_cuts[NrCuts].acc_cons_en;
 
         //// Request from CVA6
         cva6_cuts[0].acc_req            = acc_req_i;
-        cva6_cuts[0].req_valid          = acc_req_i.req_valid;  
-        cva6_cuts[0].resp_ready         = acc_req_i.resp_ready;
-        cva6_cuts[0].inval_ready        = acc_req_i.inval_ready;
-        cva6_cuts[0].store_pending_req  = acc_req_i.store_pending;
-        cva6_cuts[0].acc_cons_en        = acc_req_i.acc_cons_en;
+        cva6_cuts[0].req_valid          = acc_req_i.acc_req.req_valid;  
+        cva6_cuts[0].resp_ready         = acc_req_i.acc_req.resp_ready;
+        cva6_cuts[0].inval_ready        = acc_req_i.acc_req.inval_ready;
+        cva6_cuts[0].store_pending_req  = acc_req_i.acc_req.store_pending;
+        cva6_cuts[0].acc_cons_en        = acc_req_i.acc_req.acc_cons_en;
     end
 
 

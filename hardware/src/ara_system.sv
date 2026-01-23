@@ -17,7 +17,15 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     // Support for fixed-point data types
     parameter fixpt_support_e                   FixPtSupport       = FixedPointEnable,
     // Ariane configuration
-    parameter ariane_pkg::ariane_cfg_t          ArianeCfg          = ariane_pkg::ArianeDefaultConfig,
+    parameter config_pkg::cva6_cfg_t            CVA6Cfg            = cva6_config_pkg::cva6_cfg,
+    // CVA6-related parameters
+    parameter type                              exception_t        = logic,
+    parameter type                              accelerator_req_t  = logic,
+    parameter type                              accelerator_resp_t = logic,
+    parameter type                              acc_mmu_req_t      = logic,
+    parameter type                              acc_mmu_resp_t     = logic,
+    parameter type                              cva6_to_acc_t      = logic,
+    parameter type                              acc_to_cva6_t      = logic,
     // AXI Interface
     parameter int                      unsigned AxiAddrWidth           = 64,
     parameter int                      unsigned AxiIdWidth             = 6,
@@ -84,20 +92,13 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   //  Ara and Ariane  //
   //////////////////////
 
-  import acc_pkg::accelerator_req_t;
-  import acc_pkg::accelerator_resp_t;
-
   // System axi cut
   system_axi_req_t         axi_req_o_cut;
   system_axi_resp_t        axi_resp_i_cut;
-  
-  // CVA6 interface cut
-  accelerator_req_t                     acc_req_cut;
-  accelerator_resp_t                    acc_resp_cut;
 
   // Accelerator ports
-  accelerator_req_t                     acc_req;
-  accelerator_resp_t                    acc_resp;
+  cva6_to_acc_t                         acc_req;
+  acc_to_cva6_t                         acc_resp;
   logic                                 acc_resp_valid;
   logic                                 acc_resp_ready;
   logic                                 acc_cons_en;
@@ -110,18 +111,22 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   assign hart_id = {'0, hart_id_i};
 
   // Pack invalidation interface into acc interface
-  accelerator_resp_t                    acc_resp_pack;
+  acc_to_cva6_t                         acc_resp_pack;
   always_comb begin : pack_inval
     acc_resp_pack             = acc_resp;
-    acc_resp_pack.inval_valid = inval_valid;
-    acc_resp_pack.inval_addr  = inval_addr;
-    inval_ready               = acc_req.inval_ready;
-    acc_cons_en               = acc_req.acc_cons_en;
+    acc_resp_pack.acc_resp.inval_valid = inval_valid;
+    acc_resp_pack.acc_resp.inval_addr  = inval_addr;
+    inval_ready               = acc_req.acc_req.inval_ready;
+    acc_cons_en               = acc_req.acc_req.acc_cons_en;
   end
 
 `ifdef IDEAL_DISPATCHER
   // Perfect dispatcher to Ara
-  accel_dispatcher_ideal i_accel_dispatcher_ideal (
+  accel_dispatcher_ideal   #(
+    .CVA6Cfg           (CVA6Cfg              ),
+    .cva6_to_acc_t     (cva6_to_acc_t        ),
+    .acc_to_cva6_t     (acc_to_cva6_t        )
+    ) i_accel_dispatcher_ideal (
     .clk_i            (clk_i                 ),
     .rst_ni           (rst_ni                ),
     .acc_req_o        (acc_req               ),
@@ -131,35 +136,45 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   );
 `else
   cva6 #(
-    .ArianeCfg(ArianeCfg),
-    .cvxif_req_t (acc_pkg::accelerator_req_t),
-    .cvxif_resp_t (acc_pkg::accelerator_resp_t),
-    .AxiAddrWidth ( AxiAddrWidth ),
-    .AxiDataWidth ( AxiNarrowDataWidth ),
-    .AxiIdWidth ( AxiIdWidth ),
-    .axi_ar_chan_t (ariane_axi_ar_t),
-    .axi_aw_chan_t (ariane_axi_aw_t),
-    .axi_w_chan_t (ariane_axi_w_t),
-    .axi_req_t (ariane_axi_req_t),
-    .axi_rsp_t (ariane_axi_resp_t)
+    .CVA6Cfg          (CVA6Cfg           ),
+    .cvxif_req_t      (cva6_to_acc_t     ),
+    .cvxif_resp_t     (acc_to_cva6_t     ),
+    .axi_ar_chan_t    (ariane_axi_ar_t   ),
+    .axi_aw_chan_t    (ariane_axi_aw_t   ),
+    .axi_w_chan_t     (ariane_axi_w_t    ),
+    .b_chan_t         (ariane_axi_b_t    ),
+    .r_chan_t         (ariane_axi_r_t    ),
+    .noc_req_t        (ariane_axi_req_t  ),
+    .noc_resp_t       (ariane_axi_resp_t ),
+    .accelerator_req_t (accelerator_req_t),
+    .accelerator_resp_t(accelerator_resp_t),
+    .acc_mmu_req_t     (acc_mmu_req_t),
+    .acc_mmu_resp_t    (acc_mmu_resp_t)
   ) i_ariane (
-    .clk_i            (clk_i                 ),
-    .rst_ni           (rst_ni                ),
-    .boot_addr_i      (boot_addr_i           ),
-    .hart_id_i        (hart_id               ),
-    .irq_i            ('0                    ),
-    .ipi_i            ('0                    ),
-    .time_irq_i       ('0                    ),
-    .debug_req_i      ('0                    ),
-    .rvfi_o           (                      ),
+    .clk_i            (clk_i                   ),
+    .rst_ni           (rst_ni                  ),
+    .boot_addr_i      (boot_addr_i             ),
+    .hart_id_i        (hart_id                 ),
+    .irq_i            ('0                      ),
+    .ipi_i            ('0                      ),
+    .time_irq_i       ('0                      ),
+    .debug_req_i      ('0                      ),
+    .clic_irq_valid_i ('0                      ),
+    .clic_irq_id_i    ('0                      ),
+    .clic_irq_level_i ('0                      ),
+    .clic_irq_priv_i  (riscv::priv_lvl_t'(2'b0)),
+    .clic_irq_v_i     ('0                      ),
+    .clic_irq_vsid_i  ('0                      ),
+    .clic_irq_shv_i   ('0                      ),
+    .clic_irq_ready_o (/* empty */             ),
+    .clic_kill_req_i  ('0                      ),
+    .clic_kill_ack_o  (/* empty */             ),
+    .rvfi_probes_o    (/* empty */             ),
     // Accelerator ports
-    .cvxif_req_o      (acc_req               ),
-    .cvxif_resp_i     (acc_resp_pack         ),
-    .l15_req_o        (                      ),
-    .l15_rtrn_i       ( '0                   ),
-    // Memory interface
-    .axi_req_o        (ariane_narrow_axi_req ),
-    .axi_resp_i       (ariane_narrow_axi_resp)
+    .cvxif_req_o      (acc_req                 ),
+    .cvxif_resp_i     (acc_resp_pack           ),
+    .noc_req_o        (ariane_narrow_axi_req   ),
+    .noc_resp_i       (ariane_narrow_axi_resp  )
   );
 `endif
 
@@ -193,13 +208,10 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .mst_resp_i(ariane_axi_resp       )
   );
 
-  localparam int unsigned nSets = (ariane_pkg::CONFIG_L1D_SIZE * 8)/(ariane_pkg::DCACHE_SET_ASSOC * ariane_pkg::DCACHE_LINE_WIDTH);
-
   axi_inval_filter #(
     .MaxTxns    (16                             ),
     .AddrWidth  (AxiAddrWidth                   ),
-    .L1LineWidth(ariane_pkg::DCACHE_LINE_WIDTH/8),
-    .NumSets    (nSets                          ),
+    .L1LineWidth(CVA6Cfg.DCACHE_LINE_WIDTH/8    ),
     .aw_chan_t  (ara_axi_aw_t                   ),
     .req_t      (ara_axi_req_t                  ),
     .resp_t     (ara_axi_resp_t                 )
@@ -247,8 +259,8 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .scan_enable_i   (scan_enable_i ),
     .scan_data_i     (1'b0          ),
     .scan_data_o     (/* Unused */  ),
-    .acc_req_i       (acc_req_cut   ),
-    .acc_resp_o      (acc_resp_cut  ),
+    .acc_req_i       (acc_req       ),
+    .acc_resp_o      (acc_resp      ),
     .axi_req_o       (ara_axi_req   ),
     .axi_resp_i      (ara_axi_resp  )
   );
@@ -261,6 +273,12 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .FPUSupport  (FPUSupport      ),
     .FPExtSupport(FPExtSupport    ),
     .FixPtSupport(FixPtSupport    ),
+    .CVA6Cfg           (CVA6Cfg              ),
+    .exception_t       (exception_t          ),
+    .accelerator_req_t (accelerator_req_t    ),
+    .accelerator_resp_t(accelerator_resp_t   ),
+    .cva6_to_acc_t     (cva6_to_acc_t        ),
+    .acc_to_cva6_t     (acc_to_cva6_t        ),
     .AxiDataWidth(AxiWideDataWidth),
     .AxiAddrWidth(AxiAddrWidth    ),
     .ClusterAxiDataWidth(ClusterAxiDataWidth),
@@ -291,20 +309,6 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   );
 
 `endif
-
-  // // Adding cuts to the CVA6 path to all clusters
-  // cva6_cut # (
-  //   .NrCuts      (1             )
-  // ) i_cva6_cut (
-  //   .clk_i       (clk_i         ), 
-  //   .rst_ni      (rst_ni        ), 
-
-  //   .acc_req_i   (acc_req       ),
-  //   .acc_resp_o  (acc_resp      ),
-
-  //   .acc_req_o   (acc_req_cut   ),
-  //   .acc_resp_i  (acc_resp_cut  )
-  // );
 
   axi_mux #(
     .SlvAxiIDWidth(AxiIdWidth       ),

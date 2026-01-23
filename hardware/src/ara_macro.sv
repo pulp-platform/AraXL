@@ -16,6 +16,16 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     parameter  fpext_support_e        FPExtSupport = FPExtSupportEnable,
     // Support for fixed-point data types
     parameter  fixpt_support_e        FixPtSupport = FixedPointEnable,
+
+    // Ariane configuration
+    parameter config_pkg::cva6_cfg_t            CVA6Cfg            = cva6_config_pkg::cva6_cfg,
+    // CVA6-related parameters
+    parameter type                              exception_t        = logic,
+    parameter type                              accelerator_req_t  = logic,
+    parameter type                              accelerator_resp_t = logic,
+    parameter type                              cva6_to_acc_t      = logic,
+    parameter type                              acc_to_cva6_t      = logic,
+
     // AXI Interface
     parameter  int           unsigned AxiDataWidth        = 0,
     parameter  int           unsigned AxiAddrWidth        = 0,
@@ -50,8 +60,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     input  num_cluster_t      num_clusters_i,
 
     // Interface with Ariane
-    input  accelerator_req_t  acc_req_i,
-    output accelerator_resp_t acc_resp_o,
+    input  cva6_to_acc_t      acc_req_i,
+    output acc_to_cva6_t      acc_resp_o,
 
     // AXI interface
     output cluster_axi_req_t     axi_req_o,
@@ -97,8 +107,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
   id_cluster_t cluster_id;
   num_cluster_t num_clusters;
 
-  accelerator_req_t acc_req, acc_req_o;
-  accelerator_resp_t acc_resp, acc_resp_out;
+  cva6_to_acc_t acc_req, acc_req_o;
+  acc_to_cva6_t acc_resp, acc_resp_out;
 
   //// Request signals
   logic                                 req_valid;
@@ -131,33 +141,33 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
   
   // Cut Request interface
   spill_register #(
-    .T(accelerator_req_t)
+    .T(cva6_to_acc_t)
   ) i_cva6_req_cut (
     .clk_i  (clk_i                         ),
     .rst_ni (rst_ni                        ),
     
-    .valid_i(acc_req_i.req_valid           ),
+    .valid_i(acc_req_i.acc_req.req_valid           ),
     .ready_o(req_ready                     ),
     .data_i (acc_req_i                     ),
 
     .valid_o(req_valid                     ),
-    .ready_i(acc_resp.req_ready            ),
+    .ready_i(acc_resp.acc_resp.req_ready            ),
     .data_o (acc_req                       )
   );
 
   // Cut Response interface
   spill_register #(
-    .T(accelerator_resp_t)
+    .T(acc_to_cva6_t)
   ) i_cva6_resp_cut (
     .clk_i  (clk_i                        ),
     .rst_ni (rst_ni                       ),
     
-    .valid_i(acc_resp.resp_valid         ),
+    .valid_i(acc_resp.acc_resp.resp_valid          ),
     .ready_o(resp_ready                   ),
     .data_i (acc_resp                     ),
 
     .valid_o(resp_valid                   ),
-    .ready_i(acc_req_i.resp_ready         ),
+    .ready_i(acc_req_i.acc_req.resp_ready         ),
     .data_o (acc_resp_out                 )
   );
 
@@ -168,48 +178,48 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     .clk_i  (clk_i                        ),
     .rst_ni (rst_ni                       ),
     
-    .valid_i(acc_resp.inval_valid       ),
+    .valid_i(acc_resp.acc_resp.inval_valid       ),
     .ready_o(inval_ready                  ),
-    .data_i (acc_resp.inval_addr          ),
+    .data_i (acc_resp.acc_resp.inval_addr          ),
 
     .valid_o(inval_valid                ),
-    .ready_i(acc_req_i.inval_ready        ),
+    .ready_i(acc_req_i.acc_req.inval_ready        ),
     .data_o (inval_addr                 )
   );
 
    //`FF(trans_id, acc_resp.trans_id, '0, clk_i, rst_ni);
-  `FF(load_complete, acc_resp.load_complete, '0, clk_i, rst_ni);
-  `FF(store_complete, acc_resp.store_complete, '0, clk_i, rst_ni);
-  `FF(store_pending, acc_resp.store_pending, '0, clk_i, rst_ni);
-  `FF(fflags_valid, acc_resp.fflags_valid, '0, clk_i, rst_ni);
-  `FF(fflags, acc_resp.fflags, '0, clk_i, rst_ni);
-  `FF(acc_cons_en, acc_req_i.acc_cons_en, '0, clk_i, rst_ni);
-  `FF(store_pending_req, acc_req_i.store_pending, '0, clk_i, rst_ni);
+  `FF(load_complete, acc_resp.acc_resp.load_complete, '0, clk_i, rst_ni);
+  `FF(store_complete, acc_resp.acc_resp.store_complete, '0, clk_i, rst_ni);
+  `FF(store_pending, acc_resp.acc_resp.store_pending, '0, clk_i, rst_ni);
+  `FF(fflags_valid, acc_resp.acc_resp.fflags_valid, '0, clk_i, rst_ni);
+  `FF(fflags, acc_resp.acc_resp.fflags, '0, clk_i, rst_ni);
+  `FF(acc_cons_en, acc_req_i.acc_req.acc_cons_en, '0, clk_i, rst_ni);
+  `FF(store_pending_req, acc_req_i.acc_req.store_pending, '0, clk_i, rst_ni);
 
   always_comb begin
     //// Resp to CVA6
     acc_resp_o = acc_resp_out;
-    acc_resp_o.req_ready = req_ready;
-    acc_resp_o.resp_valid = resp_valid;
+    acc_resp_o.acc_resp.req_ready = req_ready;
+    acc_resp_o.acc_resp.resp_valid = resp_valid;
     
     // MetaData
-    acc_resp_o.load_complete = load_complete;
-    acc_resp_o.store_complete = store_complete;
-    acc_resp_o.store_pending = store_pending;
-    acc_resp_o.fflags_valid = fflags_valid;
-    acc_resp_o.fflags = fflags;
+    acc_resp_o.acc_resp.load_complete = load_complete;
+    acc_resp_o.acc_resp.store_complete = store_complete;
+    acc_resp_o.acc_resp.store_pending = store_pending;
+    acc_resp_o.acc_resp.fflags_valid = fflags_valid;
+    acc_resp_o.acc_resp.fflags = fflags;
 
     // Invalidation Interface
-    acc_resp_o.inval_valid = inval_valid;
-    acc_resp_o.inval_addr = inval_addr;
+    acc_resp_o.acc_resp.inval_valid = inval_valid;
+    acc_resp_o.acc_resp.inval_addr = inval_addr;
 
     //// Request from CVA6
     acc_req_o = acc_req;
-    acc_req_o.req_valid = req_valid;
-    acc_req_o.resp_ready = resp_ready;
-    acc_req_o.inval_ready = inval_ready;
-    acc_req_o.store_pending = store_pending_req;
-    acc_req_o.acc_cons_en = acc_cons_en;
+    acc_req_o.acc_req.req_valid = req_valid;
+    acc_req_o.acc_req.resp_ready = resp_ready;
+    acc_req_o.acc_req.inval_ready = inval_ready;
+    acc_req_o.acc_req.store_pending = store_pending_req;
+    acc_req_o.acc_req.acc_cons_en = acc_cons_en;
 
   end
 
@@ -235,6 +245,12 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     .FPUSupport  (FPUSupport          ),
     .FPExtSupport(FPExtSupport        ),
     .FixPtSupport(FixPtSupport        ),
+    .CVA6Cfg           (CVA6Cfg             ),
+    .exception_t       (exception_t         ),
+    .accelerator_req_t (accelerator_req_t   ),
+    .accelerator_resp_t(accelerator_resp_t  ),
+    .cva6_to_acc_t     (cva6_to_acc_t       ),
+    .acc_to_cva6_t     (acc_to_cva6_t       ),
     .AxiDataWidth(ClusterAxiDataWidth ),
     .AxiAddrWidth(AxiAddrWidth        ),
     .axi_ar_t    (cluster_axi_ar_t    ),

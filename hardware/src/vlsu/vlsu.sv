@@ -11,6 +11,9 @@
 module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     parameter  int  unsigned NrLanes = 0,
     parameter  type          vaddr_t = logic,  // Type used to address vector register file elements
+    // CVA6 configuration
+    parameter  config_pkg::cva6_cfg_t CVA6Cfg = cva6_config_pkg::cva6_cfg,
+    parameter  type          exception_t = logic,
     // AXI Interface parameters
     parameter  int  unsigned AxiDataWidth = 0,
     parameter  int  unsigned AxiAddrWidth = 0,
@@ -46,8 +49,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     output logic      [1:0]         pe_req_ready_o,         // Load (0) and Store (1) units
     output pe_resp_t  [1:0]         pe_resp_o,              // Load (0) and Store (1) units
     output logic                    addrgen_ack_o,
-    output logic                    addrgen_error_o,
-    output vlen_t                   addrgen_error_vl_o,
+    output exception_t              addrgen_exception_o,
+    output vlen_t                   addrgen_exception_vstart_o,
+    output logic                    addrgen_fof_exception_o,
     // Interface with the lanes
     // Store unit operands
     input  elen_t     [NrLanes-1:0] stu_operand_i,
@@ -126,6 +130,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
 
   addrgen #(
     .NrLanes     (NrLanes     ),
+    .exception_t (exception_t ),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .axi_ar_t    (axi_ar_t    ),
@@ -150,8 +155,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .pe_req_valid_i             (pe_req_valid_i             ),
     .pe_vinsn_running_i         (pe_vinsn_running_i         ),
     .addrgen_ack_o              (addrgen_ack_o              ),
-    .addrgen_error_o            (addrgen_error_o            ),
-    .addrgen_error_vl_o         (addrgen_error_vl_o         ),
+    .addrgen_exception_o        (addrgen_exception_o        ),
+    .addrgen_exception_vstart_o (addrgen_exception_vstart_o ),
+    .addrgen_fof_exception_o    (addrgen_fof_exception_o    ),
     // Interface with the lanes
     .addrgen_operand_i          (addrgen_operand_i          ),
     .addrgen_operand_target_fu_i(addrgen_operand_target_fu_i),
