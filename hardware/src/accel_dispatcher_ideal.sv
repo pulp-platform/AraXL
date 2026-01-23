@@ -20,12 +20,17 @@
 `define N_VINSN 1
 `endif
 
-module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; (
+module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
+  parameter config_pkg::cva6_cfg_t     CVA6Cfg        = cva6_config_pkg::cva6_cfg,
+  parameter type                       cva6_to_acc_t  = logic,
+  parameter type                       acc_to_cva6_t  = logic,
+  localparam type                      xlen_t         = logic [CVA6Cfg.XLEN-1:0]
+  ) (
   input logic                     clk_i,
   input logic                     rst_ni,
   // Accelerator interaface
-  output accelerator_req_t  acc_req_o,
-  input  accelerator_resp_t acc_resp_i
+  output cva6_to_acc_t  acc_req_o,
+  input  acc_to_cva6_t acc_resp_i
 );
 
   localparam string vtrace = `STRINGIFY(`VTRACE);
@@ -40,8 +45,8 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; (
 
   typedef struct packed {
     riscv::instruction_t insn;
-    riscv::xlen_t rs1;
-    riscv::xlen_t rs2;
+    xlen_t rs1;
+    xlen_t rs2;
   } fifo_payload_t;
 
   logic [DATA_WIDTH-1:0] fifo_data_raw;
