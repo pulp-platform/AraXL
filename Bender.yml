@@ -1,18 +1,19 @@
 package:
-  name: ara
+  name: araxl
   authors:
     - "Matheus Cavalcante <matheusd@iis.ee.ethz.ch>"
     - "Matteo Perotti <mperotti@iis.ee.ethz.ch>"
     - "Basile Bougenot <basileb@student.ethz.ch>"
     - "Nils Wistoff <nwistoff@iis.ee.ethz.ch>"
     - "Paul Scheffler <paulsc@iis.ee.ethz.ch>"
+    - "Navaneeth Kunhi Purayil <nkunhi@iis.ee.ethz.ch>"
 
 dependencies:
-  axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.1                               }
-  common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.22.1                               }
-  ariane:             { git: "https://github.com/pulp-platform/cva6.git",               rev: 2ebe023f7289300348c68e99267afcc03256f3ed } # mp/acc_port_rebase
-  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.13                               }
-  apb:                { git: "https://github.com/pulp-platform/apb.git",                version: 0.2.4                                }
+  axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.9      }
+  common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.38.0      }
+  cva6:               { git: "https://github.com/pulp-platform/cva6.git",               rev: pulp-v2         }
+  tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.13      }
+  apb:                { git: "https://github.com/pulp-platform/apb.git",                version: 0.2.4       }
 
 workspace:
   checkout_dir: "hardware/deps"
@@ -30,12 +31,10 @@ sources:
     # Level 1
     - hardware/src/cva6_cut.sv
     - hardware/src/req_fork_cut.sv
-    - hardware/src/axi_to_mem.sv
     - hardware/src/ctrl_registers.sv
     - hardware/src/cva6_accel_first_pass_decoder.sv
     - hardware/src/ara_dispatcher.sv
     - hardware/src/ara_sequencer.sv
-    - hardware/src/axi_inval_filter.sv
     - hardware/src/lane/lane_sequencer.sv
     - hardware/src/lane/operand_queue.sv
     - hardware/src/lane/operand_requester.sv
@@ -79,6 +78,7 @@ sources:
     - target: ara_test
       files:
         # Level 1
+        - hardware/deps/cva6/corev_apu/tb/common/mock_uart.sv
         - hardware/tb/ara_testharness.sv
         # Level 2
         - hardware/tb/ara_tb.sv

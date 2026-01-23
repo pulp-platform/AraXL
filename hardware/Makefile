@@ -11,7 +11,7 @@ INSTALL_DIR := $(abspath $(ROOT_DIR)/../install)
 VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 
 BENDER         := $(ROOT_DIR)/../hardware/bender
-BENDER_VERSION := 0.27.3
+BENDER_VERSION := 0.29.1
 
 # Choose Ara's configuration
 ifndef config
@@ -54,7 +54,7 @@ top_level      ?= ara_tb
 ifeq ($(vcd_dump), 1)
   questa_version ?= 2019.3
 else
-  questa_version ?= 2021.2
+  questa_version ?= 2021.3
 endif
 # QuestaSim command
 questa_cmd     ?= questa-$(questa_version)
