@@ -9,13 +9,23 @@
 // response or an error message.
 
 module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
-    parameter int           unsigned NrLanes      = 0,
+    parameter int unsigned             NrLanes = 0,
     // Support for floating-point data types
-    parameter fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
+    parameter fpu_support_e            FPUSupport = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
-    parameter fpext_support_e        FPExtSupport = FPExtSupportEnable,
+    parameter fpext_support_e          FPExtSupport = FPExtSupportEnable,
     // Support for fixed-point data types
-    parameter fixpt_support_e        FixPtSupport = FixedPointEnable
+    parameter fixpt_support_e          FixPtSupport = FixedPointEnable,
+
+    // Ariane configuration
+    parameter config_pkg::cva6_cfg_t   CVA6Cfg = cva6_config_pkg::cva6_cfg,
+    localparam type                    xlen_t = logic [CVA6Cfg.XLEN-1:0],
+    
+    parameter type                     accelerator_req_t = logic,
+    parameter type                     accelerator_resp_t = logic,
+
+    parameter type                     ara_req_t = logic,
+    parameter type                     ara_resp_t = logic
   ) (
     // Clock and reset
     input  logic                                 clk_i,
@@ -86,13 +96,13 @@ endfunction
   `FF(vxsat_q, vxsat_d, '0)
   `FF(vxrm_q, vxrm_d, '0)
   // Converts between the internal representation of `vtype_t` and the full XLEN-bit CSR.
-  function automatic riscv::xlen_t xlen_vtype(vtype_t vtype);
-    xlen_vtype = {vtype.vill, {riscv::XLEN-9{1'b0}}, vtype.vma, vtype.vta, vtype.vsew,
+  function automatic xlen_t xlen_vtype(vtype_t vtype);
+    xlen_vtype = {vtype.vill, {CVA6Cfg.XLEN-9{1'b0}}, vtype.vma, vtype.vta, vtype.vsew,
       vtype.vlmul[2:0]};
   endfunction: xlen_vtype
 
   // Converts between the XLEN-bit vtype CSR and its internal representation
-  function automatic vtype_t vtype_xlen(riscv::xlen_t xlen);
+  function automatic vtype_t vtype_xlen(xlen_t xlen);
     vtype_xlen = '{
       vill  : xlen[riscv::XLEN-1],
       vma   : xlen[7],
@@ -183,6 +193,10 @@ endfunction
   // Keep track of issued reshuffle stores to avoid multiple stores for a same reshuffle
   logic reshuffle_ld_issued_d, reshuffle_ld_issued_q;
 
+  // Easily handle the riscv incoming instruction
+  riscv::instruction_t instr;
+  assign instr = riscv::instruction_t'(acc_req_i.insn);
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       state_q               <= NORMAL_OPERATION;
@@ -245,8 +259,9 @@ endfunction
   // Pipeline the VLSU's load and store complete signals, for timing reasons
   logic load_complete_q;
   logic store_complete_q;
-  `FF(load_complete_q, load_complete_i, 1'b0)
-  `FF(store_complete_q, store_complete_i, 1'b0)
+  logic illegal_insn_load, illegal_insn_store;
+  `FF(load_complete_q, load_complete_i || illegal_insn_load, 1'b0)
+  `FF(store_complete_q, store_complete_i || illegal_insn_store, 1'b0)
   logic rs_load_complete_q;
   `FF(rs_load_complete_q, rs_load_complete_i, 1'b0)
 
@@ -298,6 +313,8 @@ endfunction
     rs_mask_request_d   = rs_mask_request_q;
 
     illegal_insn = 1'b0;
+    illegal_insn_load  = 1'b0;
+    illegal_insn_store = 1'b0;
     vxsat_d      = vxsat_q;
     vxrm_d       = vxrm_q;
 
@@ -364,7 +381,7 @@ endfunction
       ///////////////////////
 
       RESHUFFLE_ST: begin
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+        automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
         // The instruction is a store
         is_vstore            = 1'b1;
@@ -499,8 +516,7 @@ endfunction
               state_d               = NORMAL_OPERATION;
               ara_req_valid_d       = 1'b0;
               // If there is an error, change vstart
-              if (ara_resp_i.error)
-                vstart_d = ara_resp_i.error_vl;
+              if (ara_resp_i.exception.valid) vstart_d = ara_resp_i.exception_vstart;
             end
             default: begin
               automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
@@ -554,14 +570,14 @@ endfunction
         acc_resp_o.req_ready = ara_req_ready_i;
 
         // Decode the instructions based on their opcode
-        unique case (acc_req_i.insn.itype.opcode)
+        unique case (instr.itype.opcode)
           //////////////////////////////////////
           //  Vector Arithmetic instructions  //
           //////////////////////////////////////
 
           riscv::OpcodeVec: begin
             // Instruction is of one of the RVV types
-            automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+            automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
             // These always respond at the same cycle
             acc_resp_o.resp_valid = 1'b1;
@@ -576,13 +592,13 @@ endfunction
 
                 // Update vtype
                 if (insn.vsetvli_type.func1 == 1'b0) begin // vsetvli
-                  vtype_d = vtype_xlen(riscv::xlen_t'(insn.vsetvli_type.zimm11));
+                  vtype_d = vtype_xlen(xlen_t'(insn.vsetvli_type.zimm11));
                 end else if (insn.vsetivli_type.func2 == 2'b11) begin // vsetivli
-                  vtype_d = vtype_xlen(riscv::xlen_t'(insn.vsetivli_type.zimm10));
+                  vtype_d = vtype_xlen(xlen_t'(insn.vsetivli_type.zimm10));
                 end else if (insn.vsetvl_type.func7 == 7'b100_0000) begin // vsetvl
-                  vtype_d = vtype_xlen(riscv::xlen_t'(acc_req_i.rs2[7:0]));
+                  vtype_d = vtype_xlen(xlen_t'(acc_req_i.rs2[7:0]));
                 end else
-                  acc_resp_o.error = 1'b1;
+                  illegal_insn = 1'b1;
 
                 // Check whether the updated vtype makes sense
                 if ((vtype_d.vsew > rvv_pkg::vew_e'($clog2(ELENB))) || // SEW <= ELEN
@@ -1425,9 +1441,9 @@ endfunction
                     // Wait until the back-end answers to acknowledge those instructions
                     if (ara_resp_valid_i) begin
                       acc_resp_o.req_ready   = 1'b1;
-                      acc_resp_o.result = ara_resp_i.resp;
-                      acc_resp_o.error  = ara_resp_i.error;
                       acc_resp_o.resp_valid  = 1'b1;
+                      acc_resp_o.result = ara_resp_i.resp;
+                      acc_resp_o.exception  = ara_resp_i.exception;
                       ara_req_valid_d   = 1'b0;
                     end
                   end
@@ -2101,9 +2117,9 @@ endfunction
                       // Wait until the back-end answers to acknowledge those instructions
                       if (ara_resp_valid_i) begin
                         acc_resp_o.req_ready   = 1'b1;
-                        acc_resp_o.result = vfmvfs_result;
-                        acc_resp_o.error  = ara_resp_i.error;
                         acc_resp_o.resp_valid  = 1'b1;
+                        acc_resp_o.result = vfmvfs_result;
+                        acc_resp_o.exception  = ara_resp_i.exception;
                         ara_req_valid_d   = 1'b0;
                       end
                     end
@@ -2214,8 +2230,7 @@ endfunction
                         end
                         default: begin
                           // Trigger an error
-                          acc_resp_o.error = 1'b1;
-                          ara_req_valid_d  = 1'b0;
+                          illegal_insn = 1'b1;
                         end
                       endcase
                     end
@@ -2679,7 +2694,7 @@ endfunction
 
           riscv::OpcodeLoadFp: begin
             // Instruction is of one of the RVV types
-            automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+            automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
             // The instruction is a load
             is_vload = 1'b1;
@@ -2731,8 +2746,8 @@ endfunction
               end
               default: begin // Invalid. Element is too wide, or encoding is non-existant.
                 acc_resp_o.req_ready  = 1'b1;
-                acc_resp_o.error = 1'b1;
                 acc_resp_o.resp_valid = 1'b1;
+                illegal_insn          = 1'b1;
                 ara_req_valid_d  = 1'b0;
               end
             endcase
@@ -2755,14 +2770,10 @@ endfunction
                   end
                   5'b10000: begin // Unit-strided, fault-only first
                     // TODO: Not implemented
-                    illegal_insn     = 1'b1;
-                    acc_resp_o.req_ready  = 1'b1;
-                    acc_resp_o.resp_valid = 1'b1;
+                    illegal_insn_load     = 1'b1;
                   end
                   default: begin // Reserved
-                    illegal_insn     = 1'b1;
-                    acc_resp_o.req_ready  = 1'b1;
-                    acc_resp_o.resp_valid = 1'b1;
+                    illegal_insn_load     = 1'b1;
                   end
                 endcase
               end
@@ -2790,16 +2801,14 @@ endfunction
               2'b01: begin
                 // But the new eew is greater than vsew
                 if (signed'(ara_req_d.vtype.vsew - vtype_q.vsew) > 0) begin
-                  illegal_insn     = 1'b1;
-                  acc_resp_o.resp_valid = 1'b1;
+                  illegal_insn_load     = 1'b1;
                 end
               end
               // The new emul is greater than the previous lmul
               2'b10: begin
                 // But the new eew is lower than vsew
                 if (signed'(ara_req_d.vtype.vsew - vtype_q.vsew) < 0) begin
-                  illegal_insn     = 1'b1;
-                  acc_resp_o.resp_valid = 1'b1;
+                  illegal_insn_load     = 1'b1;
                 end
               end
               default:;
@@ -2809,20 +2818,16 @@ endfunction
             // access.
             unique case (ara_req_d.emul)
               LMUL_2: if ((insn.varith_type.rd & 5'b00001) != 5'b00000) begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_load     = 1'b1;
               end
               LMUL_4: if ((insn.varith_type.rd & 5'b00011) != 5'b00000) begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_load     = 1'b1;
               end
               LMUL_8: if ((insn.varith_type.rd & 5'b00111) != 5'b00000) begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_load     = 1'b1;
               end
               LMUL_RSVD: begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_load     = 1'b1;
               end
               default:;
             endcase
@@ -2832,9 +2837,7 @@ endfunction
               // Execute also if vl == 0
               ignore_zero_vl_check = 1'b1;
               // The LMUL value is kept in the instruction itself
-              illegal_insn     = 1'b0;
-              acc_resp_o.req_ready  = 1'b0;
-              acc_resp_o.resp_valid = 1'b0;
+              illegal_insn_load     = 1'b0;
               ara_req_valid_d  = 1'b1;
 
               // Maximum vector length. VLMAX = nf * VLEN / EW8.
@@ -2857,7 +2860,7 @@ endfunction
                 end
                 default: begin
                   // Trigger an error for the reserved simm values
-                  illegal_insn     = 1'b1;
+                  illegal_insn_load     = 1'b1;
                 end
               endcase
               ara_req_d.vl = ara_req_d.vl >> ara_req_d.vtype.vsew;
@@ -2867,12 +2870,12 @@ endfunction
             // Wait until the back-end answers to acknowledge those instructions
             if (ara_resp_valid_i) begin
               acc_resp_o.req_ready  = 1'b1;
-              acc_resp_o.error = ara_resp_i.error;
+              acc_resp_o.exception  = ara_resp_i.exception;
               acc_resp_o.resp_valid = 1'b1;
               ara_req_valid_d  = 1'b0;
               // In case of error, modify vstart
-              if (ara_resp_i.error)
-                vstart_d = ara_resp_i.error_vl;
+              if (ara_resp_i.exception.valid)
+                vstart_d = ara_resp_i.exception_vstart;
             end
           end
 
@@ -2888,7 +2891,7 @@ endfunction
 
           riscv::OpcodeStoreFp: begin
             // Instruction is of one of the RVV types
-            automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+            automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
             // The instruction is a store
             is_vstore = 1'b1;
@@ -2946,10 +2949,7 @@ endfunction
                   end
               end
               default: begin // Invalid. Element is too wide, or encoding is non-existant.
-                acc_resp_o.req_ready  = 1'b1;
-                acc_resp_o.error = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
-                ara_req_valid_d  = 1'b0;
+                illegal_insn  = 1'b1;
               end
             endcase
 
@@ -2970,9 +2970,7 @@ endfunction
                     ara_req_d.use_eew1   = 1'b1;
                   end
                   default: begin // Reserved
-                    illegal_insn     = 1'b1;
-                    acc_resp_o.req_ready  = 1'b1;
-                    acc_resp_o.resp_valid = 1'b1;
+                    illegal_insn_store    = 1'b1;
                   end
                 endcase
               end
@@ -3000,16 +2998,14 @@ endfunction
               2'b01: begin
                 // But the new eew is greater than vsew
                 if (signed'(ara_req_d.vtype.vsew - vtype_q.vsew) > 0) begin
-                  illegal_insn     = 1'b1;
-                  acc_resp_o.resp_valid = 1'b1;
+                  illegal_insn_store    = 1'b1;
                 end
               end
               // The new emul is greater than the previous lmul
               2'b10: begin
                 // But the new eew is lower than vsew
                 if (signed'(ara_req_d.vtype.vsew - vtype_q.vsew) < 0) begin
-                  illegal_insn     = 1'b1;
-                  acc_resp_o.resp_valid = 1'b1;
+                  illegal_insn_store    = 1'b1;
                 end
               end
               default:;
@@ -3019,20 +3015,16 @@ endfunction
             // access.
             unique case (ara_req_d.emul)
               LMUL_2: if ((insn.varith_type.rd & 5'b00001) != 5'b00000) begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_store     = 1'b1;
               end
               LMUL_4: if ((insn.varith_type.rd & 5'b00011) != 5'b00000) begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_store     = 1'b1;
               end
               LMUL_8: if ((insn.varith_type.rd & 5'b00111) != 5'b00000) begin
-                illegal_insn     = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_store     = 1'b1;
               end
               LMUL_RSVD: begin
-                  illegal_insn     = 1'b1;
-                  acc_resp_o.resp_valid = 1'b1;
+                illegal_insn_store     = 1'b1;
               end
               default:;
             endcase
@@ -3042,6 +3034,7 @@ endfunction
             if (ara_req_d.op == VSE && insn.vmem_type.rs2 == 5'b01000) begin
               // Execute also if vl == 0
               ignore_zero_vl_check = 1'b1;
+              illegal_insn_store    = 1'b0;
 
               // Maximum vector length. VLMAX = nf * VLEN / EW8.
               unique case (insn.vmem_type.nf)
@@ -3063,7 +3056,7 @@ endfunction
                 end
                 default: begin
                   // Trigger an error for the reserved simm values
-                  illegal_insn     = 1'b1;
+                  illegal_insn_store = 1'b1;
                 end
               endcase
               ara_req_d.vtype.vsew = eew_q[ara_req_d.vs1]; // TODO: add test on vs1r for different element widths 
@@ -3078,12 +3071,12 @@ endfunction
             // Wait until the back-end answers to acknowledge those instructions
             if (ara_resp_valid_i) begin
               acc_resp_o.req_ready  = 1'b1;
-              acc_resp_o.error = ara_resp_i.error;
               acc_resp_o.resp_valid = 1'b1;
+              acc_resp_o.exception  = ara_resp_i.exception;
               ara_req_valid_d  = 1'b0;
               // If there is an error, change vstart
-              if (ara_resp_i.error)
-                vstart_d = ara_resp_i.error_vl;
+              if (ara_resp_i.exception.valid)
+                vstart_d = ara_resp_i.exception_vstart;
             end
           end
 
@@ -3096,10 +3089,10 @@ endfunction
             acc_resp_o.resp_valid = 1'b1;
             is_config        = 1'b1;
 
-            unique case (acc_req_i.insn.itype.funct3)
+            unique case (instr.itype.funct3)
               3'b001: begin // csrrw
                 // Decode the CSR.
-                case (riscv::csr_addr_t'(acc_req_i.insn.itype.imm))
+                case (riscv::csr_addr_t'(instr.itype.imm))
                   // Only vstart can be written with CSR instructions.
                   riscv::CSR_VSTART: begin
                     vstart_d          = acc_req_i.rs1;
@@ -3113,30 +3106,30 @@ endfunction
                     vxsat_d           = vxsat_e'(acc_req_i.rs1[0]);
                     acc_resp_o.result = vlen_t'(vxsat_q);
                   end
-                  default: acc_resp_o.error = 1'b1;
+                  default: illegal_insn = 1'b1;
                 endcase
               end
               3'b010: begin // csrrs
                 // Decode the CSR.
-                case (riscv::csr_addr_t'(acc_req_i.insn.itype.imm))
+                case (riscv::csr_addr_t'(instr.itype.imm))
                   riscv::CSR_VSTART: begin
                     vstart_d          = vstart_q | vlen_t'(acc_req_i.rs1);
                     acc_resp_o.result = vstart_q;
                   end
                   riscv::CSR_VTYPE: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VXRM: begin
                     vxrm_d            = vxrm_q | vxrm_t'(acc_req_i.rs1[1:0]);
@@ -3146,44 +3139,44 @@ endfunction
                     vxsat_d           = vxsat_q | vxsat_e'(acc_req_i.rs1[0]);
                     acc_resp_o.result = vlen_t'(vxsat_q);
                   end
-                  default: acc_resp_o.error = 1'b1;
+                  default: illegal_insn = 1'b1;
                 endcase
               end
               3'b011: begin // csrrc
                 // Decode the CSR.
-                case (riscv::csr_addr_t'(acc_req_i.insn.itype.imm))
+                case (riscv::csr_addr_t'(instr.itype.imm))
                   riscv::CSR_VSTART: begin
                     vstart_d          = vstart_q & ~vlen_t'(acc_req_i.rs1);
                     acc_resp_o.result = vstart_q;
                   end
                   riscv::CSR_VTYPE: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VXSAT: begin
                     vxsat_d           = vxsat_q & ~vxsat_e'(acc_req_i.rs1[0]);
                     acc_resp_o.result = vxsat_q;
                   end
-                  default: acc_resp_o.error = 1'b1;
+                  default: illegal_insn = 1'b1;
                 endcase
               end
               3'b101: begin // csrrwi
                 // Decode the CSR.
-                case (riscv::csr_addr_t'(acc_req_i.insn.itype.imm))
+                case (riscv::csr_addr_t'(instr.itype.imm))
                   // Only vstart can be written with CSR instructions.
                   riscv::CSR_VSTART: begin
-                    vstart_d          = vlen_t'(acc_req_i.insn.itype.rs1);
+                    vstart_d          = vlen_t'(instr.itype.rs1);
                     acc_resp_o.result = vstart_q;
                   end
                   riscv::CSR_VXRM: begin
@@ -3192,84 +3185,82 @@ endfunction
                   end
                   riscv::CSR_VXSAT: begin
                     // logic [19:15] rs1; So, LSB is [15]
-                    vxsat_d           = acc_req_i.insn.itype.rs1[15];
+                    vxsat_d           = instr.itype.rs1[15];
                     acc_resp_o.result = vxsat_q;
                   end
-                  default: acc_resp_o.error = 1'b1;
+                  default: illegal_insn = 1'b1;
                 endcase
               end
               3'b110: begin // csrrsi
                 // Decode the CSR.
-                case (riscv::csr_addr_t'(acc_req_i.insn.itype.imm))
+                case (riscv::csr_addr_t'(instr.itype.imm))
                   riscv::CSR_VSTART: begin
-                    vstart_d          = vstart_q | vlen_t'(acc_req_i.insn.itype.rs1);
+                    vstart_d          = vstart_q | vlen_t'(instr.itype.rs1);
                     acc_resp_o.result = vstart_q;
                   end
                   riscv::CSR_VTYPE: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VXSAT: begin
                     // logic [19:15] rs1; So, LSB is [15]
-                    vxsat_d           = vxsat_q | vxsat_e'(acc_req_i.insn.itype.rs1[15]);
+                    vxsat_d           = vxsat_q | vxsat_e'(instr.itype.rs1[15]);
                     acc_resp_o.result = vxsat_q;
                   end
-                  default: acc_resp_o.error = 1'b1;
+                  default: illegal_insn = 1'b1;
                 endcase
               end
               3'b111: begin // csrrci
                 // Decode the CSR.
-                unique case (riscv::csr_addr_t'(acc_req_i.insn.itype.imm))
+                unique case (riscv::csr_addr_t'(instr.itype.imm))
                   riscv::CSR_VSTART: begin
-                    vstart_d          = vstart_q & ~vlen_t'(acc_req_i.insn.itype.rs1);
+                    vstart_d          = vstart_q & ~vlen_t'(instr.itype.rs1);
                     acc_resp_o.result = vstart_q;
                   end
                   riscv::CSR_VTYPE: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = xlen_vtype(vtype_q);
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VL: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = vl_cluster_q;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VLENB: begin
                     // Only reads are allowed
-                    if (acc_req_i.insn.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
-                    else acc_resp_o.error                                 = 1'b1;
+                    if (instr.itype.rs1 == '0) acc_resp_o.result = VLENB << num_clusters_i;
+                    else illegal_insn = 1'b1;
                   end
                   riscv::CSR_VXSAT: begin
                     // logic [19:15] rs1; So, LSB is [15]
-                    vxsat_d           = vxsat_q & ~vxsat_e'(acc_req_i.insn.itype.rs1[15]);
+                    vxsat_d           = vxsat_q & ~vxsat_e'(instr.itype.rs1[15]);
                     acc_resp_o.result = vxsat_q;
                   end
-                  default: acc_resp_o.error = 1'b1;
+                  default: illegal_insn= 1'b1;
                 endcase
               end
               default: begin
                 // Trigger an illegal instruction
-                acc_resp_o.error = 1'b1;
-                acc_resp_o.resp_valid = 1'b1;
+                illegal_insn = 1'b1;
               end
             endcase
           end
 
           default: begin
             // Trigger an illegal instruction
-            acc_resp_o.error = 1'b1;
-            acc_resp_o.resp_valid = 1'b1;
+            illegal_insn = 1'b1;
           end
         endcase
       end
@@ -3282,11 +3273,21 @@ endfunction
       // Check that we have we have vfrec7, vfrsqrt7
       if (ara_req_valid_d && (ara_req_d.op inside {VFREC7, VFRSQRT7}) && (FPExtSupport == FPExtSupportDisable))
         illegal_insn = 1'b1;
-
+      
+      // Raise an illegal instruction exception
+      if ( illegal_insn || illegal_insn_load || illegal_insn_store ) begin
+        ara_req_valid_d            = 1'b0;
+        acc_resp_o.req_ready       = 1'b1;
+        acc_resp_o.resp_valid      = 1'b1;
+        acc_resp_o.exception.valid = 1'b1;
+        acc_resp_o.exception.cause = riscv::ILLEGAL_INSTR;
+        acc_resp_o.exception.tval  = instr;
+      end
+      
       // Check if we need to reshuffle our vector registers involved in the operation
       // This operation is costly when occurs, so avoid it if possible
-      if (ara_req_valid_d && !acc_resp_o.error) begin
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+      if (ara_req_valid_d && !acc_resp_o.exception.valid) begin
+        automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
         // Is the instruction an in-lane one and could it be subject to reshuffling?
         in_lane_op = ara_req_d.op inside {[VADD:VMERGE]} || ara_req_d.op inside {[VREDSUM:VMSBC]} ||
@@ -3323,7 +3324,7 @@ endfunction
       // Reshuffle if at least one of the three registers needs a reshuffle
       if (|reshuffle_req_d && !reshuffle_pending_q) begin
         // Instruction is of one of the RVV types
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+        automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
         // Stall the interface, and inject a reshuffling instruction
         acc_resp_o.req_ready  = 1'b0;
@@ -3343,12 +3344,6 @@ endfunction
           state_d = RESHUFFLE_ST;
         end
       end
-    end
-
-    // Raise an illegal instruction exception
-    if (illegal_insn) begin
-      acc_resp_o.error = 1'b1;
-      ara_req_valid_d  = 1'b0;
     end
 
     // Update the EEW
@@ -3392,7 +3387,7 @@ endfunction
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
     if (is_decoding && (vl_q == '0 || null_vslideup) && !is_config &&
-      !ignore_zero_vl_check && !acc_resp_o.error) begin
+      !ignore_zero_vl_check && !acc_resp_o.exception.valid) begin
       // If we are acknowledging a memory operation, we must tell Ariane that the memory
       // operation was resolved (to decrement its pending load/store counter)
       // This can collide with the same signal from the vector load/store unit, so we must
