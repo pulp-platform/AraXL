@@ -9,28 +9,31 @@
 // Helps pipeline the request interface from CVA6 to ARA Clusters
 
 module req_fork_cut import ara_pkg::*; import rvv_pkg::*; #(
-  parameter int unsigned NrCuts = 1
+  parameter int unsigned NrCuts             = 1, 
+
+  parameter type         cva6_to_acc_t      = logic,
+  parameter type         acc_to_cva6_t      = logic
 ) (
   input logic clk_i, 
   input logic rst_ni,
 
-  input accelerator_req_t   req_i,
-  output accelerator_resp_t resp_o,
+  input cva6_to_acc_t   req_i,
+  output acc_to_cva6_t resp_o,
 
-  output accelerator_req_t [1:0] req_o,
-  input accelerator_resp_t [1:0] resp_i
+  output cva6_to_acc_t [1:0] req_o,
+  input acc_to_cva6_t [1:0] resp_i
 );
 
   logic acc_req_valid_i, acc_req_ready_o;
   logic [1:0] acc_req_valid_o, acc_req_ready_i;
 
-  accelerator_req_t  [1:0] req_cut_i, req_cut_o;
-  accelerator_resp_t [1:0] resp_cut_i, resp_cut_o;
+  cva6_to_acc_t  [1:0] req_cut_i, req_cut_o;
+  acc_to_cva6_t [1:0] resp_cut_i, resp_cut_o;
   
   // From CVA6
-  assign acc_req_valid_i = req_i.req_valid;
+  assign acc_req_valid_i = req_i.acc_req.req_valid;
   for (genvar i=0; i<2; i++) begin
-    assign acc_req_ready_i[i] = resp_cut_o[i].req_ready;
+    assign acc_req_ready_i[i] = resp_cut_o[i].acc_resp.req_ready;
   end
 
   stream_fork #(
@@ -52,7 +55,9 @@ module req_fork_cut import ara_pkg::*; import rvv_pkg::*; #(
     if (NrCuts > 0) begin
       // Cut after a fork
       cva6_cut # (
-        .NrCuts      (NrCuts           )
+        .NrCuts            (NrCuts               ), 
+        .cva6_to_acc_t     (cva6_to_acc_t        ),
+        .acc_to_cva6_t     (acc_to_cva6_t        )
       ) i_cva6_macro_cut (
         .clk_i       (clk_i            ), 
         .rst_ni      (rst_ni           ), 
@@ -75,11 +80,11 @@ module req_fork_cut import ara_pkg::*; import rvv_pkg::*; #(
   always_comb begin
     for (int i=0; i<2; i++) begin
       req_cut_i[i] = req_i;
-      req_cut_i[i].req_valid = acc_req_valid_o[i];
+      req_cut_i[i].acc_req.req_valid = acc_req_valid_o[i];
     end
 
     resp_o = resp_cut_o[0];
-    resp_o.req_ready = acc_req_ready_o;
+    resp_o.acc_resp.req_ready = acc_req_ready_o;
   end
 
 endmodule 
