@@ -14,6 +14,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     parameter int  unsigned AxiAddrWidth = 0,
     parameter type          axi_ar_t     = logic,
     parameter type          axi_aw_t     = logic,
+    // CVA6 configuration
+    parameter  config_pkg::cva6_cfg_t CVA6Cfg = cva6_config_pkg::cva6_cfg,
+    parameter  type         exception_t  = logic,
     // Dependant parameters. DO NOT CHANGE!
     parameter type          axi_addr_t   = logic [AxiAddrWidth-1:0]
   ) (
@@ -36,9 +39,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     input  pe_req_t                        pe_req_i,
     input  logic                           pe_req_valid_i,
     input  logic     [NrVInsn-1:0]         pe_vinsn_running_i,
-    output logic                           addrgen_error_o,
+    output exception_t                     addrgen_exception_o,
     output logic                           addrgen_ack_o,
-    output vlen_t                          addrgen_error_vl_o,
+    output vlen_t                          addrgen_exception_vstart_o,
+    output logic                           addrgen_fof_exception_o, // fault-only-first
     // Interface with the load/store units
     output addrgen_axi_req_t               axi_addrgen_req_o,
     output logic                           axi_addrgen_req_valid_o,
@@ -123,7 +127,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   axi_addr_t                        idx_final_addr_d, idx_final_addr_q;
   elen_t                            idx_addr;
   logic                             idx_op_error_d, idx_op_error_q;
-  vlen_t                            addrgen_error_vl_d;
+  vlen_t                            addrgen_exception_vstart_d;
 
   // Pointer to point to the correct
   logic [$clog2(NrLanes)-1:0] word_lane_ptr_d, word_lane_ptr_q;
@@ -183,7 +187,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
     // Nothing to acknowledge
     addrgen_ack_o           = 1'b0;
-    addrgen_error_o         = 1'b0;
+    addrgen_exception_o       = '0;
+    addrgen_exception_o.valid = 1'b0;
+    addrgen_exception_o.gva   = '0;
+    addrgen_exception_o.tinst = '0;
+    addrgen_exception_o.tval  = '0;
+    addrgen_exception_o.tval2 = '0;
+    addrgen_exception_o.cause = '0;
 
     // No valid words for the spill register
     idx_addr_valid_d        = 1'b0;
@@ -248,7 +258,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         if (is_addr_error(pe_req_q.scalar_op, pe_req_q.vtype.vsew)) begin
           state_d         = IDLE;
           addrgen_ack_o   = 1'b1;
-          addrgen_error_o = 1'b1;
+          addrgen_exception_o.valid = 1'b1;
+          addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
+          addrgen_exception_o.tval  = '0;
         end else begin
           addrgen_req = '{
             addr    : pe_req_q.scalar_op,
@@ -376,7 +388,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           word_lane_ptr_d = '0;
           // Raise an error if necessary
           if (idx_op_error_q) begin
-            addrgen_error_o = 1'b1;
+            // In this case, we always get EEW-misaligned exceptions
+            addrgen_exception_o.valid = 1'b1;
+            addrgen_exception_o.cause = riscv::ILLEGAL_INSTR;
+            addrgen_exception_o.tval  = '0;
           end
         end
       end
@@ -393,7 +408,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       idx_op_cnt_q       <= '0;
       last_elm_subw_q    <= '0;
       idx_op_error_q     <= '0;
-      addrgen_error_vl_o <= '0;
+      addrgen_exception_vstart_o <= '0;
     end else begin
       state_q            <= state_d;
       pe_req_q           <= pe_req_d;
@@ -403,7 +418,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       idx_op_cnt_q       <= idx_op_cnt_d;
       last_elm_subw_q    <= last_elm_subw_d;
       idx_op_error_q     <= idx_op_error_d;
-      addrgen_error_vl_o <= addrgen_error_vl_d;
+      addrgen_exception_vstart_o <= addrgen_exception_vstart_d;
     end
   end
 
@@ -481,7 +496,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     eff_axi_dw_log_d = eff_axi_dw_log_q;
 
     idx_addr_ready_d    = 1'b0;
-    addrgen_error_vl_d  = '0;
+    addrgen_exception_vstart_d  = '0;
 
     // No error by default
     idx_op_error_d = 1'b0;
@@ -721,7 +736,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   // Generate an error
                   idx_op_error_d          = 1'b1;
                   // Forward next vstart info to the dispatcher
-                  addrgen_error_vl_d      = addrgen_req.len - axi_addrgen_q.len - 1;
+                  addrgen_exception_vstart_d  = addrgen_req.len - axi_addrgen_q.len - 1;
                   addrgen_req_ready       = 1'b1;
                   axi_addrgen_state_d     = AXI_ADDRGEN_IDLE;
                 end

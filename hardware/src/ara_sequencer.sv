@@ -13,7 +13,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     // Dependant parameters. DO NOT CHANGE!
     // Ara has NrLanes + 3 processing elements: each one of the lanes, the vector load unit, the
     // vector store unit, the slide unit, and the mask unit.
-    localparam int unsigned NrPEs   = NrLanes + 4
+    localparam int unsigned NrPEs   = NrLanes + 4,
+    
+    // CVA6-related parameters
+    parameter type                              exception_t        = logic,
+
+    parameter type          ara_req_t = logic,
+    parameter type          ara_resp_t = logic
   ) (
     input  logic                            clk_i,
     input  logic                            rst_ni,
@@ -40,8 +46,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     output logic                            pe_scalar_resp_ready_o,
     // Interface with the Address Generation
     input  logic                            addrgen_ack_i,
-    input  logic                            addrgen_error_i,
-    input  vlen_t                           addrgen_error_vl_i
+    input  exception_t                      addrgen_exception_i,
+    input  vlen_t                           addrgen_exception_vstart_i,
+    input  logic                            addrgen_fof_exception_i
   );
 
   ///////////////////////////////////
@@ -444,8 +451,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
           state_d             = IDLE;
           ara_req_ready_o     = 1'b1;
           ara_resp_valid_o    = 1'b1;
-          ara_resp_o.error    = addrgen_error_i;
-          ara_resp_o.error_vl = addrgen_error_vl_i;
+          ara_resp_o.exception = addrgen_exception_i;
+          ara_resp_o.exception_vstart = addrgen_exception_vstart_i;
+          ara_resp_o.fof_exception = addrgen_fof_exception_i;
         end
 
         // Wait for the scalar result

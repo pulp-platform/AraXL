@@ -15,6 +15,16 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     parameter  fpext_support_e        FPExtSupport = FPExtSupportEnable,
     // Support for fixed-point data types
     parameter  fixpt_support_e        FixPtSupport = FixedPointEnable,
+    
+    // Ariane configuration
+    parameter config_pkg::cva6_cfg_t            CVA6Cfg            = cva6_config_pkg::cva6_cfg,
+    // CVA6-related parameters
+    parameter type                              exception_t        = logic,
+    parameter type                              accelerator_req_t  = logic,
+    parameter type                              accelerator_resp_t = logic,
+    parameter type                              cva6_to_acc_t      = logic,
+    parameter type                              acc_to_cva6_t      = logic,
+
     // AXI Interface
     parameter  int           unsigned AxiDataWidth = 0,
     parameter  int           unsigned AxiAddrWidth = 0,
@@ -45,8 +55,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     input  id_cluster_t       cluster_id_i,
     input num_cluster_t       num_clusters_i,
     // Interface with Ariane
-    input  accelerator_req_t  acc_req_i,
-    output accelerator_resp_t acc_resp_o,
+    input  cva6_to_acc_t      acc_req_i,
+    output acc_to_cva6_t      acc_resp_o,
     // AXI interface
     output axi_req_t          axi_req_o,
     input  axi_resp_t         axi_resp_i,
@@ -84,6 +94,99 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   localparam int unsigned StrbWidth = DataWidth / 8;
   typedef logic [StrbWidth-1:0] strb_t;
 
+  // Interfaces between Ara's dispatcher and Ara's backend
+  typedef struct packed {
+    ara_op_e op; // Operation
+
+    // Stores and slides do not re-shuffle the
+    // source registers. In these two cases, vl refers
+    // to the target EEW and vtype.vsew, respectively.
+    // Since operand requesters work with the old
+    // eew of the source registers, we should rescale
+    // vl to the old eew to fetch the correct number of Bytes.
+    //
+    // Another solution would be to pass directly the target
+    // eew (vstores) or the vtype.vsew (vslides), but this would
+    // create confusion with the current naming convention
+    logic scale_vl;
+
+    // Mask vector register operand
+    logic vm;
+    rvv_pkg::vew_e eew_vmask;
+
+    // 1st vector register operand
+    logic [4:0] vs1;
+    logic use_vs1;
+    opqueue_conversion_e conversion_vs1;
+    rvv_pkg::vew_e eew_vs1;
+    rvv_pkg::vew_e old_eew_vs1;
+
+    // 2nd vector register operand
+    logic [4:0] vs2;
+    logic use_vs2;
+    opqueue_conversion_e conversion_vs2;
+    rvv_pkg::vew_e eew_vs2;
+
+    // Use vd as an operand as well (e.g., vmacc)
+    logic use_vd_op;
+    rvv_pkg::vew_e eew_vd_op;
+
+    // Scalar operand
+    elen_t scalar_op;
+    logic use_scalar_op;
+
+    // 2nd scalar operand: stride for constant-strided vector load/stores, slide offset for vector
+    // slides
+    elen_t stride;
+    logic is_stride_np2;
+
+    // Destination vector register
+    logic [4:0] vd;
+    logic use_vd;
+
+    // If asserted: vs2 is kept in MulFPU opqueue C, and vd_op in MulFPU A
+    logic swap_vs2_vd_op;
+
+    // Effective length multiplier
+    rvv_pkg::vlmul_e emul;
+
+    // Number of segments in segment mem op
+    logic [2:0] nf;
+
+    // Is this a fault-only-first load?
+    logic fault_only_first;
+
+    // Rounding-Mode for FP operations
+    fpnew_pkg::roundmode_e fp_rm;
+    // Widen FP immediate (re-encoding)
+    logic wide_fp_imm;
+    // Resizing of FP conversions
+    resize_e cvt_resize;
+
+    // Vector machine metadata
+    vlen_t vl;
+    vlen_cluster_t vl_cluster;
+    vlen_t vstart;
+    rvv_pkg::vtype_t vtype;
+
+    // Request token, for registration in the sequencer
+    logic token;
+  } ara_req_t;
+
+  typedef struct packed {
+    // Scalar response
+    elen_t resp;
+
+    // Instruction triggered an exception
+    exception_t exception;
+
+    // Fault-only-first exception on element whose idx > 0
+    logic fof_exception;
+
+    // New value for vstart
+    vlen_t exception_vstart;
+  } ara_resp_t;
+
   //////////////////
   //  Dispatcher  //
   //////////////////
@@ -107,7 +210,12 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   vxrm_t     [NrLanes-1:0]      alu_vxrm;
 
   ara_dispatcher #(
-    .NrLanes     (NrLanes    )
+    .NrLanes           (NrLanes             ),
+    .CVA6Cfg           (CVA6Cfg             ),
+    .accelerator_req_t (accelerator_req_t   ),
+    .accelerator_resp_t(accelerator_resp_t  ),
+    .ara_req_t         (ara_req_t           ),
+    .ara_resp_t        (ara_resp_t          )
   ) i_dispatcher (
     .clk_i             (clk_i           ),
     .rst_ni            (rst_ni          ),
@@ -115,8 +223,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .num_clusters_i    (num_clusters_i  ),
     .cluster_id_i      (cluster_id_i    ),
     // Interface with Ariane
-    .acc_req_i         (acc_req_i       ),
-    .acc_resp_o        (acc_resp_o      ),
+    .acc_req_i         (acc_req_i.acc_req    ),
+    .acc_resp_o        (acc_resp_o.acc_resp  ),
     // Interface with the sequencer
     .ara_req_o         (ara_req         ),
     .ara_req_valid_o   (ara_req_valid   ),
@@ -148,8 +256,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   pe_resp_t          [NrPEs-1:0]   pe_resp;
   // Interface with the address generator
   logic                            addrgen_ack;
-  logic                            addrgen_error;
-  vlen_t                           addrgen_error_vl;
+  exception_t                      addrgen_exception;
+  vlen_t                           addrgen_exception_vstart;
+  logic                            addrgen_fof_exception;
   logic              [NrLanes-1:0] alu_vinsn_done;
   logic              [NrLanes-1:0] mfpu_vinsn_done;
   // Interface with the operand requesters
@@ -170,7 +279,12 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   elen_t     result_scalar;
   logic      result_scalar_valid;
 
-  ara_sequencer #(.NrLanes(NrLanes)) i_sequencer (
+  ara_sequencer #(
+    .NrLanes           (NrLanes             ),
+    .exception_t       (exception_t         ),
+    .ara_req_t         (ara_req_t           ),
+    .ara_resp_t        (ara_resp_t          )
+    ) i_sequencer (
     .clk_i                 (clk_i                    ),
     .rst_ni                (rst_ni                   ),
     // Interface with the dispatcher
@@ -196,8 +310,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .pe_scalar_resp_ready_o(pe_scalar_resp_ready     ),
     // Interface with the address generator
     .addrgen_ack_i         (addrgen_ack              ),
-    .addrgen_error_i       (addrgen_error            ),
-    .addrgen_error_vl_i    (addrgen_error_vl         )
+    .addrgen_exception_i   (addrgen_exception        ),
+    .addrgen_exception_vstart_i(addrgen_exception_vstart),
+    .addrgen_fof_exception_i(addrgen_fof_exception)
   );
 
   // Scalar move support
@@ -337,6 +452,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
 
   vlsu #(
     .NrLanes     (NrLanes     ),
+    .exception_t (exception_t ),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .axi_ar_t    (axi_ar_t    ),
@@ -368,8 +484,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .pe_req_ready_o             (pe_req_ready[NrLanes+OffsetStore : NrLanes+OffsetLoad]),
     .pe_resp_o                  (pe_resp[NrLanes+OffsetStore : NrLanes+OffsetLoad]     ),
     .addrgen_ack_o              (addrgen_ack                                           ),
-    .addrgen_error_o            (addrgen_error                                         ),
-    .addrgen_error_vl_o         (addrgen_error_vl                                      ),
+    .addrgen_exception_o        (addrgen_exception                                     ),
+    .addrgen_exception_vstart_o (addrgen_exception_vstart                              ),
+    .addrgen_fof_exception_o    (addrgen_fof_exception                                 ),
     // Interface with the Mask unit
     .mask_i                     (mask                                                  ),
     .mask_valid_i               (mask_valid                                            ),
@@ -504,20 +621,5 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     $error(
       "[ara] The vector length must be greater or equal than the maximum size of a single vector element"
     );
-
-  if (ara_pkg::VLEN != 2**$clog2(ara_pkg::VLEN))
-    $error("[ara] The vector length must be a power of two.");
-
-  if (RVVD(FPUSupport) && !ariane_pkg::RVD)
-    $error(
-      "[ara] Cannot support double-precision floating-point on Ara if Ariane does not support it.");
-
-  if (RVVF(FPUSupport) && !ariane_pkg::RVF)
-    $error(
-      "[ara] Cannot support single-precision floating-point on Ara if Ariane does not support it.");
-
-  if (RVVH(FPUSupport) && !ariane_pkg::XF16)
-    $error(
-      "[ara] Cannot support half-precision floating-point on Ara if Ariane does not support it.");
 
 endmodule : ara

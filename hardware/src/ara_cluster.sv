@@ -18,6 +18,16 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     parameter  fpext_support_e        FPExtSupport = FPExtSupportEnable,
     // Support for fixed-point data types
     parameter  fixpt_support_e        FixPtSupport = FixedPointEnable,
+    
+    // Ariane configuration
+    parameter config_pkg::cva6_cfg_t            CVA6Cfg            = cva6_config_pkg::cva6_cfg,
+    // CVA6-related parameters
+    parameter type                              exception_t        = logic,
+    parameter type                              accelerator_req_t  = logic,
+    parameter type                              accelerator_resp_t = logic,
+    parameter type                              cva6_to_acc_t      = logic,
+    parameter type                              acc_to_cva6_t      = logic,
+
     // AXI Interface
     parameter  int           unsigned AxiDataWidth        = 0,
     parameter  int           unsigned AxiAddrWidth        = 0,
@@ -55,8 +65,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     input  logic              scan_data_i,
     output logic              scan_data_o,
     // Interface with Ariane
-    input  accelerator_req_t  acc_req_i,
-    output accelerator_resp_t acc_resp_o,
+    input  cva6_to_acc_t      acc_req_i,
+    output acc_to_cva6_t      acc_resp_o,
     // AXI interface
     output axi_req_t          axi_req_o,
     input  axi_resp_t         axi_resp_i
@@ -70,11 +80,11 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   assign numClusters = $clog2(NrClusters);
 
   // Intermediate signals
-  accelerator_req_t [NrClusters-1:0] acc_req, acc_req_cut;
+  cva6_to_acc_t [NrClusters-1:0] acc_req, acc_req_cut;
   logic req_ready, resp_valid;
 
-  accelerator_resp_t [NrClusters-1:0] acc_resp, acc_resp_cut;
-  accelerator_resp_t acc_resp_d, acc_resp_q;
+  acc_to_cva6_t [NrClusters-1:0] acc_resp, acc_resp_cut;
+  acc_to_cva6_t acc_resp_d, acc_resp_q;
 
   cluster_axi_req_t      [NrClusters-1:0] ara_axi_req, ara_axi_req_cut, ldst_axi_req, ldst_axi_req_cut;
   cluster_axi_resp_t     [NrClusters-1:0] ara_axi_resp, ara_axi_resp_cut, ldst_axi_resp, ldst_axi_resp_cut;
@@ -91,8 +101,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   // Hierarchical stream fork
   localparam int nlevels = $clog2(NrClusters);
-  typedef accelerator_req_t [NrClusters-1:0] fork_req_t;
-  typedef accelerator_resp_t [NrClusters-1:0] fork_resp_t;
+  typedef cva6_to_acc_t [NrClusters-1:0] fork_req_t;
+  typedef acc_to_cva6_t [NrClusters-1:0] fork_resp_t;
 
   fork_req_t  [nlevels : 0] acc_req_fork;
   fork_resp_t [nlevels : 0] acc_resp_fork;
@@ -169,6 +179,12 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         .FPUSupport        (FPUSupport          ),
         .FPExtSupport      (FPExtSupport        ),
         .FixPtSupport      (FixPtSupport        ),
+        .CVA6Cfg           (CVA6Cfg             ),
+        .exception_t       (exception_t          ),
+        .accelerator_req_t (accelerator_req_t   ),
+        .accelerator_resp_t(accelerator_resp_t  ),
+        .cva6_to_acc_t     (cva6_to_acc_t       ),
+        .acc_to_cva6_t     (acc_to_cva6_t       ),
         .AxiDataWidth      (AxiDataWidth        ),
         .AxiAddrWidth      (AxiAddrWidth        ),
         .ClusterAxiDataWidth (ClusterAxiDataWidth),
@@ -550,7 +566,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     accelerator_resp_t resp_cut_i, resp_cut_o;
 
     cva6_cut # (
-      .NrCuts      (`CVA6_LATENCY )
+      .NrCuts            (`CVA6_LATENCY        ),
+      .cva6_to_acc_t     (cva6_to_acc_t        ),
+      .acc_to_cva6_t     (acc_to_cva6_t        )
     ) i_cva6_latency_cut (
       .clk_i       (clk_i         ),
       .rst_ni      (rst_ni        ),
@@ -580,7 +598,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
       // Req fork
       req_fork_cut #(
         //.NrCuts ((l==0 || l==2) ? 1 : 0)
-        .NrCuts (1)
+        .NrCuts (1), 
+        .cva6_to_acc_t     (cva6_to_acc_t        ),
+        .acc_to_cva6_t     (acc_to_cva6_t        )
       ) i_req_fork (
         .clk_i (clk_i                          ),
         .rst_ni(rst_ni                         ),

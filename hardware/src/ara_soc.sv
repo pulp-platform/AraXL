@@ -62,6 +62,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   `include "axi/typedef.svh"
   `include "common_cells/registers.svh"
   `include "apb/typedef.svh"
+  `include "ara/intf_typedef.svh"
 
   //////////////////////
   //  Memory Regions  //
@@ -455,29 +456,51 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   assign hart_id = '0;
 
-  localparam ariane_pkg::ariane_cfg_t ArianeAraConfig = '{
-    RASDepth             : 2,
-    BTBEntries           : 32,
-    BHTEntries           : 128,
+  // Modify configuration parameters
+  function automatic config_pkg::cva6_user_cfg_t gen_usr_cva6_config(config_pkg::cva6_user_cfg_t cfg);
+    cfg.AxiAddrWidth          = AxiAddrWidth;
+    cfg.AxiDataWidth          = AxiNarrowDataWidth;
+    cfg.AxiIdWidth            = AxiIdWidth;
+    cfg.AxiUserWidth          = AxiUserWidth;
+    cfg.XF16                  = FPUSupport[3];
+    cfg.RVF                   = FPUSupport[4];
+    cfg.RVD                   = FPUSupport[5];
+    cfg.XF16ALT               = FPUSupport[2];
+    cfg.XF8                   = FPUSupport[1];
+    // cfg.XF8ALT                = FPUSupport[0]; // Not supported by OpenHW Group's CVFPU
+    cfg.NrPMPEntries          = 0;
     // idempotent region
-    NrNonIdempotentRules : 2,
-    NonIdempotentAddrBase: {64'b0, 64'b0},
-    NonIdempotentLength  : {64'b0, 64'b0},
-    NrExecuteRegionRules : 3,
-    //                      DRAM,       Boot ROM,   Debug Module
-    ExecuteRegionAddrBase: {DRAMBase, 64'h1_0000, 64'h0},
-    ExecuteRegionLength  : {DRAMLength, 64'h10000, 64'h1000},
+    cfg.NrNonIdempotentRules  = 2;
+    cfg.NonIdempotentAddrBase = {UARTBase, CTRLBase};
+    cfg.NonIdempotentLength   = {UARTLength, CTRLLength};
+    cfg.NrExecuteRegionRules  = 3;
+    //                          DRAM;       Boot ROM;   Debug Module
+    cfg.ExecuteRegionAddrBase = {DRAMBase,   64'h1_0000, 64'h0};
+    cfg.ExecuteRegionLength   = {DRAMLength, 64'h10000,  64'h1000};
     // cached region
-    NrCachedRegionRules  : 1,
-    CachedRegionAddrBase : {DRAMBase},
-    CachedRegionLength   : {DRAMLength},
-    //  cache config
-    AxiCompliant         : 1'b1,
-    SwapEndianess        : 1'b0,
-    // debug
-    DmBaseAddress        : 64'h0,
-    NrPMPEntries         : 0
-  };
+    cfg.NrCachedRegionRules   = 1;
+    cfg.CachedRegionAddrBase  = {DRAMBase};
+    cfg.CachedRegionLength    = {DRAMLength};
+    // Return modified config
+    return cfg;
+  endfunction
+
+  // Generate the user defined package, starting from the template one for RVV
+  localparam config_pkg::cva6_user_cfg_t CVA6AraConfig_user = gen_usr_cva6_config(cva6_config_pkg::cva6_cfg);
+  // Build the package
+  localparam config_pkg::cva6_cfg_t CVA6AraConfig = build_config_pkg::build_config(CVA6AraConfig_user);
+
+  `CVA6_TYPEDEF_EXCEPTION(exception_t, CVA6AraConfig)
+
+  // Standard interface
+  `CVA6_INTF_TYPEDEF_ACC_REQ(accelerator_req_t, CVA6AraConfig, fpnew_pkg::roundmode_e)
+  `CVA6_INTF_TYPEDEF_ACC_RESP(accelerator_resp_t, CVA6AraConfig, exception_t)
+  // MMU interface
+  `CVA6_INTF_TYPEDEF_MMU_REQ(acc_mmu_req_t, CVA6AraConfig)
+  `CVA6_INTF_TYPEDEF_MMU_RESP(acc_mmu_resp_t, CVA6AraConfig, exception_t)
+  // Accelerator - CVA6's top-level interface
+  `CVA6_INTF_TYPEDEF_CVA6_TO_ACC(cva6_to_acc_t, accelerator_req_t, acc_mmu_resp_t)
+  `CVA6_INTF_TYPEDEF_ACC_TO_CVA6(acc_to_cva6_t, accelerator_resp_t, acc_mmu_req_t)
 
 `ifndef TARGET_GATESIM
   ara_system #(
@@ -486,7 +509,14 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .FPUSupport        (FPUSupport           ),
     .FPExtSupport      (FPExtSupport         ),
     .FixPtSupport      (FixPtSupport         ),
-    .ArianeCfg         (ArianeAraConfig      ),
+    .CVA6Cfg           (CVA6AraConfig        ),
+    .exception_t       (exception_t          ),
+    .accelerator_req_t (accelerator_req_t    ),
+    .accelerator_resp_t(accelerator_resp_t   ),
+    .acc_mmu_req_t     (acc_mmu_req_t        ),
+    .acc_mmu_resp_t    (acc_mmu_resp_t       ),
+    .cva6_to_acc_t     (cva6_to_acc_t        ),
+    .acc_to_cva6_t     (acc_to_cva6_t        ),
     .AxiAddrWidth      (AxiAddrWidth         ),
     .AxiIdWidth        (AxiCoreIdWidth       ),
     .AxiNarrowDataWidth(AxiNarrowDataWidth   ),
