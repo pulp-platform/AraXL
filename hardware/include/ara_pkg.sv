@@ -51,28 +51,39 @@ package ara_pkg;
     FPExtSupportEnable  = 1'b1
   } fpext_support_e;
 
-  // The three bits correspond to {RVVD, RVVF, RVVH}
-  typedef enum logic [2:0] {
-    FPUSupportNone             = 3'b000,
-    FPUSupportHalf             = 3'b001,
-    FPUSupportSingle           = 3'b010,
-    FPUSupportHalfSingle       = 3'b011,
-    FPUSupportDouble           = 3'b100,
-    FPUSupportSingleDouble     = 3'b110,
-    FPUSupportHalfSingleDouble = 3'b111
+  // The six bits correspond to {RVVD, RVVF, RVVH, RVVHA, RVVB, RVVBA}
+  typedef enum logic [5:0] {
+    FPUSupportNone             = 6'b000000,
+    FPUSupportHalf             = 6'b001000,
+    FPUSupportSingle           = 6'b010000,
+    FPUSupportHalfSingle       = 6'b011000,
+    FPUSupportDouble           = 6'b100000,
+    FPUSupportSingleDouble     = 6'b110000,
+    FPUSupportHalfSingleDouble = 6'b111000,
+    FPUSupportAll              = 6'b111111
   } fpu_support_e;
 
   function automatic logic RVVD(fpu_support_e e);
-    return e[2];
+    return e[5];
   endfunction : RVVD
 
   function automatic logic RVVF(fpu_support_e e);
-    return e[1];
+    return e[4];
   endfunction : RVVF
 
   function automatic logic RVVH(fpu_support_e e);
-    return e[0];
+    return e[3];
   endfunction : RVVH
+
+  function automatic logic RVVHA(fpu_support_e e);
+    return e[2];
+  endfunction : RVVHA
+  function automatic logic RVVB(fpu_support_e e);
+    return e[1];
+  endfunction : RVVB
+  function automatic logic RVVBA(fpu_support_e e);
+    return e[0];
+  endfunction : RVVBA
 
   // Multiplier latencies.
   localparam int unsigned LatMultiplierEW64 = 1;
@@ -86,9 +97,11 @@ package ara_pkg;
   localparam int unsigned LatFCompEW16    = 'd3;
   localparam int unsigned LatFCompEW8     = 'd2;
   localparam int unsigned LatFCompEW16Alt = 'd3;
+  localparam int unsigned LatFCompEW8Alt  = 'd2;
   localparam int unsigned LatFDivSqrt     = 'd3;
   localparam int unsigned LatFNonComp     = 'd1;
   localparam int unsigned LatFConv        = 'd2;
+  localparam int unsigned LatFDotp        = 'd0;
   // Define the maximum FPU latency
   localparam int unsigned LatFMax = LatFCompEW64;
 
@@ -241,104 +254,9 @@ package ara_pkg;
     logic [51:0] m;
   } fp64_t;
 
-  /////////////////////////////
-  //  Accelerator interface  //
-  /////////////////////////////
-
-  // Use Ariane's accelerator interface.
-  typedef acc_pkg::accelerator_req_t accelerator_req_t;
-  typedef acc_pkg::accelerator_resp_t accelerator_resp_t;
-
   /////////////////////////
   //  Backend interface  //
   /////////////////////////
-
-  // Interfaces between Ara's dispatcher and Ara's backend
-
-  typedef struct packed {
-    ara_op_e op; // Operation
-
-    // Stores and slides do not re-shuffle the
-    // source registers. In these two cases, vl refers
-    // to the target EEW and vtype.vsew, respectively.
-    // Since operand requesters work with the old
-    // eew of the source registers, we should rescale
-    // vl to the old eew to fetch the correct number of Bytes.
-    //
-    // Another solution would be to pass directly the target
-    // eew (vstores) or the vtype.vsew (vslides), but this would
-    // create confusion with the current naming convention
-    logic scale_vl;
-
-    // Mask vector register operand
-    logic vm;
-    rvv_pkg::vew_e eew_vmask;
-
-    // 1st vector register operand
-    logic [4:0] vs1;
-    logic use_vs1;
-    opqueue_conversion_e conversion_vs1;
-    rvv_pkg::vew_e eew_vs1;
-
-    // 2nd vector register operand
-    logic [4:0] vs2;
-    logic use_vs2;
-    opqueue_conversion_e conversion_vs2;
-    rvv_pkg::vew_e eew_vs2;
-
-    // Use vd as an operand as well (e.g., vmacc)
-    logic use_vd_op;
-    rvv_pkg::vew_e eew_vd_op;
-
-    // Scalar operand
-    elen_t scalar_op;
-    logic use_scalar_op;
-
-    // 2nd scalar operand: stride for constant-strided vector load/stores, slide offset for vector
-    // slides
-    elen_t stride;
-    logic is_stride_np2;
-
-    // Destination vector register
-    logic [4:0] vd;
-    logic use_vd;
-
-    // If asserted: vs2 is kept in MulFPU opqueue C, and vd_op in MulFPU A
-    logic swap_vs2_vd_op;
-
-    // Effective length multiplier
-    rvv_pkg::vlmul_e emul;
-
-    // Rounding-Mode for FP operations
-    fpnew_pkg::roundmode_e fp_rm;
-    // Widen FP immediate (re-encoding)
-    logic wide_fp_imm;
-    // Resizing of FP conversions
-    resize_e cvt_resize;
-
-    // Vector machine metadata
-    vlen_t vl;
-    vlen_cluster_t vl_cluster;
-    vlen_t vstart;
-    rvv_pkg::vtype_t vtype;
-
-    // To specify this is a mask load vlm
-    logic use_eew1;
-
-    // Request token, for registration in the sequencer
-    logic token;
-  } ara_req_t;
-
-  typedef struct packed {
-    // Scalar response
-    elen_t resp;
-
-    // Instruction triggered an error
-    logic error;
-
-    // New value for vstart
-    vlen_t error_vl;
-  } ara_resp_t;
 
   ////////////////////
   //  PE interface  //
