@@ -264,6 +264,7 @@ always_comb begin
       // For Aligned data
       axi_resp_o.r.last = 1'b1;
       last_d = 1'b0;
+      be_d [NumStages:1] = '0;
     end
     if (valid_data) begin
       axi_resp_o.r_valid  = 1'b1;
@@ -283,6 +284,7 @@ always_comb begin
         axi_resp_o.r_valid  = 1'b1;
         data_prev_d       = '0;
         data_prev_valid_d = 1'b0;
+        be_d [NumStages:1] = '0;
       end else begin
         // Otherwise for aligned data the next cycle is the last packet.
         last_d = 1'b1;

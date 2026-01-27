@@ -372,6 +372,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
       .vew_ar_i           (vew_ar_cut           ),
       .vew_aw_i           (vew_aw_cut           ),
 
+      .vl_i               (vl_ldst_cut          ),
+
       .axi_req_i          (ara_axi_req_cut      ),
       .axi_resp_o         (ara_axi_resp_cut     ),
 
