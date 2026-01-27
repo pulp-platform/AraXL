@@ -207,4 +207,8 @@ ara_tests = vadd \
                vfmv \
                vfcvt \
                vfwcvt \
-               vfncvt
+               vfncvt \
+               vle8 \
+               vle16 \
+               vle32 \
+               vle64
