@@ -193,7 +193,7 @@ axi_resp_ext_t [NumBuffers-1:0] buf_d, buf_q;
 axi_resp_t [NrClusters-1:0]  axi_resp_buf_out;
 
 logic rdbuf_pnt_q, rdbuf_pnt_d;
-logic [NumBuffers-1:0] shift_d, shift_q;                           // For each buffer a single bit is needed. (For BW 32N only)
+logic [NumBuffers-1:0] offset_d, offset_q;                           // For each buffer a single bit is needed. (For BW 32N only)
 logic [NumBuffers-1:0] buf_valid_d, buf_valid_q;
 logic r_ready_buf, r_ready_buf_q;
 
@@ -221,7 +221,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     buf_q              <= '0;
     buf_valid_q        <= '0;
     rdbuf_pnt_q        <= '0;
-    shift_q            <= '0;
+    offset_q            <= '0;
     r_ready_buf_q      <= 1'b1;
     // W
     wrbuf_q            <= '0;
@@ -237,7 +237,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     buf_q              <= buf_d;
     buf_valid_q        <= buf_valid_d;
     rdbuf_pnt_q        <= rdbuf_pnt_d;
-    shift_q            <= shift_d;
+    offset_q            <= offset_d;
     r_ready_buf_q      <= r_ready_buf;
     // W
     wrbuf_q            <= wrbuf_d;
@@ -364,43 +364,55 @@ always_comb begin
   buf_d = buf_q;
   buf_valid_d = buf_valid_q;
   rdbuf_pnt_d = rdbuf_pnt_q;
-  shift_d = shift_q;
+  offset_d = offset_q;
   r_ready_buf = r_ready_buf_q;
 
+  ///// Handle 64b loads /////
+
   if (rd_buffer_en) begin
-    // If have a valid handshake on response add to the buffer
+    
+    // Have 2 buffers each 256 bits
+    // Each axi resp is written to an available buffer
+    // Response to each Cluster is taken from one of the buffer
+    // The offset within each buffer from which response is taken for a cluster
+
+    // check for valid handshake and write data to buffer if ready
     if (axi_resp_i[0].r_valid && r_ready_buf_q) begin
+      // Add data to one of the buffer given by pointer
       for (int c=0; c<NrClusters; c++) begin
         buf_d[rdbuf_pnt_q][c] = axi_resp_i[c].r;
       end
+      // Set valid and update pointer
       buf_valid_d[rdbuf_pnt_q] = 1'b1;
       rdbuf_pnt_d = (rdbuf_pnt_q == 1'b1) ? 1'b0 : 1'b1;
     end
 
-    // Assign data in buffer to the output
+    // If valid data present in buffers write it out to the clusters
     for (int b=0; b < NumBuffers; b++) begin
       if (buf_valid_d[b]) begin
         automatic logic cluster_ready = 1'b1;
         for (int c=0; c < (NrClusters / NumBuffers); c++) begin
-          automatic int cl = b ? (NrClusters / NumBuffers) + c : c;
-          
+          // Find cluster where this buffer data has to be sent
           // First Half of the the clusters take data from buf[0]
-          axi_resp_buf_out[cl].r.data = buf_d[b][c*2 + shift_d[b]].data;  // 2 works for default 32N configuration to support EW=64
+          automatic int cl = b ? (NrClusters / NumBuffers) + c : c;
+          axi_resp_buf_out[cl].r.data = buf_d[b][c*2 + offset_d[b]].data;
           cluster_ready &= axi_req_i[cl].r_ready;
         end
+
+        // If all the clusters are ready set 
         if (cluster_ready) begin
           // Only if handshake is valid, update pointers
           for (int c=0; c < (NrClusters / NumBuffers); c++) begin
-            automatic int cl = b ? (NrClusters / NumBuffers) + c : c; //automatic int cl = b*(NrClusters / NumBuffers) + c;
+            automatic int cl = b ? (NrClusters / NumBuffers) + c : c;
             axi_resp_buf_out[cl].r_valid = 1'b1;
             rd_tracker_d[rd_issue_pnt_q[0]].len[cl] -= 1;
-            if (rd_tracker_q[rd_issue_pnt_q[0]].len[cl] <= 1) begin
+            if (rd_tracker_q[rd_issue_pnt_q[0]].len[cl] == 1) begin
               axi_resp_buf_out[cl].r.last = 1'b1;
             end
           end
-          // Update the shift
-          shift_d[b] = (shift_q[b] == 1'b1) ? 1'b0 : 1'b1;
-          if (shift_q[b] == 1'b1) begin
+          // Update the offset
+          offset_d[b] = (offset_q[b] == 1'b1) ? 1'b0 : 1'b1;
+          if (offset_q[b] == 1'b1) begin
             buf_valid_d[b] = 1'b0;
           end
         end
