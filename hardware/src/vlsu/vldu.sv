@@ -270,7 +270,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
           vrf_byte = vrf_byte + vrf_seq_offset;
 
           // Is this byte a valid byte in the VRF word?
-          if (axi_byte < issue_cnt_q && axi_byte < NrLanes * 8) begin
+          if (axi_byte < vinsn_valid_bytes && axi_byte < NrLanes * 8) begin
             // At which lane, and what is the byte offset in that lane, of the byte vrf_byte?
             automatic int vrf_lane   = vrf_byte >> 3;
             automatic int vrf_offset = vrf_byte[2:0];
@@ -319,7 +319,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       if (r_pnt_d == AxiDataWidth/8 || issue_cnt_d == '0) begin
         // Request another beat
         axi_r_ready_o = 1'b1;
-        r_pnt_d       = '0;
+        r_pnt_d = '0;
         // Account for the beat we consumed
         len_d         = len_q + 1;
       end
@@ -347,6 +347,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
           issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl << int'(vinsn_queue_q.vinsn[
               vinsn_queue_d.issue_pnt].vtype.vsew);
       end
+    end else if (axi_r_valid_i && !vinsn_issue_valid) begin
+      // Just ignore packets if vl=0 for this cluster
+      // and there is no valid instruction
+      axi_r_ready_o = 1'b1;
     end
 
     //////////////////////////////////
