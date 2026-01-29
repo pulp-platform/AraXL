@@ -260,6 +260,7 @@ always_comb begin
 
   // Combine the previous data and the current data packets
   if (data_valid_q && axi_req_cut_ready[NumStages]) begin
+    automatic vlen_t axi_valid_el = (AxiDataWidth/8) >> tracker_q[r_pnt_q_del[NumStages-1]].vew;
     for (int b=0; b<AxiDataWidth/8; b++) begin
       axi_resp_o.r.data[b*8 +: 8] = be_final_d[b] ? data_q[b*8 +: 8] : axi_resp_i_cut[NumStages].r.data[b*8 +: 8];
     end
@@ -267,15 +268,15 @@ always_comb begin
 
     // Use vl from tracker to check if this is the last data packet or not
     // Since using delayed data, using delayed pointer to the tracker
-    if (tracker_q[r_pnt_q_del[NumStages-1]].len > ((AxiDataWidth/8) >> tracker_q[r_pnt_q_del[NumStages-1]].vew)) begin
-      tracker_d[r_pnt_q_del[NumStages-1]].len -= (AxiDataWidth/8) >> tracker_q[r_pnt_q_del[NumStages-1]].vew;
+    if (tracker_q[r_pnt_q_del[NumStages-1]].len > axi_valid_el) begin
+      tracker_d[r_pnt_q_del[NumStages-1]].len -= axi_valid_el;
     end else begin
       // Last packet
       axi_resp_o.r.last = 1'b1;
 
       // If the current data is not misaligned and we have a valid data
       // Set valid data for the next subsequent load to avoid bubble
-      data_valid_d = (be_final_d == '1) && axi_resp_i_cut[NumStages].r_valid;
+      data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
     end
   end
 
@@ -298,7 +299,6 @@ always_comb begin
           tracker_d[r_pnt_q[s]].shift_en = '0;
           cnt_d = cnt_d - 1;
         end
-        be_d [s] = '0;
       end
     end
   end
