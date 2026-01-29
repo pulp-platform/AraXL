@@ -178,7 +178,7 @@ always_comb begin
   cnt_d        = cnt_q;
   tracker_d    = tracker_q;
   r_pnt_d      = r_pnt_q;
-  r_pnt_d_del  = r_pnt_q_del;
+  r_pnt_d_del  = r_pnt_q;
   data_d       = data_q;
   data_valid_d = data_valid_q;
   vl_d         = vl_q;
