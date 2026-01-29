@@ -59,7 +59,7 @@ typedef struct packed {
 // Tracking read requests
 req_track_t [NumTrackers-1:0] tracker_d, tracker_q;
 pnt_t w_pnt_d, w_pnt_q;
-pnt_t [NumStages-1:0] r_pnt_d, r_pnt_q, r_pnt_q_del;
+pnt_t [NumStages-1:0] r_pnt_d, r_pnt_q, r_pnt_d_del, r_pnt_q_del;
 cnt_t cnt_d, cnt_q;
 
 logic [NumStages:0] axi_req_cut_ready;
@@ -100,7 +100,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     tracker_q         <= tracker_d;
     w_pnt_q           <= w_pnt_d;
     r_pnt_q           <= r_pnt_d;
-    r_pnt_q_del       <= r_pnt_q;
+    r_pnt_q_del       <= r_pnt_d_del;
     cnt_q             <= cnt_d;
     data_q            <= data_d;
     data_valid_q      <= data_valid_d;
@@ -178,6 +178,7 @@ always_comb begin
   cnt_d        = cnt_q;
   tracker_d    = tracker_q;
   r_pnt_d      = r_pnt_q;
+  r_pnt_d_del  = r_pnt_q_del;
   data_d       = data_q;
   data_valid_d = data_valid_q;
   vl_d         = vl_q;
