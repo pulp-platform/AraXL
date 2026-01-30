@@ -30,6 +30,7 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   
   input  vew_e                        vew_ar_i,
   input  vew_e                        vew_aw_i,
+  input  vlen_cluster_t               vl_i,
   
   input   axi_req_t  [NrClusters-1:0] axi_req_i,
   output  axi_req_t  [NrClusters-1:0] axi_req_o,
@@ -79,6 +80,9 @@ logic [NrClusters-1:0] w_valid_i, w_ready_o;
 logic rd_full, wr_full;
 assign rd_full = (rd_cnt_q == NumTrackers);
 assign wr_full = (wr_cnt_q == NumTrackers);
+
+vlen_cluster_t vl_d, vl_q;
+logic vl_valid_d, vl_valid_q;
 
 // To handle cases where vlsu of each cluster is ready to 
 // receive read resp or not.
@@ -226,6 +230,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     wrbuf_valid_q      <= '0;
     wrbuf_full_q       <= '0;
     wrbuf_be_q         <= '0;
+    vl_q               <= '0;
+    vl_valid_q         <= '0;
   end else begin
     // R
     buf_q              <= buf_d;
@@ -240,6 +246,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     wrbuf_valid_q      <= wrbuf_valid;
     wrbuf_full_q       <= wrbuf_full;
     wrbuf_be_q         <= wrbuf_be_d;
+    vl_q               <= vl_d;
+    vl_valid_q         <= vl_valid_d;
   end
 end
 
@@ -386,7 +394,7 @@ always_comb begin
             automatic int cl = b ? (NrClusters / NumBuffers) + c : c; //automatic int cl = b*(NrClusters / NumBuffers) + c;
             axi_resp_buf_out[cl].r_valid = 1'b1;
             rd_tracker_d[rd_issue_pnt_q[0]].len[cl] -= 1;
-            if (rd_tracker_q[rd_issue_pnt_q[0]].len[cl] <= 1) begin
+            if (rd_tracker_q[rd_issue_pnt_q[0]].len[cl] == 1) begin
               axi_resp_buf_out[cl].r.last = 1'b1;
             end
           end
@@ -481,6 +489,28 @@ always_comb begin
 
 end
 
+// Combinatorial logic used for synchronization between different write beats from cluster
+// Required if there is an uneven distribution of elements across clusters
+always_comb begin
+  vl_d = vl_q;
+  vl_valid_d = vl_valid_q;
+  
+  // Initialize vl to track for wr requests
+  if (axi_req_i[0].aw_valid) begin
+    vl_valid_d = 1'b1;
+    vl_d = vl_i;
+  end 
+
+  if (axi_resp_o[0].w_ready & axi_req_i[0].w_valid) begin
+    // Update for every valid wr beat from clusters
+    vl_d = vl_q - ((NrClusters * ClusterAxiDataWidth/8) >> vew_aw_i);
+    if (axi_req_i[0].w.last) begin
+      vl_d = '0;
+      vl_valid_d = 1'b0;
+    end
+  end
+end
+
 /// Output input interface assignments
 // Handle Response path
 for (genvar c=0; c < NrClusters; c++) begin  
@@ -516,8 +546,10 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign r_ready_i[c] = axi_req_i[c].r_ready;           // From input request, get ready inputs to stream fork
 
   // Writes
-  assign w_data_in[0][c] = wr_buffer_en ? '0 : axi_req_i[c].w;              // Copy input write data to first shuffle stage
-  assign w_valid_i[c]    = wr_buffer_en ? 1'b0 : axi_req_i[c].w_valid;           // Copy valid signals to stream join
+  assign w_data_in[0][c] = wr_buffer_en ? '0 : axi_req_i[c].w_valid ? axi_req_i[c].w : '0;              // Copy input write data to first shuffle stage
+
+  // If a cluster is not participating assume a fake write valid to the stream fork module
+  assign w_valid_i[c]    = (vl_valid_q && (vl_q <= (NrLanes * c))) ? 1'b1 : wr_buffer_en ? 1'b0 : axi_req_i[c].w_valid;   // Copy valid signals to stream join
    
   assign axi_req_o[c].w       = wr_buffer_en ? axi_req_buf_out[c].w       : w_data_out[NumStages-1][c];  // Copy last stage data to req output
   assign axi_req_o[c].w_valid = wr_buffer_en ? axi_req_buf_out[c].w_valid : w_valid[NumStages-1];   // valid signal is the output valid of stream join
