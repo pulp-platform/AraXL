@@ -49,6 +49,7 @@ typedef struct packed {
   logic [NumStages-1:0] shuffle_en;
   logic buffer_en;
   logic valid;
+  vlen_cluster_t [NrClusters-1:0] vl;
 } req_track_t;
 
 localparam int unsigned NumTrackers=8;
@@ -214,6 +215,7 @@ logic wr_out_ready, wr_out_valid;
 logic wr_buffer_en; 
 assign wr_buffer_en = wr_tracker_q[wr_issue_pnt_q[0]].buffer_en;
 
+logic [NrClusters-1:0] wr_cluster_completed;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
@@ -310,8 +312,10 @@ always_comb begin
 
   if (axi_req_i[0].aw_valid & axi_resp_o[0].aw_ready) begin
     wr_tracker_d[wr_accept_pnt_q].vew = vew_aw_i;
-    for (int c=0; c<NrClusters; c++)
+    for (int c=0; c<NrClusters; c++) begin
+      wr_tracker_d[wr_accept_pnt_q].vl[c] = vl_i;
       wr_tracker_d[wr_accept_pnt_q].len[c] = axi_req_i[0].aw.len+1;
+    end
     wr_accept_pnt_d = (wr_accept_pnt_q == NumTrackers-1) ? '0 : wr_accept_pnt_q + 1; 
     wr_cnt_d += 1;
 
@@ -451,7 +455,7 @@ always_comb begin
     
     for (int c=0; c < (NrClusters/2); c++) begin
       automatic int cluster = wrbuf_pnt_q + c;
-      wr_out_valid &= wrbuf_full[cluster];
+      wr_out_valid &= (wrbuf_full[cluster] ? 1'b1 : wr_cluster_completed[cluster]);
       if (wrbuf_full[cluster]) begin
         for (int b=0; b < 2; b++) begin
           wr_out_ready &= axi_resp_i[c*2 + b].w_ready;
@@ -462,6 +466,7 @@ always_comb begin
     end
 
     if (wr_out_ready & wr_out_valid) begin
+      automatic logic [$clog2(NrClusters*ClusterAxiDataWidth/8):0] nelem = (NrClusters*ClusterAxiDataWidth/8) >> wr_tracker_q[wr_issue_pnt_q[0]].vew;
       // For a valid handshake set valid to 1
       for (int c=0; c<NrClusters; c++) 
         axi_req_buf_out[c].w_valid = 1'b1;
@@ -470,6 +475,7 @@ always_comb begin
         wrbuf_valid[wrbuf_pnt_q + c] = 1'b0;
         wrbuf_full [wrbuf_pnt_q + c] = 1'b0;
         wr_tracker_d[wr_issue_pnt_q[0]].len[wrbuf_pnt_q + c] -= 2;
+        wr_tracker_d[wr_issue_pnt_q[0]].vl[wrbuf_pnt_q + c] -= (wr_tracker_q[wr_issue_pnt_q[0]].vl[wrbuf_pnt_q + c] >= (2*nelem)) ? (2*nelem) : '0;
       end
       if ((wrbuf_pnt_q == NrClusters/2) && (wr_tracker_q[wr_issue_pnt_q[0]].len[NrClusters/2] <= 2)) begin // check if the last NrClusters/2 is also completed
         axi_req_buf_out[0].w.last = 1'b1;
@@ -485,30 +491,19 @@ always_comb begin
       end
       wr_cnt_d -= 1'b1;
     end
-  end
+  end else begin
 
-end
-
-// Combinatorial logic used for synchronization between different write beats from cluster
-// Required if there is an uneven distribution of elements across clusters
-always_comb begin
-  vl_d = vl_q;
-  vl_valid_d = vl_valid_q;
-  
-  // Initialize vl to track for wr requests
-  if (axi_req_i[0].aw_valid) begin
-    vl_valid_d = 1'b1;
-    vl_d = vl_i;
-  end 
-
-  if (axi_resp_o[0].w_ready & axi_req_i[0].w_valid) begin
-    // Update for every valid wr beat from clusters
-    vl_d = vl_q - ((NrClusters * ClusterAxiDataWidth/8) >> vew_aw_i);
-    if (axi_req_i[0].w.last) begin
-      vl_d = '0;
-      vl_valid_d = 1'b0;
+    // Update vl tracked for every write packet received from clusters
+    // All clusters synchronized, use only cluster 0 for handshaking
+    for (int c=0; c <NrClusters; c++) begin
+      if (axi_resp_o[c].w_ready & axi_req_i[c].w_valid) begin
+        automatic logic [$clog2(NrClusters*ClusterAxiDataWidth/8):0] nelem = (NrClusters*ClusterAxiDataWidth/8) >> wr_tracker_q[wr_issue_pnt_q[0]].vew;
+        wr_tracker_d[wr_issue_pnt_q[0]].vl[c] -= (wr_tracker_q[wr_issue_pnt_q[0]].vl[c] >= nelem) ? nelem : '0;
+        wr_tracker_d[wr_issue_pnt_q[0]].len[c] -= 1;
+      end
     end
   end
+
 end
 
 /// Output input interface assignments
@@ -548,8 +543,9 @@ for (genvar c=0; c < NrClusters; c++) begin
   // Writes
   assign w_data_in[0][c] = wr_buffer_en ? '0 : axi_req_i[c].w_valid ? axi_req_i[c].w : '0;              // Copy input write data to first shuffle stage
 
-  // If a cluster is not participating assume a fake write valid to the stream fork module
-  assign w_valid_i[c]    = (vl_valid_q && (vl_q <= (NrLanes * c))) ? 1'b1 : wr_buffer_en ? 1'b0 : axi_req_i[c].w_valid;   // Copy valid signals to stream join
+  // If other cluster have completed writes, and cluster 0 has a write packet remaining, assume a fake write valid to the stream fork module
+  assign wr_cluster_completed[c] = (wr_cnt_q > 0) && (wr_tracker_q[wr_issue_pnt_q[0]].vl[c] <= (NrLanes*c));
+  assign w_valid_i[c]    = (wr_cluster_completed[c] & axi_req_i[0].w_valid) ? 1'b1 : wr_buffer_en ? 1'b0 : axi_req_i[c].w_valid;   // Copy valid signals to stream join
    
   assign axi_req_o[c].w       = wr_buffer_en ? axi_req_buf_out[c].w       : w_data_out[NumStages-1][c];  // Copy last stage data to req output
   assign axi_req_o[c].w_valid = wr_buffer_en ? axi_req_buf_out[c].w_valid : w_valid[NumStages-1];   // valid signal is the output valid of stream join
@@ -569,7 +565,7 @@ module shuffle import rvv_pkg::*; #(
   localparam int           unsigned TotalDataWidth      = ClusterAxiDataWidth * NrClusters,
   localparam int           unsigned TotalLanes          = NrClusters * NrLanes,
   localparam int           unsigned BlockSize           = (8*NrLanes) << scale,            // Sizes to move together (8*N) bits is the base. Doubles every stage.
-  localparam int           unsigned Iterations          = TotalDataWidth / BlockSize / 2    // Number of 8N bits in Total Axi Data Width (8 since starting the shuffle stage with 8-bit)          
+  localparam int           unsigned NumGatherBlocks     = TotalDataWidth / (BlockSize * NrClusters * 2)         
 
 ) (
   input  T  data_i,
@@ -592,11 +588,11 @@ module shuffle import rvv_pkg::*; #(
 
       if (enable_i) begin
 
-        for (int k=0; k<(Iterations/2); k++) begin
-          for (int i=0; i<2; i++) begin
+        for (int k=0; k<NumGatherBlocks; k++) begin
+          for (int i=0; i<NrClusters; i++) begin
             for (int j=0; j<2; j++) begin
-              be_out[(k * 4 + 2 * i + j)*(BlockSize/8) +: BlockSize/8] = be_in[(k * 4 + j * 2 + i)*(BlockSize/8)  +: BlockSize/8];
-              data_out[(k * 4 + 2 * i + j)*BlockSize +: BlockSize] = data_in[(k * 4 + j * 2 + i)*BlockSize  +: BlockSize];
+              be_out[(k * NrClusters * 2 + j * NrClusters + i)*(BlockSize/8) +: BlockSize/8] = be_in[(k * NrClusters * 2 + 2 * i + j)*(BlockSize/8)  +: BlockSize/8];
+              data_out[(k * NrClusters * 2 + j * NrClusters + i)*BlockSize +: BlockSize] = data_in[(k * NrClusters * 2 + 2 * i + j)*BlockSize  +: BlockSize];
             end
           end
         end
@@ -617,10 +613,10 @@ module shuffle import rvv_pkg::*; #(
           data_in[c*ClusterAxiDataWidth +: ClusterAxiDataWidth] = data_i[c].data;
         end
 
-        for (int k=0; k<(Iterations/2); k++) begin
-          for (int i=0; i<2; i++) begin
+        for (int k=0; k<NumGatherBlocks; k++) begin
+          for (int i=0; i<NrClusters; i++) begin
             for (int j=0; j<2; j++) begin
-              data_out[(k * 4 + 2 * i + j)*BlockSize +: BlockSize] = data_in[(k * 4 + j * 2 + i)*BlockSize  +: BlockSize];
+              data_out[(k * NrClusters * 2 + 2 * i + j)*BlockSize +: BlockSize] = data_in[(k * NrClusters * 2 + j * NrClusters + i)*BlockSize  +: BlockSize];
             end
           end
         end
