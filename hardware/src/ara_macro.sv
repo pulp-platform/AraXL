@@ -74,9 +74,7 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     output logic         ring_data_l_valid_o,
     input logic          ring_data_l_ready_i,
 
-    output vew_e              vew_ar_o,
-    output vew_e              vew_aw_o,
-    output vlen_cluster_t     vl_ldst_o
+    output cluster_metadata_t cluster_metadata_o
   );
 
   `include "common_cells/registers.svh"
@@ -121,9 +119,9 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
   // Cuts for the macro ///
   /////////////////////////
 
-  `FF(vew_ar_o, vew_ar, vew_e'(1'b0), clk_i, rst_ni);
-  `FF(vew_aw_o, vew_aw, vew_e'(1'b0), clk_i, rst_ni);
-  `FF(vl_ldst_o, vl_ldst, '0, clk_i, rst_ni);
+  cluster_metadata_t cluster_metadata;
+
+  `FF(cluster_metadata_o, cluster_metadata, cluster_metadata_t'('0), clk_i, rst_ni);
   `FF(cluster_id, cluster_id_i, '0, clk_i, rst_ni);
   `FF(num_clusters, num_clusters_i, '0, clk_i, rst_ni);
   
@@ -256,9 +254,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     .axi_req_o       (ara_axi_req      ),
     .axi_resp_i      (ara_axi_resp     ),
 
-    .vew_ar_o        (vew_ar           ),
-    .vew_aw_o        (vew_aw           ),
-    .vl_ldst_o       (vl_ldst          ),
+    // To GLSU
+    .cluster_metadata_o  (cluster_metadata   ),
     
     // To Ring Routers
     .ring_data_o         (sldu_o             ), 

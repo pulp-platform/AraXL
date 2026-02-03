@@ -29,10 +29,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                    rst_ni,
     // AXI Memory Interface
     output axi_req_t                axi_req_o,
-    output vew_e                    vew_ar_o,
-    output vew_e                    vew_aw_o,
-    output vlen_cluster_t           vl_ldst_o,
     input  axi_resp_t               axi_resp_i,
+    output cluster_metadata_t       cluster_metadata_o,
     // Interface with the dispatcher
     input  logic                    core_st_pending_i,
     output logic                    load_complete_o,
@@ -105,9 +103,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
 
   `include "common_cells/registers.svh" 
 
-  vew_e vew_ar, vew_aw;
-  `FF(vew_ar_o, vew_ar, vew_e'(1'b0), clk_i, rst_ni);
-  `FF(vew_aw_o, vew_aw, vew_e'(1'b0), clk_i, rst_ni);
+  cluster_metadata_t cluster_metadata;
+  `FF(cluster_metadata_o, cluster_metadata, cluster_metadata_t'('0), clk_i, rst_ni);
 
   //////////////////////////
   //  Address Generation  //
@@ -130,14 +127,12 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .rst_ni                     (rst_ni                     ),
     // AXI Memory Interface
     .axi_aw_o                   (axi_req.aw                 ),
-    .vew_aw_o                   (vew_aw                     ),
     .axi_aw_valid_o             (axi_req.aw_valid           ),
     .axi_aw_ready_i             (axi_resp.aw_ready          ),
     .axi_ar_o                   (axi_req.ar                 ),
-    .vew_ar_o                   (vew_ar                     ),
-    .vl_ldst_o                  (vl_ldst_o                  ),
     .axi_ar_valid_o             (axi_req.ar_valid           ),
     .axi_ar_ready_i             (axi_resp.ar_ready          ),
+    .cluster_metadata_o         (cluster_metadata           ),
     // Interface with dispatcher
     .core_st_pending_i          (core_st_pending_i          ),
     // Interface with the sequencer

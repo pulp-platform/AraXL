@@ -2623,7 +2623,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   5'b01011: begin // Unit-strided, mask load, EEW=1
                     // We operate ceil(vl/8) bytes
                     ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
                     ara_req_d.vtype.vsew = EW8;
+                    ara_req_d.use_eew1   = 1'b1;
                   end
                   5'b10000: begin // Unit-strided, fault-only first
                     // TODO: Not implemented
@@ -2836,7 +2838,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   5'b01011: begin // Unit-strided, mask store, EEW=1
                     // We operate ceil(vl/8) bytes
                     ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
                     ara_req_d.vtype.vsew = EW8;
+                    ara_req_d.use_eew1   = 1'b1;
                   end
                   default: begin // Reserved
                     illegal_insn     = 1'b1;
