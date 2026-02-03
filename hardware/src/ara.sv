@@ -50,9 +50,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // AXI interface
     output axi_req_t          axi_req_o,
     input  axi_resp_t         axi_resp_i,
-    output vew_e              vew_ar_o,
-    output vew_e              vew_aw_o,
-    output vlen_cluster_t     vl_ldst_o,
+    output cluster_metadata_t cluster_metadata_o,
 
     // Interface with Ring Interconnect
     output remote_data_t ring_data_o,
@@ -351,9 +349,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // AXI memory interface
     .axi_req_o                  (axi_req_o                                             ),
     .axi_resp_i                 (axi_resp_i                                            ),
-    .vew_ar_o                   (vew_ar_o                                              ),
-    .vew_aw_o                   (vew_aw_o                                              ),
-    .vl_ldst_o                  (vl_ldst_o                                             ),
+    .cluster_metadata_o         (cluster_metadata_o                                    ),
     // Interface with the dispatcher
     .core_st_pending_i          (core_st_pending                                       ),
     .load_complete_o            (load_complete                                         ),

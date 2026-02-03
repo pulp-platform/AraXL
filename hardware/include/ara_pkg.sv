@@ -322,6 +322,9 @@ package ara_pkg;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
+    // To specify this is a mask load vlm
+    logic use_eew1;
+
     // Request token, for registration in the sequencer
     logic token;
   } ara_req_t;
@@ -420,6 +423,9 @@ package ara_pkg;
     vlen_cluster_t vl_cluster;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+  
+    // To specify this is a mask load vlm
+    logic use_eew1;
 
     // Hazards
     logic [NrVInsn-1:0] hazard_vs1;
@@ -432,6 +438,15 @@ package ara_pkg;
     // Each set bit indicates that the corresponding vector loop has finished execution
     logic [NrVInsn-1:0] vinsn_done;
   } pe_resp_t;
+
+
+  ///// Cluster meta data /////
+
+  typedef struct packed {
+    rvv_pkg::vew_e vew;
+    vlen_cluster_t vl;
+    logic use_eew1;
+  } cluster_metadata_t;
 
   /* The VRF data is stored into the lanes in a shuffled way, similar to how it was done
    * in version 0.9 of the RISC-V Vector Specification, when SLEN < VLEN. In fact, VRF

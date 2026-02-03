@@ -212,6 +212,7 @@ jobs:
       max-parallel: 1
       matrix:
         ara_config: [4_lanes]
+        cluster_config : [2, 4]
     needs: tc-llvm
     steps:
     - uses: actions/checkout@v4
@@ -231,11 +232,11 @@ jobs:
     - name: Untar LLVM
       run: tar xvf tc-llvm.tar
     - name: Compile applications
-      run: config=${{ matrix.ara_config }} make -C apps
+      run: config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C apps
     - name: Upload applications
       uses: actions/upload-artifact@v4
       with:
-        name: compile-apps-${{ matrix.ara_config }}
+        name: compile-apps-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
         path: apps/bin
 
   compile-riscv-tests:
@@ -244,6 +245,7 @@ jobs:
       max-parallel: 1
       matrix:
         ara_config: [4_lanes]
+        cluster_config : [2, 4]
     needs: ["tc-llvm", "tc-gcc", "tc-isa-sim"]
     steps:
     - uses: actions/checkout@v4
@@ -270,11 +272,11 @@ jobs:
     - name: Untar GCC
       run: tar xvf tc-gcc.tar
     - name: Compile applications
-      run: config=${{ matrix.ara_config }} make -C apps riscv_tests
+      run: config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C apps riscv_tests
     - name: Upload applications
       uses: actions/upload-artifact@v4
       with:
-        name: compile-riscv-tests-${{ matrix.ara_config }}
+        name: compile-riscv-tests-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
         path: apps/bin
 
   compile-ara:
@@ -283,6 +285,7 @@ jobs:
       max-parallel: 1
       matrix:
         ara_config: [4_lanes]
+        cluster_config : [2, 4]
     needs: ["tc-verilator", "tc-isa-sim"]
     steps:
     - uses: actions/checkout@v4
@@ -314,13 +317,13 @@ jobs:
       run: |
         sudo apt-get install libelf-dev
         make -C hardware apply-patches
-        config=${{ matrix.ara_config }} make -C hardware verilate
+        config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C hardware verilate
     - name: Tar Verilated model of Ara
       run: tar -cvf ara.tar hardware/build/verilator hardware/bender
     - name: Upload Ara Verilated model
       uses: actions/upload-artifact@v4
       with:
-        name: compile-ara-${{ matrix.ara_config }}
+        name: compile-ara-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
         path: ara.tar
 
 
@@ -336,6 +339,7 @@ jobs:
         # app:        [hello_world, imatmul, fmatmul, iconv2d, fconv2d, jacobi2d, exp, softmax, dotproduct, fdotproduct, fconv3d, pathfinder, roi_align, lavamd, dwt, dropout, fft, gemv]
         app:        [hello_world, fmatmul, exp, softmax, fdotproduct, fconv2d]
         ara_config: [4_lanes]
+        cluster_config: [2, 4]
     needs: ["compile-ara", "compile-apps"]
     steps:
     - uses: actions/checkout@v4
@@ -348,16 +352,16 @@ jobs:
     - name: Get Verilated model of Ara
       uses: actions/download-artifact@v4
       with:
-        name: compile-ara-${{ matrix.ara_config }}
+        name: compile-ara-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
     - name: Untar Verilated model of Ara
       run: tar xvf ara.tar
     - name: Get applications
       uses: actions/download-artifact@v4
       with:
-        name: compile-apps-${{ matrix.ara_config }}
+        name: compile-apps-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
         path: apps/bin
     - name: Run test
-      run: config=${{ matrix.ara_config }} app=${{ matrix.app }} make -C hardware simv
+      run: config=${{ matrix.ara_config }} app=${{ matrix.app }} nr_clusters=${{ matrix.cluster_config }} make -C hardware simv
 
   riscv-tests-simv:
     runs-on: ubuntu-22.04
@@ -365,6 +369,7 @@ jobs:
       max-parallel: 1
       matrix:
         ara_config: [4_lanes]
+        cluster_config: [2, 4]
     needs: ["compile-ara", "compile-riscv-tests"]
     steps:
     - uses: actions/checkout@v4
@@ -377,13 +382,13 @@ jobs:
     - name: Get Verilated model of Ara
       uses: actions/download-artifact@v4
       with:
-        name: compile-ara-${{ matrix.ara_config }}
+        name: compile-ara-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
     - name: Untar Verilated model of Ara
       run: tar xvf ara.tar
     - name: Get RISC-V tests
       uses: actions/download-artifact@v4
       with:
-        name: compile-riscv-tests-${{ matrix.ara_config }}
+        name: compile-riscv-tests-${{ matrix.ara_config }}-${{ matrix.cluster_config }}
         path: apps/bin
     - name: Run tests
-      run: config=${{ matrix.ara_config }} make -C hardware -j8 riscv_tests_simv
+      run: config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C hardware -j8 riscv_tests_simv

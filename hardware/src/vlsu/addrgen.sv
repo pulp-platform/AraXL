@@ -21,14 +21,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     input  logic                           rst_ni,
     // Memory interface
     output axi_ar_t                        axi_ar_o,
-    output vew_e                           vew_ar_o, 
     output logic                           axi_ar_valid_o,
     input  logic                           axi_ar_ready_i,
     output axi_aw_t                        axi_aw_o,
-    output vew_e                           vew_aw_o,
     output logic                           axi_aw_valid_o,
     input  logic                           axi_aw_ready_i,
-    output vlen_cluster_t                  vl_ldst_o,
+    output cluster_metadata_t              cluster_metadata_o,         
     // Interace with the dispatcher
     input  logic                           core_st_pending_i,
     // Interface with the main sequencer
@@ -73,6 +71,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     vew_e vew;
     logic is_load;
     logic is_burst; // Unit-strided instructions can be converted into AXI INCR bursts
+    logic use_eew1;
+    vlen_cluster_t vl_cluster;
   } addrgen_req_t;
   addrgen_req_t addrgen_req;
   logic         addrgen_req_valid;
@@ -252,7 +252,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             vew     : pe_req_q.vtype.vsew,
             is_load : is_load(pe_req_q.op),
             // Unit-strided loads/stores trigger incremental AXI bursts.
-            is_burst: (pe_req_q.op inside {VLE, VSE})
+            is_burst: (pe_req_q.op inside {VLE, VSE}),
+            use_eew1 : pe_req_q.use_eew1,
+            vl_cluster : pe_req_q.vl_cluster
           };
           addrgen_req_valid = 1'b1;
 
@@ -274,7 +276,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           vew     : pe_req_q.vtype.vsew,
           is_load : is_load(pe_req_q.op),
           // Unit-strided loads/stores trigger incremental AXI bursts.
-          is_burst: 1'b0
+          is_burst: 1'b0,
+          use_eew1 : pe_req_q.use_eew1,
+          vl_cluster : pe_req_q.vl_cluster
         };
         addrgen_req_valid = 1'b1;
 
@@ -440,6 +444,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   logic [$clog2(AxiDataWidth/8):0]            eff_axi_dw_d, eff_axi_dw_q;
   logic [idx_width($clog2(AxiDataWidth/8)):0] eff_axi_dw_log_d, eff_axi_dw_log_q;
 
+
+  // Assign cluster metadata
+  assign cluster_metadata_o.vew = axi_addrgen_q.vew;
+  assign cluster_metadata_o.vl = axi_addrgen_q.vl_cluster;
+  assign cluster_metadata_o.use_eew1 = axi_addrgen_q.use_eew1;
+
   always_comb begin: axi_addrgen
     // Maintain state
     axi_addrgen_state_d = axi_addrgen_state_q;
@@ -472,10 +482,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     axi_ar_valid_o = 1'b0;
     axi_aw_o       = '0;
     axi_aw_valid_o = 1'b0;
-
-    vew_ar_o = vew_e'('0); // To be removed
-    vew_aw_o = vew_e'('0); // To be removed
-    vl_ldst_o = pe_req_q.vl_cluster;
 
     case (axi_addrgen_state_q)
       AXI_ADDRGEN_IDLE: begin
@@ -606,7 +612,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   burst  : BURST_INCR,
                   default: '0
                 };
-                vew_ar_o = axi_addrgen_q.vew;
                 axi_ar_valid_o = 1'b1;
               end
               // AW Channel
@@ -621,7 +626,6 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
                   burst  : BURST_INCR,
                   default: '0
                 };
-                vew_aw_o = axi_addrgen_q.vew; 
                 axi_aw_valid_o = 1'b1;
               end
 
