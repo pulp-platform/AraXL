@@ -21,16 +21,16 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   
   parameter  type                   axi_addr_t          = logic [AxiAddrWidth-1:0],
   parameter  type                   axi_data_t          = logic [NrClusters*ClusterAxiDataWidth-1:0],
-  localparam int           unsigned NumStages           = $clog2(ClusterAxiDataWidth/(8*NrLanes)),
-  localparam int           unsigned NumBuffers          = 2 // ELEN / (ClusterAxiDataWidth * NrClusters / NrLanes)
+  // Dependant parameters. DO NOT CHANGE!
+  // Shuffling starts from EEW1 to support mask loads
+  localparam int           unsigned NumStages           = $clog2(ClusterAxiDataWidth/NrLanes),
+  localparam int           unsigned NumBuffers          = 2
 ) (
   // Clock and Reset
   input  logic                        clk_i,
   input  logic                        rst_ni,
-  
-  input  vew_e                        vew_ar_i,
-  input  vew_e                        vew_aw_i,
-  input  vlen_cluster_t               vl_i,
+
+  input cluster_metadata_t            cluster_metadata_i,
   
   input   axi_req_t  [NrClusters-1:0] axi_req_i,
   output  axi_req_t  [NrClusters-1:0] axi_req_o,
@@ -50,6 +50,7 @@ typedef struct packed {
   logic buffer_en;
   logic valid;
   vlen_cluster_t [NrClusters-1:0] vl;
+  logic use_eew1;
 } req_track_t;
 
 localparam int unsigned NumTrackers=8;
@@ -81,9 +82,6 @@ logic [NrClusters-1:0] w_valid_i, w_ready_o;
 logic rd_full, wr_full;
 assign rd_full = (rd_cnt_q == NumTrackers);
 assign wr_full = (wr_cnt_q == NumTrackers);
-
-vlen_cluster_t vl_d, vl_q;
-logic vl_valid_d, vl_valid_q;
 
 // To handle cases where vlsu of each cluster is ready to 
 // receive read resp or not.
@@ -147,11 +145,12 @@ for (genvar s=0; s<NumStages; s++) begin : p_stage
   // Shuffling write data
   shuffle #(
     .NrLanes             (NrLanes),
-    .NrClusters          (NrClusters                  ),  
-    .ClusterAxiDataWidth (ClusterAxiDataWidth         ),
-    .T                   (stage_w_t                   ),
-    .scale               (NumStages - s -1            ),
-    .isRead              (0                           )
+    .NrClusters          (NrClusters                     ),  
+    .ClusterAxiDataWidth (ClusterAxiDataWidth            ),
+    .T                   (stage_w_t                      ),
+    .scale               (NumStages - s -1               ),
+    .isRead              (0                              ),
+    .isMask              ((NumStages - s -1) > 0 ? 0 : 1 )
   ) i_shuffle_wr (
     .data_i       ( w_data_in  [s]    ),
     .data_o       ( w_data_out [s]    ),
@@ -232,8 +231,6 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     wrbuf_valid_q      <= '0;
     wrbuf_full_q       <= '0;
     wrbuf_be_q         <= '0;
-    vl_q               <= '0;
-    vl_valid_q         <= '0;
   end else begin
     // R
     buf_q              <= buf_d;
@@ -248,8 +245,6 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     wrbuf_valid_q      <= wrbuf_valid;
     wrbuf_full_q       <= wrbuf_full;
     wrbuf_be_q         <= wrbuf_be_d;
-    vl_q               <= vl_d;
-    vl_valid_q         <= vl_valid_d;
   end
 end
 
@@ -297,32 +292,45 @@ always_comb begin
   //////////////
 
   // If a request arrives, add to tracker.
+  // Request taken from cluster 0
   if (axi_req_i[0].ar_valid & axi_resp_o[0].ar_ready) begin
-    rd_tracker_d[rd_accept_pnt_q].vew = vew_ar_i;
-    for (int c=0; c<NrClusters; c++)
+    // Store element width
+    rd_tracker_d[rd_accept_pnt_q].vew = cluster_metadata_i.vew;
+    rd_tracker_d[rd_accept_pnt_q].use_eew1 = cluster_metadata_i.use_eew1;
+    // Track number of beats and vl
+    for (int c=0; c<NrClusters; c++) begin
       rd_tracker_d[rd_accept_pnt_q].len[c] = axi_req_i[0].ar.len+1;
+      rd_tracker_d[rd_accept_pnt_q].vl[c] = cluster_metadata_i.vl;
+    end
+    // Update pnt to accept next request
     rd_accept_pnt_d = (rd_accept_pnt_q == NumTrackers-1) ? '0 : rd_accept_pnt_q + 1;
     rd_cnt_d += 1;
-
+    // To enable certain shuffle stages based on element width
     for (int s=0; s<NumStages; s++) begin
-      rd_tracker_d[rd_accept_pnt_q].shuffle_en[s] = (s >= vew_ar_i) ? 1'b1 : 1'b0;
+      rd_tracker_d[rd_accept_pnt_q].shuffle_en[s] = cluster_metadata_i.use_eew1 ? 1'b1 : (s >= (3 + cluster_metadata_i.vew)) ? 1'b1 : 1'b0;
     end
-    rd_tracker_d[rd_accept_pnt_q].buffer_en = NumStages < vew_ar_i ? 1'b1 : 1'b0;
+    // To enable buffer for 64b element widths
+    rd_tracker_d[rd_accept_pnt_q].buffer_en = NumStages < (3 + cluster_metadata_i.vew) ? 1'b1 : 1'b0;
   end
 
   if (axi_req_i[0].aw_valid & axi_resp_o[0].aw_ready) begin
-    wr_tracker_d[wr_accept_pnt_q].vew = vew_aw_i;
+    // Store element width
+    wr_tracker_d[wr_accept_pnt_q].vew = cluster_metadata_i.vew;
+    wr_tracker_d[wr_accept_pnt_q].use_eew1 = cluster_metadata_i.use_eew1;
+    // Track number of beats and vl
     for (int c=0; c<NrClusters; c++) begin
-      wr_tracker_d[wr_accept_pnt_q].vl[c] = vl_i;
+      wr_tracker_d[wr_accept_pnt_q].vl[c] = cluster_metadata_i.vl;
       wr_tracker_d[wr_accept_pnt_q].len[c] = axi_req_i[0].aw.len+1;
     end
+    // Update pnt to accept next request
     wr_accept_pnt_d = (wr_accept_pnt_q == NumTrackers-1) ? '0 : wr_accept_pnt_q + 1; 
     wr_cnt_d += 1;
-
+    // To enable certain shuffle stages based on element width
     for (int s=0; s<NumStages; s++) begin
-      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = ((NumStages -s -1) >= vew_aw_i) ? 1'b1 : 1'b0;
+      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = cluster_metadata_i.use_eew1 ? 1'b1 : (((NumStages -s -1) >= (3 + cluster_metadata_i.vew)) ? 1'b1 : 1'b0);
     end
-    wr_tracker_d[wr_accept_pnt_q].buffer_en = NumStages < vew_aw_i ? 1'b1 : 1'b0;
+    // To enable buffer for 64b element widths
+    wr_tracker_d[wr_accept_pnt_q].buffer_en = NumStages < (3 + cluster_metadata_i.vew) ? 1'b1 : 1'b0;
   end
 
   // Update counters for shuffle stage
@@ -525,7 +533,7 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].w_ready = wr_buffer_en ? ~wrbuf_full[c] : w_ready_o[c];          // Copy ready from stream join output to response
 
 end
-assign r_valid[0]   = axi_resp_i[0].r_valid;            // From the Global Ld-St for now all clusters receive data together. 
+assign r_valid[0]   = rd_buffer_en ? 1'b0 : axi_resp_i[0].r_valid;            // From the Global Ld-St for now all clusters receive data together. 
                                                         // Hence using only cluster-0 's indication of r_valid.
 
 // Handle Request path
@@ -562,9 +570,10 @@ module shuffle import rvv_pkg::*; #(
   parameter  type                   T                   = logic,
   parameter  int           unsigned scale               = 0, // In bytes
   parameter  int           unsigned isRead              = 1,
+  parameter  int           unsigned isMask              = 0,
   localparam int           unsigned TotalDataWidth      = ClusterAxiDataWidth * NrClusters,
   localparam int           unsigned TotalLanes          = NrClusters * NrLanes,
-  localparam int           unsigned BlockSize           = (8*NrLanes) << scale,            // Sizes to move together (8*N) bits is the base. Doubles every stage.
+  localparam int           unsigned BlockSize           = NrLanes << scale,
   localparam int           unsigned NumGatherBlocks     = TotalDataWidth / (BlockSize * NrClusters * 2)         
 
 ) (
@@ -577,7 +586,9 @@ module shuffle import rvv_pkg::*; #(
   logic [TotalDataWidth-1:0] data_in, data_out;
   logic [TotalDataWidth/8-1:0] be_in, be_out;
   
-  if (!isRead) begin
+  if (!isRead & !isMask) begin
+    // Write shuffle stage for 8/16b elements
+    // Also shuffle the byte enable masks
     always_comb begin
       data_o = data_i;
 
@@ -604,7 +615,33 @@ module shuffle import rvv_pkg::*; #(
       end
 
     end
+  end else if (!isRead & isMask) begin
+      // Write shuffle stage used for mask writes to memory
+      // byte enable gathering is ignored since operating at less than 8-bit blocks here
+      always_comb begin
+      data_o = data_i;
+
+      for (int c=0; c<NrClusters; c++) begin 
+        data_in[c*ClusterAxiDataWidth +: ClusterAxiDataWidth] = data_i[c].data;
+      end
+
+      if (enable_i) begin
+
+        for (int k=0; k<NumGatherBlocks; k++) begin
+          for (int i=0; i<NrClusters; i++) begin
+            for (int j=0; j<2; j++) begin
+              data_out[(k * NrClusters * 2 + j * NrClusters + i)*BlockSize +: BlockSize] = data_in[(k * NrClusters * 2 + 2 * i + j)*BlockSize  +: BlockSize];
+            end
+          end
+        end
+
+        for (int c=0; c<NrClusters; c++) begin
+          data_o[c].data = data_out[c*ClusterAxiDataWidth +: ClusterAxiDataWidth];
+        end
+      end
+    end
   end else begin
+    // Read shuffle for 1/8/16b elements
     always_comb begin
       data_o = data_i;
 

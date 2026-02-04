@@ -28,10 +28,7 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic              clk_i,
   input  logic              rst_ni,
 
-  input vew_e               vew_ar_i,
-  input vew_e               vew_aw_i,
-  input vlen_cluster_t      vl_ldst_rd_i,
-  input vlen_cluster_t      vl_ldst_wr_i,
+  input cluster_metadata_t  cluster_metadata_i,
   
   input  axi_req_t axi_req_i,
   output axi_req_t axi_req_o, 
@@ -199,15 +196,16 @@ always_comb begin
   // If a request arrives, add to tracker.
   // Assign shift enable for different stages
   if (axi_req_i.ar_valid && axi_resp_o.ar_ready) begin
+    automatic vew_e     vew          = cluster_metadata_i.vew;  
     automatic int       burst        = axi_req_i.ar.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew_ar_i;
+    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew;
     vl_d = vl_q + vlen_request;
 
     tracker_d[w_pnt_q].addr  = axi_req_i.ar.addr;
     // Track vl expected to receive including misalignment
-    tracker_d[w_pnt_q].len   = vl_ldst_rd_i;
-    tracker_d[w_pnt_q].vew   = vew_ar_i;
+    tracker_d[w_pnt_q].len   = cluster_metadata_i.vl;
+    tracker_d[w_pnt_q].vew   = vew;
     for (int s=0; s < NumStages; s++)
       tracker_d[w_pnt_q].num_requests[s] += 1;
     
@@ -223,7 +221,7 @@ always_comb begin
     end
 
     // If last request
-    if (vl_d >= vl_ldst_rd_i) begin
+    if (vl_d >= cluster_metadata_i.vl) begin
       // Reset vl
       vl_d = 0;
       
@@ -392,9 +390,10 @@ always_comb begin
   b_commit_pnt_d = b_commit_pnt_q;
 
   if (axi_req_i.aw_valid && axi_resp_o.aw_ready) begin
+    automatic vew_e     vew          = cluster_metadata_i.vew;
     automatic int       burst        = axi_req_i.aw.len + 1;
     automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew_aw_i;
+    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew;
     wr_vl_d = wr_vl_q + vlen_request;
     
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
@@ -402,7 +401,7 @@ always_comb begin
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= vl_ldst_wr_i) begin
+    if (wr_vl_d >= cluster_metadata_i.vl) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end
