@@ -42,6 +42,7 @@ void TEST_CASE2(void) {
            2560, -19900, 12345, -80, 2560, -19900);
   VLOAD_16(v3, 50, 7000, 400, 19901, 50, 7000, 400, 19901, 50, 7000, 400, 19901,
            50, 7000, 400, 19901);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xCC, 0xCC);
   VLOAD_16(v1, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef,
            0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef, 0xbeef);

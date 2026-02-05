@@ -105,6 +105,7 @@ void TEST_CASE2(void) {
 void TEST_CASE3(void) {
   VSET(16, e32, m1);
   VCLEAR(v3);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xFF, 0xFF);
   asm volatile("vle32.v v3, (%0), v0.t" ::"r"(&ALIGNED_I32[0]));
   VCMP_U32(3, v3, 0x9fe41920, 0xf9aa71f0, 0xa11a9384, 0x99991348, 0x9fa831c7,

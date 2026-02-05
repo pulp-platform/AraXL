@@ -112,6 +112,7 @@ void TEST_CASE2(void) {
 void TEST_CASE3(void) {
   VSET(16, e64, m1);
   VCLEAR(v3);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xFF, 0xFF);
   asm volatile("vle64.v v3, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VCMP_U64(3, v3, 0x9fe419208f2e05e0, 0xf9aa71f0c394bbd3, 0xa11a9384a7163840,

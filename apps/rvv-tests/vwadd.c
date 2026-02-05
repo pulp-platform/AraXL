@@ -34,6 +34,7 @@ void TEST_CASE2(void) {
   VSET(16, e8, m1);
   VLOAD_8(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_8(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwadd.vv v6, v2, v4, v0.t");

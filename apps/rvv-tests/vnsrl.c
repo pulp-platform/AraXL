@@ -47,6 +47,7 @@ void TEST_CASE2(void) {
   VLOAD_16(v2, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00,
            0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00);
   VLOAD_8(v3, 0, 1, 2, 3, 7, 15, 31, 32, 0, 1, 2, 3, 7, 15, 31, 32);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vnsrl.wv v4, v2, v3, v0.t");

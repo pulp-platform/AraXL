@@ -83,6 +83,7 @@ void TEST_CASE2(void) {
   //              8824.000, -5732.000, -1557.000, -2302.000, -407.250
   VLOAD_16(v2, 0xe8a2, 0x69d1, 0xed03, 0xeab1, 0xeb93, 0x70ba, 0x54c0, 0xeff0,
            0xe885, 0xec8d, 0x703c, 0x704f, 0xed99, 0xe615, 0xe87f, 0xde5d);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v3);
   asm volatile("vfcvt.xu.f.v v3, v2, v0.t");

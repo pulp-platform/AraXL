@@ -65,6 +65,7 @@ void TEST_CASE2(void) {
            0xc5d5509c, 0xc5da05f8, 0x45273e62, 0x4615ce7f, 0xc5657cf5,
            0x4561bf5b, 0xc60dfa20, 0xc5a6acf0, 0xc54d4347, 0x45b16120,
            0xc60195e3);
+  VCLEAR(v0);
   VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfncvt.xu.f.w v4, v2, v0.t");
