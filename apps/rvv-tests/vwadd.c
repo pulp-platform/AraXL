@@ -7,6 +7,8 @@
 
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 void TEST_CASE1(void) {
   VSET(16, e8, m1);
   VLOAD_8(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
@@ -34,7 +36,7 @@ void TEST_CASE2(void) {
   VSET(16, e8, m1);
   VLOAD_8(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_8(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.vv v6, v2, v4, v0.t");
   VSET(16, e16, m1);
@@ -43,7 +45,7 @@ void TEST_CASE2(void) {
   VSET(16, e16, m1);
   VLOAD_16(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.vv v6, v2, v4, v0.t");
   VSET(16, e32, m1);
@@ -52,7 +54,7 @@ void TEST_CASE2(void) {
   VSET(16, e32, m1);
   VLOAD_32(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.vv v6, v2, v4, v0.t");
   VSET(16, e64, m1);
@@ -86,7 +88,7 @@ void TEST_CASE4(void) {
 
   VSET(16, e8, m1);
   VLOAD_8(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.vx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e16, m1);
@@ -94,7 +96,7 @@ void TEST_CASE4(void) {
 
   VSET(16, e16, m1);
   VLOAD_16(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.vx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e32, m1);
@@ -102,7 +104,7 @@ void TEST_CASE4(void) {
 
   VSET(16, e32, m1);
   VLOAD_32(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.vx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e64, m1);
@@ -136,7 +138,7 @@ void TEST_CASE6(void) {
   VSET(16, e8, m1);
   VLOAD_16(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_8(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.wv v6, v2, v4, v0.t");
   VSET(16, e16, m1);
@@ -145,7 +147,7 @@ void TEST_CASE6(void) {
   VSET(16, e16, m1);
   VLOAD_32(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.wv v6, v2, v4, v0.t");
   VSET(16, e32, m1);
@@ -154,7 +156,7 @@ void TEST_CASE6(void) {
   VSET(16, e32, m1);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.wv v6, v2, v4, v0.t");
   VSET(16, e64, m1);
@@ -188,7 +190,7 @@ void TEST_CASE8(void) {
 
   VSET(16, e8, m1);
   VLOAD_16(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.wx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e16, m1);
@@ -196,7 +198,7 @@ void TEST_CASE8(void) {
 
   VSET(16, e16, m1);
   VLOAD_32(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.wx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e32, m1);
@@ -204,7 +206,7 @@ void TEST_CASE8(void) {
 
   VSET(16, e32, m1);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v6);
   asm volatile("vwadd.wx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e64, m1);
@@ -216,13 +218,13 @@ int main(void) {
   enable_vec();
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-  // TEST_CASE4();
+  TEST_CASE4();
   TEST_CASE5();
-  // TEST_CASE6();
+  TEST_CASE6();
   TEST_CASE7();
-  // TEST_CASE8();
+  TEST_CASE8();
 
   EXIT_CHECK();
 }

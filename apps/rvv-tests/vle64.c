@@ -8,6 +8,10 @@
 #define AXI_DWIDTH 128
 // Exception Handler for rtl
 
+int8_t mask[2] = {0xAA, 0xAA};
+int8_t mask1[2] = {0XFF, 0xFF};
+int8_t mask2[2] = {0X00, 0x00};
+
 void mtvec_handler(void) {
   asm volatile("csrr t0, mcause"); // Read mcause
 
@@ -112,7 +116,7 @@ void TEST_CASE2(void) {
 void TEST_CASE3(void) {
   VSET(16, e64, m1);
   VCLEAR(v3);
-  VLOAD_8(v0, 0xFF, 0xFF);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask1));
   asm volatile("vle64.v v3, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VCMP_U64(3, v3, 0x9fe419208f2e05e0, 0xf9aa71f0c394bbd3, 0xa11a9384a7163840,
            0x99991348a9f38cd1, 0x9fa831c7a11a9384, 0x3819759853987548,
@@ -125,7 +129,7 @@ void TEST_CASE3(void) {
 void TEST_CASE4(void) {
   VSET(16, e64, m1);
   VCLEAR(v3);
-  VLOAD_8(v0, 0x00, 0x00);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask2));
   asm volatile("vle64.v v3, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VCMP_U64(4, v3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
@@ -134,7 +138,7 @@ void TEST_CASE5(void) {
   VSET(16, e64, m1);
   VCLEAR(v3);
   VLOAD_64(v3, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   asm volatile("vle64.v v3, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VCMP_U64(5, v3, 1, 0xf9aa71f0c394bbd3, 3, 0x99991348a9f38cd1, 5,
            0x3819759853987548, 7, 0x81937598aa819388, 9, 0x3eeeeeeee33111ae, 11,
@@ -147,7 +151,7 @@ void TEST_CASE6(void) {
   uint64_t avl;
   VSET(16, e64, m1);
   VLOAD_64(v4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   __asm__ volatile("vsetivli %[A], 12, e64, m1, ta, ma" : [A] "=r"(avl));
   asm volatile("vle64.v v4, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VSET(16, e64, m1);
@@ -160,7 +164,7 @@ void TEST_CASE7(void) {
   uint64_t avl;
   VSET(16, e64, m1);
   VLOAD_64(v4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   __asm__ volatile("vsetivli %[A], 12, e64, m1, ta, mu" : [A] "=r"(avl));
   asm volatile("vle64.v v4, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VSET(16, e64, m1);
@@ -173,7 +177,7 @@ void TEST_CASE8(void) {
   uint64_t avl;
   VSET(16, e64, m1);
   VLOAD_64(v4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   __asm__ volatile("vsetivli %[A], 12, e64, m1, tu, ma" : [A] "=r"(avl));
   asm volatile("vle64.v v4, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VSET(16, e64, m1);
@@ -186,7 +190,7 @@ void TEST_CASE9(void) {
   uint64_t avl;
   VSET(16, e64, m1);
   VLOAD_64(v4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   __asm__ volatile("vsetivli %[A], 12, e64, m1, tu, mu" : [A] "=r"(avl));
   asm volatile("vle64.v v4, (%0), v0.t" ::"r"(&ALIGNED_I64[0]));
   VSET(16, e64, m1);
@@ -294,13 +298,13 @@ int main(void) {
   printf("*****Running tests for vle64.v*****\n");
   TEST_CASE1();
   // TEST_CASE2();
-  // TEST_CASE3();
-  // TEST_CASE4();
-  // TEST_CASE5();
-  // TEST_CASE6();
-  // TEST_CASE7();
-  // TEST_CASE8();
-  // TEST_CASE9();
+  TEST_CASE3();
+  TEST_CASE4();
+  TEST_CASE5();
+  TEST_CASE6();
+  TEST_CASE7();
+  TEST_CASE8();
+  TEST_CASE9();
   TEST_CASE10();
   TEST_CASE11();
   TEST_CASE12();
