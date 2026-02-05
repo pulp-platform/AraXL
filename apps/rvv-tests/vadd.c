@@ -7,6 +7,8 @@
 
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 void TEST_CASE1(void) {
   VSET(16, e8, m1);
   VLOAD_8(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
@@ -37,7 +39,7 @@ void TEST_CASE2(void) {
   VSET(16, e8, m1);
   VLOAD_8(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_8(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vv v3, v1, v2, v0.t");
   VCMP_U8(5, v3, 0, 4, 0, 8, 0, 12, 0, 16, 0, 4, 0, 8, 0, 12, 0, 16);
@@ -45,7 +47,7 @@ void TEST_CASE2(void) {
   VSET(16, e16, m1);
   VLOAD_16(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vv v3, v1, v2, v0.t");
   VCMP_U16(6, v3, 0, 4, 0, 8, 0, 12, 0, 16, 0, 4, 0, 8, 0, 12, 0, 16);
@@ -53,7 +55,7 @@ void TEST_CASE2(void) {
   VSET(16, e32, m1);
   VLOAD_32(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vv v3, v1, v2, v0.t");
   VCMP_U32(7, v3, 0, 4, 0, 8, 0, 12, 0, 16, 0, 4, 0, 8, 0, 12, 0, 16);
@@ -61,7 +63,7 @@ void TEST_CASE2(void) {
   VSET(16, e64, m1);
   VLOAD_64(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vv v3, v1, v2, v0.t");
   VCMP_U64(8, v3, 0, 4, 0, 8, 0, 12, 0, 16, 0, 4, 0, 8, 0, 12, 0, 16);
@@ -92,28 +94,28 @@ void TEST_CASE3(void) {
 void TEST_CASE4(void) {
   VSET(16, e8, m1);
   VLOAD_8(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vi v3, v1, 5, v0.t");
   VCMP_U8(13, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
 
   VSET(16, e16, m1);
   VLOAD_16(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vi v3, v1, 5, v0.t");
   VCMP_U16(14, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
 
   VSET(16, e32, m1);
   VLOAD_32(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vi v3, v1, 5, v0.t");
   VCMP_U32(15, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
 
   VSET(16, e64, m1);
   VLOAD_64(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vi v3, v1, 5, v0.t");
   VCMP_U64(16, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
@@ -148,28 +150,28 @@ void TEST_CASE6(void) {
 
   VSET(16, e8, m1);
   VLOAD_8(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vx v3, v1, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U8(21, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
 
   VSET(16, e16, m1);
   VLOAD_16(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vx v3, v1, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U16(22, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
 
   VSET(16, e32, m1);
   VLOAD_32(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vx v3, v1, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U32(23, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
 
   VSET(16, e64, m1);
   VLOAD_64(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vadd.vx v3, v1, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U64(24, v3, 0, 7, 0, 9, 0, 11, 0, 13, 0, 7, 0, 9, 0, 11, 0, 13);
@@ -192,11 +194,11 @@ int main(void) {
   enable_vec();
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-  // TEST_CASE4();
+  TEST_CASE4();
   TEST_CASE5();
-  // TEST_CASE6();
+  TEST_CASE6();
   // TEST_CASE7();
 
   EXIT_CHECK();

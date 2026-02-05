@@ -9,6 +9,8 @@
 #include "float_macros.h"
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 // Simple random test with similar values
 void TEST_CASE1(void) {
   VSET(16, e16, m1);
@@ -107,7 +109,7 @@ void TEST_CASE2(void) {
   //               -54.6875,  61.7500,  38.3438,  95.8125,  10.0938
   VLOAD_16(v6, 0x5236, 0x4f22, 0x4abd, 0xd5a9, 0x5340, 0xd3fa, 0x5222, 0x3552,
            0x4fb9, 0x499d, 0xd5df, 0xd2d6, 0x53b8, 0x50cb, 0x55fd, 0x490c);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   //              -83.87223053, -48.34465408,  70.48658752, -1.26614821,
   //              -24.13150024, -65.13838196,
   //              0.84671319,  34.34510040,  72.80049896,
@@ -149,7 +151,7 @@ void TEST_CASE2(void) {
            0xc7b72376, 0xc7864a70, 0x4726833b, 0xc7af0272, 0xc7393cfc,
            0xc71d2b13, 0x472d3665, 0x47b04acf, 0x479481c7, 0xc7b5784c,
            0x471e1a35);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   //              -10044.0368110413110116,  13040.9349537673260784,
   //              88916.1136409099854063,  79168.4367756713472772,
   //              21611.0950133731239475, -26455.6752808090968756,
@@ -271,7 +273,7 @@ void TEST_CASE4(void) {
            0xd3c2, 0xceef, 0x52f1, 0xd3c6, 0xd146, 0xd5f5, 0x4ec9, 0xcc3b);
   //                              32.2812
   BOX_HALF_IN_DOUBLE(dscalar_16, 0x5009);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   //               -70.22966003,  68.36327362, -69.75650787, -92.51078796,
   //               -53.56798553,
   //               -92.09814453,  92.33961487,  42.48206329,  99.15431976,
@@ -306,7 +308,7 @@ void TEST_CASE4(void) {
            0xc936ed6c);
   //                              -164832.20312500
   BOX_FLOAT_IN_DOUBLE(dscalar_32, 0xc820f80d);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   //               -730249.9193813583115116, -885955.2111547881504521,
   //               -739704.0702666083816439,  991252.9466537751723081,
   //               -543412.1947198503185064,  859135.3883249030914158,
@@ -343,9 +345,9 @@ int main(void) {
   enable_fp();
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-  // TEST_CASE4();
+  TEST_CASE4();
 
   EXIT_CHECK();
 }

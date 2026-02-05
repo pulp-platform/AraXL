@@ -9,6 +9,8 @@
 #include "float_macros.h"
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 // Simple random test with similar values
 void TEST_CASE1(void) {
   VSET(16, e16, m1);
@@ -86,7 +88,7 @@ void TEST_CASE2(void) {
   //               -55.5312,  2.1875
   VLOAD_16(v3, 0x5443, 0xc713, 0x4d11, 0x5485, 0x5589, 0x5080, 0x560a, 0x5467,
            0xd57b, 0x557b, 0x4865, 0xccb9, 0xd105, 0x558e, 0xd2f1, 0x4060);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.vv v4, v2, v3, v0.t");
   //               0.00000000,  72.55078125,  0.00000000,  161.81250000,
@@ -118,7 +120,7 @@ void TEST_CASE2(void) {
            0x47a65ab5, 0xc6fa9eb6, 0xc6b9b538, 0x47197f6f, 0x47149a31,
            0xc76f9f3e, 0x47961602, 0x46d02502, 0x47b37a87, 0x47ac8edd,
            0x46e39dec);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.vv v4, v2, v3, v0.t");
   //               0.0000000000000000, -124967.7656250000000000,
@@ -201,7 +203,7 @@ void TEST_CASE4(void) {
   //                -83.6875
   VLOAD_16(v2, 0x4038, 0x5367, 0x5597, 0x54b4, 0xc413, 0x540c, 0xd52f, 0xd54f,
            0xd202, 0xc61a, 0x4f7e, 0x494f, 0x5293, 0xc840, 0x5468, 0xd53b);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.vf v4, v2, %[A], v0.t" ::[A] "f"(dscalar_16));
   //                0.00000000,  71.80468750,  0.00000000,  87.83593750,
@@ -226,7 +228,7 @@ void TEST_CASE4(void) {
            0x488da31d, 0x4901961c, 0x485d9f5c, 0x488b6ed5, 0xc970fed5,
            0xc8cec087, 0xc8095e14, 0xc94e3244, 0x490643c8, 0x4894ddfc,
            0xc92009e7);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.vf v4, v2, %[A], v0.t" ::[A] "f"(dscalar_32));
   //                0.0000000000000000, -39875.2812500000000000,
@@ -330,7 +332,7 @@ void TEST_CASE6(void) {
   //              -59.0312,  44.9688,  63.8438,  30.1406
   VLOAD_16(v3, 0xd0c6, 0xcdb0, 0x526b, 0x486e, 0x4dc6, 0x5016, 0x547c, 0x47ad,
            0xca67, 0x5621, 0xc863, 0xd499, 0xd361, 0x519f, 0x53fb, 0x4f89);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.wv v4, v2, v3, v0.t");
   //               0.00000000,  71.60176849,  0.00000000,  90.39909363,
@@ -366,7 +368,7 @@ void TEST_CASE6(void) {
            0x46a2f5a5, 0x463ff3c6, 0x4770b95a, 0xc639d572, 0xc7355e4d,
            0x46ec4fb8, 0xc7b7cfd3, 0x47addc27, 0xc74b7abf, 0x478e1e54,
            0xc73805dd);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.wv v4, v2, v3, v0.t");
   //               0.0000000000000000,  121955.8156918793683872,
@@ -459,7 +461,7 @@ void TEST_CASE8(void) {
            0x425e44d8);
   //                              53.8750
   BOX_HALF_IN_DOUBLE(dscalar_16, 0x52bc);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.wf v4, v2, %[A], v0.t" ::[A] "f"(dscalar_16));
   //                0.00000000,  123.05321503,  0.00000000, -6.39166641,
@@ -488,7 +490,7 @@ void TEST_CASE8(void) {
            0x411dfc51be066c64);
   //                               572932.37500000
   BOX_FLOAT_IN_DOUBLE(dscalar_32, 0x490be046);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwadd.wf v4, v2, %[A], v0.t" ::[A] "f"(dscalar_32));
   //                0.0000000000000000, -75215.1888866436202079,
@@ -510,14 +512,14 @@ int main(void) {
   enable_fp();
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-  // TEST_CASE4();
+  TEST_CASE4();
 
   TEST_CASE5();
-  // TEST_CASE6();
+  TEST_CASE6();
   TEST_CASE7();
-  // TEST_CASE8();
+  TEST_CASE8();
 
   EXIT_CHECK();
 }

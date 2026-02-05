@@ -9,6 +9,8 @@
 #include "float_macros.h"
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 // Simple random test with similar values
 void TEST_CASE1(void) {
   VSET(16, e16, m1);
@@ -86,7 +88,7 @@ void TEST_CASE2(void) {
   //               -11.2500,  16.3594,  28.6094
   VLOAD_16(v6, 0x5607, 0xd62d, 0xd224, 0xd4ee, 0xc5eb, 0x501c, 0x501c, 0xd4ad,
            0xc930, 0x50f3, 0x5169, 0x4b87, 0xcffa, 0xc9a0, 0x4c17, 0x4f27);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwmul.vv v4, v2, v6, v0.t");
   //               0.00000000, -9424.24218750,  0.00000000,  2637.38281250,
@@ -118,7 +120,7 @@ void TEST_CASE2(void) {
            0x4793b8ee, 0xc7b0e214, 0xc7a556be, 0x470746cf, 0x47a79cbe,
            0xc6b8977b, 0xc79b510f, 0x474986a3, 0x45ecb47a, 0xc7b5deca,
            0x46db309f);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwmul.vv v4, v2, v6, v0.t");
   //               0.0000000000000000,  3250832165.2364501953125000,
@@ -199,7 +201,7 @@ void TEST_CASE4(void) {
            0x553f, 0xd28b, 0xd112, 0x3e9c, 0x54fb, 0xd089, 0x5033, 0xd487);
   //                             -58.9688
   BOX_HALF_IN_DOUBLE(dscalar_16, 0xd35f);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwmul.vf v4, v2, %[A], v0.t" ::[A] "f"(dscalar_16));
   //                0.00000000,  1596.76318359,  0.00000000, -4455.82617188,
@@ -224,7 +226,7 @@ void TEST_CASE4(void) {
            0x495f02eb);
   //                              -50557.21484375
   BOX_FLOAT_IN_DOUBLE(dscalar_32, 0xc7457d37);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vfwmul.vf v4, v2, %[A], v0.t" ::[A] "f"(dscalar_32));
   //                0.0000000000000000,  36099478708.7902832031250000,
@@ -246,9 +248,9 @@ int main(void) {
   enable_fp();
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-  // TEST_CASE4();
+  TEST_CASE4();
 
   EXIT_CHECK();
 }

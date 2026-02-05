@@ -9,6 +9,8 @@
 #include "float_macros.h"
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 // Simple random test with similar values
 void TEST_CASE1(void) {
   VSET(16, e16, m1);
@@ -77,7 +79,7 @@ void TEST_CASE2(void) {
   //              4336.000
   VLOAD_16(v2, 0xec85, 0x6cff, 0xf0d9, 0x7096, 0xd867, 0x6df8, 0x6913, 0x6a45,
            0x6020, 0xea71, 0xeb2d, 0x5dc1, 0x66b0, 0xf031, 0xe810, 0x6c3c);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vfsqrt.v v3, v2, v0.t");
   //                0.000,   71.500,   0.000,   96.938,   0.000,   78.188,
@@ -95,7 +97,7 @@ void TEST_CASE2(void) {
            0xc74c9d96, 0x46958052, 0x464bfcf4, 0xc785f064, 0xc708fa7d,
            0x47740b38, 0xc6c80928, 0x4755b10a, 0xc69ae6eb, 0x468b01ec,
            0xc6ddff25);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vfsqrt.v v3, v2, v0.t");
   //                0.000,   nan,   0.000,   nan,   0.000,   nan,   0.000,
@@ -116,7 +118,7 @@ void TEST_CASE2(void) {
            0xc1608f693a52837e, 0x415ac66d00c810d8, 0x412382fc427c96a0,
            0xc15cfc164dc9e320, 0xc162486f39607ee9, 0xc151910e2ac0e818,
            0x411333625c861bc0);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v3);
   asm volatile("vfsqrt.v v3, v2, v0.t");
   //                0.000,   nan,   0.000,   3101.147,   0.000,   nan,   0.000,
@@ -136,7 +138,7 @@ int main(void) {
   CHANGE_RM(RM_RTZ);
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
 
   EXIT_CHECK();
 }

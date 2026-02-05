@@ -7,6 +7,8 @@
 
 #include "vector_macros.h"
 
+int8_t mask[2] = {0xAA, 0xAA};
+
 void TEST_CASE1(void) {
   VSET(16, e8, m1);
   VLOAD_16(v2, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00,
@@ -47,7 +49,7 @@ void TEST_CASE2(void) {
   VLOAD_16(v2, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00,
            0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00);
   VLOAD_8(v3, 0, 1, 2, 3, 7, 15, 31, 32, 0, 1, 2, 3, 7, 15, 31, 32);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wv v4, v2, v3, v0.t");
   VCMP_U8(4, v4, 0x00, 0x80, 0x00, 0xE0, 0x00, 0x01, 0x00, 0x00, 0x00, 0x80,
@@ -59,7 +61,7 @@ void TEST_CASE2(void) {
            0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000,
            0xFFFF0000);
   VLOAD_16(v3, 0, 1, 2, 3, 7, 15, 31, 32, 0, 1, 2, 3, 7, 15, 31, 32);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wv v4, v2, v3, v0.t");
   VCMP_U16(5, v4, 0x0000, 0x8000, 0x0000, 0xE000, 0x0000, 0xFFFE, 0x0000,
@@ -74,7 +76,7 @@ void TEST_CASE2(void) {
            0xFFFFFFFF00000000, 0xFFFFFFFF00000000, 0xFFFFFFFF00000000,
            0xFFFFFFFF00000000);
   VLOAD_32(v3, 0, 1, 2, 3, 7, 15, 31, 32, 0, 1, 2, 3, 7, 15, 31, 32);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wv v4, v2, v3, v0.t");
   VCMP_U32(6, v4, 0x00000000, 0x80000000, 0x00000000, 0xE0000000, 0x00000000,
@@ -123,7 +125,7 @@ void TEST_CASE4(void) {
   VSET(16, e8, m1);
   VLOAD_16(v2, 0x0004, 0x0008, 0x000C, 0x0010, 0x0014, 0x0018, 0x001C, 0x0020,
            0xFFE0, 0xFFE4, 0xFFE8, 0xFFEC, 0xFFF0, 0xFFF4, 0xFFF8, 0xFFFC);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wx v4, v2, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U8(10, v4, 0x00, 0x02, 0x00, 0x04, 0x00, 0x06, 0x00, 0x08, 0x00, 0xF9,
@@ -134,7 +136,7 @@ void TEST_CASE4(void) {
            0x00000018, 0x0000001C, 0x00000020, 0xFFFFFFE0, 0xFFFFFFE4,
            0xFFFFFFE8, 0xFFFFFFEC, 0xFFFFFFF0, 0xFFFFFFF4, 0xFFFFFFF8,
            0xFFFFFFFC);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wx v4, v2, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U16(11, v4, 0x0000, 0x0002, 0x0000, 0x0004, 0x0000, 0x0006, 0x0000,
@@ -148,7 +150,7 @@ void TEST_CASE4(void) {
            0xFFFFFFFFFFFFFFE4, 0xFFFFFFFFFFFFFFE8, 0xFFFFFFFFFFFFFFEC,
            0xFFFFFFFFFFFFFFF0, 0xFFFFFFFFFFFFFFF4, 0xFFFFFFFFFFFFFFF8,
            0xFFFFFFFFFFFFFFFC);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wx v4, v2, %[A], v0.t" ::[A] "r"(scalar));
   VCMP_U32(12, v4, 0x00000000, 0x00000002, 0x00000000, 0x00000004, 0x00000000,
@@ -193,7 +195,7 @@ void TEST_CASE6(void) {
   VSET(16, e8, m1);
   VLOAD_16(v2, 0x0004, 0x0008, 0x000C, 0x0010, 0x0014, 0x0018, 0x001C, 0x0020,
            0xFFE0, 0xFFE4, 0xFFE8, 0xFFEC, 0xFFF0, 0xFFF4, 0xFFF8, 0xFFFC);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wi v4, v2, 2, v0.t");
   VCMP_U8(16, v4, 0x00, 0x02, 0x00, 0x04, 0x00, 0x06, 0x00, 0x08, 0x00, 0xF9,
@@ -204,7 +206,7 @@ void TEST_CASE6(void) {
            0x00000018, 0x0000001C, 0x00000020, 0xFFFFFFE0, 0xFFFFFFE4,
            0xFFFFFFE8, 0xFFFFFFEC, 0xFFFFFFF0, 0xFFFFFFF4, 0xFFFFFFF8,
            0xFFFFFFFC);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wi v4, v2, 2, v0.t");
   VCMP_U16(17, v4, 0x0000, 0x0002, 0x0000, 0x0004, 0x0000, 0x0006, 0x0000,
@@ -218,7 +220,7 @@ void TEST_CASE6(void) {
            0xFFFFFFFFFFFFFFE4, 0xFFFFFFFFFFFFFFE8, 0xFFFFFFFFFFFFFFEC,
            0xFFFFFFFFFFFFFFF0, 0xFFFFFFFFFFFFFFF4, 0xFFFFFFFFFFFFFFF8,
            0xFFFFFFFFFFFFFFFC);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v4);
   asm volatile("vnsrl.wi v4, v2, 2, v0.t");
   VCMP_U32(18, v4, 0x00000000, 0x00000002, 0x00000000, 0x00000004, 0x00000000,
@@ -232,11 +234,11 @@ int main(void) {
   enable_vec();
 
   TEST_CASE1();
-//   TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-//   TEST_CASE4();
+  TEST_CASE4();
   TEST_CASE5();
-//   TEST_CASE6();
+  TEST_CASE6();
 
   EXIT_CHECK();
 }
