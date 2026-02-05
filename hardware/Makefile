@@ -128,13 +128,7 @@ ifneq ($(ring_latency), 0)
 	bender_defs += --define ADD_RING_LATENCY=1 --define RING_LATENCY=$(ring_latency) 
 endif
 
-bender_defs += --define USE_EEW1
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
-
-#use_eew1 ?= 0
-#ifneq ($(use_eew1), 0)
-#	bender_defs += --define USE_EEW1
-#endif
 
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk
