@@ -56,7 +56,7 @@ void TEST_CASE2(void) {
           0x9b, 0x3b, 0x5f, 0xfc, 0x8b);
   VLOAD_8(v4, 0xcb, 0x24, 0xe8, 0xb2, 0xeb, 0x24, 0x80, 0x67, 0x43, 0x11, 0x7c,
           0x94, 0x22, 0x71, 0xca, 0x80);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwmul.vv v6, v2, v4, v0.t");
   VSET(16, e16, m1);
@@ -68,7 +68,7 @@ void TEST_CASE2(void) {
            0xb209, 0xa9a2, 0xbdc4, 0x1653, 0x5965, 0x145e, 0xb626, 0xd79c);
   VLOAD_16(v4, 0x778d, 0xc104, 0x6eac, 0x78e8, 0xacd2, 0x698b, 0xc7d3, 0x1e29,
            0x0a58, 0x58b5, 0x29f9, 0x2fb0, 0x2166, 0x0ac4, 0x44e5, 0xbc40);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwmul.vv v6, v2, v4, v0.t");
   VSET(16, e32, m1);
@@ -84,7 +84,7 @@ void TEST_CASE2(void) {
            0x34e351f2, 0xa6a93ab2, 0xc8893cb8, 0xcb61ddc1, 0x341a4cdc,
            0xd377dc52, 0x2f3f3dbf, 0xa97f8c35, 0x38a44020, 0x28e1cc8b,
            0x52d0e17a);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwmul.vv v6, v2, v4, v0.t");
   VSET(16, e64, m1);
@@ -136,7 +136,7 @@ void TEST_CASE4(void) {
   VLOAD_8(v2, 0x86, 0x79, 0xa0, 0x8a, 0x3e, 0xc3, 0x3e, 0x0c, 0x1b, 0xca, 0x80,
           0x41, 0x0e, 0xee, 0x94, 0xdf);
   int64_t scalar = 5;
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwmul.vx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e16, m1);
@@ -147,7 +147,7 @@ void TEST_CASE4(void) {
   VLOAD_16(v2, 0xb0ab, 0xcccb, 0x5fad, 0x9e24, 0x1496, 0xd4a0, 0x2552, 0xcef6,
            0x34b8, 0xef22, 0x69c3, 0xbb05, 0xbe72, 0x315b, 0x3f03, 0xf58b);
   scalar = -5383;
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwmul.vx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e32, m1);
@@ -160,7 +160,7 @@ void TEST_CASE4(void) {
            0x677c5e13, 0x83d288f4, 0x78b6acdc, 0x5b635dd1, 0x97dc75c8,
            0x1a1aa6d4);
   scalar = 6474219;
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v6);
   asm volatile("vwmul.vx v6, v2, %[A], v0.t" ::[A] "r"(scalar));
   VSET(16, e64, m1);
@@ -174,9 +174,9 @@ int main(void) {
   enable_vec();
 
   TEST_CASE1();
-//   TEST_CASE2();
+  TEST_CASE2();
   TEST_CASE3();
-//   TEST_CASE4();
+  TEST_CASE4();
 
   EXIT_CHECK();
 }

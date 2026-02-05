@@ -189,6 +189,14 @@ int test_case;
     asm volatile ("vl"#loadtype".v "#vreg", (%0)  \n":: [V] "r"(V ##vreg)); \
   } while(0)
 
+// Macro to load a mask vector
+#define VLOAD_MASK(datatype,vreg,vec...)                          \
+  do {                                                            \
+    volatile datatype V ##vreg[] = {vec};                         \
+    MEMORY_BARRIER;                                               \
+    asm volatile ("vlm.v "#vreg", (%0)  \n":: [V] "r"(V ##vreg)); \
+  } while(0)
+
 // Macro to store a vector register into the pointer vec
 #define VSTORE(T, storetype, vreg, vec)                                   \
   do {                                                                    \
@@ -278,6 +286,12 @@ int test_case;
 #define VLOAD_32(vreg,vec...) VLOAD(uint32_t,e32,vreg,vec)
 #define VLOAD_16(vreg,vec...) VLOAD(uint16_t,e16,vreg,vec)
 #define VLOAD_8(vreg,vec...)  VLOAD(uint8_t, e8, vreg,vec)
+
+// Vector Mask load
+#define VLOAD_MASK_64(vreg,vec...) VLOAD_MASK(uint64_t,vreg,vec)
+#define VLOAD_MASK_32(vreg,vec...) VLOAD_MASK(uint32_t,vreg,vec)
+#define VLOAD_MASK_16(vreg,vec...) VLOAD_MASK(uint16_t,vreg,vec)
+#define VLOAD_MASK_8(vreg,vec...)  VLOAD_MASK(uint8_t,vreg,vec)
 
 // Vector store
 #define VSTORE_U64(vreg) VSTORE(uint64_t,e64,vreg,Ru64)

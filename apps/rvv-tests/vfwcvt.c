@@ -62,7 +62,7 @@ void TEST_CASE2(void) {
   //                 -91.062,   16.281, -77.938, -67.000, -51.844
   VLOAD_16(v2, 0xd08c, 0x530e, 0xd447, 0xd01f, 0x530e, 0xc5d1, 0x52a3, 0xcf78,
            0xd5d9, 0xd5ac, 0xd41e, 0xd5b1, 0x4c12, 0xd4df, 0xd430, 0xd27b);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.xu.f.v v4, v2, v0.t");
   //                           0,             56,              0, 0, 0, 0, 0, 0,
@@ -81,7 +81,7 @@ void TEST_CASE2(void) {
            0x47853d0c, 0xc7281c83, 0xc7147b65, 0xc70ef75d, 0x473d223c,
            0x479f0369, 0x467f2b69, 0x4793ab29, 0xc7a6131c, 0x464ba43c,
            0x45e67b5f);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.xu.f.v v4, v2, v0.t");
   //                                   0,                  43482, 0, 32691, 0,
@@ -149,7 +149,7 @@ void TEST_CASE4(void) {
   //                 -79.500, -22.047, -30.500,   33.375, -26.281
   VLOAD_16(v2, 0xd2f5, 0xcdd9, 0x52a3, 0xb5b2, 0x4eb7, 0xd51f, 0x53f4, 0xd2d3,
            0xd08c, 0x54d5, 0x5493, 0xd4f8, 0xcd83, 0xcfa0, 0x502c, 0xce92);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.x.f.v v4, v2, v0.t");
   //                           0,            -23,              0, 0, 0, -82, 0,
@@ -169,7 +169,7 @@ void TEST_CASE4(void) {
            0xc76cc101, 0x474a5354, 0x4704548c, 0xc7c2f276, 0x47681bde,
            0xc799b96c, 0x478d2547, 0xc78a0401, 0xc7a316dd, 0xc679b6ff,
            0xc4fa9120);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.x.f.v v4, v2, v0.t");
   //                                   0,                 -55208, 0, -4924, 0,
@@ -240,7 +240,7 @@ void TEST_CASE6(void) {
   //                -inf, -61024.000, -inf, -5672.000,   53824.000
   VLOAD_16(v2, 0x766c, 0xf795, 0x6ec5, 0x7bb6, 0xf155, 0xf8b4, 0x7c00, 0xfc00,
            0xe521, 0x7a70, 0x7c00, 0xfc00, 0xfb73, 0xfc00, 0xed8a, 0x7a92);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.rtz.xu.f.v v4, v2, v0.t");
   //                           0,              0,              0, 63168, 0, 0,
@@ -262,7 +262,7 @@ void TEST_CASE6(void) {
            0xd2bb80d9, 0xd271f742, 0x52677c29, 0x5325f964, 0xd2e52d8b,
            0xd2d0ef13, 0xd35569f3, 0x517bd6a7, 0x52f1fd6a, 0x530481b0,
            0xd35641f8);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.rtz.xu.f.v v4, v2, v0.t");
   //                                   0,           783549530112, 0, 0, 0, 0, 0,
@@ -329,7 +329,7 @@ void TEST_CASE8(void) {
   //                -17.750,   14.516,   58.000,   69.938, -94.688
   VLOAD_16(v2, 0x45d8, 0x5087, 0xd564, 0x4d1a, 0xd1b6, 0x4afb, 0xd609, 0x5510,
            0xd013, 0x5269, 0x550c, 0xcc70, 0x4b42, 0x5340, 0x545f, 0xd5eb);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.rtz.x.f.v v4, v2, v0.t");
   //                           0,             36,              0, 20, 0, 13, 0,
@@ -349,7 +349,7 @@ void TEST_CASE8(void) {
            0xc5155d98, 0x4612468e, 0x45ae34bd, 0xc5d54835, 0x451a9ef1,
            0xc5d327c5, 0xc5df9899, 0x450cb297, 0xc53538c6, 0xc5470c23,
            0xc4f456dc);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.rtz.x.f.v v4, v2, v0.t");
   //                                   0,                  -6652, 0, -6088, 0,
@@ -420,7 +420,7 @@ void TEST_CASE10(void) {
   //                    341,       65240,          51,       64922,       64676
   VLOAD_16(v2, 0xfc90, 0xfcaf, 0xfd37, 0x03ca, 0x021f, 0xfe0e, 0xfe62, 0x03c6,
            0x00b4, 0x0185, 0x0151, 0x0155, 0xfed8, 0x0033, 0xfd9a, 0xfca4);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.f.xu.v v4, v2, v0.t");
   //                   0.000,      64687.000,      0.000,      970.000, 0.000,
@@ -441,7 +441,7 @@ void TEST_CASE10(void) {
            0xffffb6da, 0xffff7550, 0xffff578a, 0xffff28d0, 0xffffb13c,
            0xffff053b, 0xffffa709, 0xffff5690, 0xfffed1e6, 0x0000799d,
            0x00007697);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.f.xu.v v4, v2, v0.t");
   //                   0.000,      4294936082.000,      0.000, 4294893205.000,
@@ -509,7 +509,7 @@ void TEST_CASE12(void) {
   //                     -865,         908,         264,          93, 833
   VLOAD_16(v2, 0xfef9, 0xfc51, 0x006f, 0xff74, 0xfce8, 0xfec0, 0xfe80, 0x00fa,
            0xfecc, 0x0242, 0xfcc2, 0xfc9f, 0x038c, 0x0108, 0x005d, 0x0341);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.f.x.v v4, v2, v0.t");
   //                   0.000,     -943.000,      0.000,     -140.000, 0.000,
@@ -531,7 +531,7 @@ void TEST_CASE12(void) {
            0x00004ac5, 0xffffd8d6, 0x000157b8, 0x00003348, 0x000175f9,
            0xfffeeb50, 0x0000a960, 0x00007ed7, 0x00000033, 0x0000c36b,
            0xffff1ffe);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.f.x.v v4, v2, v0.t");
   //                   0.000,      33391.000,      0.000,     -45155.000, 0.000,
@@ -596,7 +596,7 @@ void TEST_CASE14(void) {
   //                -62.219, -78.250, -29.703, -1.137
   VLOAD_16(v2, 0x5535, 0xd533, 0x53cf, 0x55ed, 0x4966, 0xca89, 0xc885, 0x52c8,
            0xd5c3, 0x53f6, 0xd01c, 0xd51b, 0xd3c7, 0xd4e4, 0xcf6d, 0xbc8c);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.f.f.v v4, v2, v0.t");
   //                0.000, -83.188,   0.000,   94.812,   0.000, -13.070, 0.000,
@@ -615,7 +615,7 @@ void TEST_CASE14(void) {
            0x47721957, 0xc7a5221b, 0x47af1d20, 0x459af7bc, 0xc7905bc1,
            0xc7a32318, 0xc769a6c0, 0x478bbc5f, 0x47b66cb1, 0x479aeb8a,
            0x4590f9b7);
-  VLOAD_8(v0, 0xAA, 0xAA);
+  VLOAD_MASK_8(v0, 0xAA, 0xAA);
   VCLEAR(v4);
   asm volatile("vfwcvt.f.f.v v4, v2, v0.t");
   //                0.000, -24625.789,   0.000,   57986.516,   0.000, 61977.340,
@@ -632,25 +632,25 @@ int main(void) {
   enable_fp();
 
   TEST_CASE1();
-  // TEST_CASE2();
+  TEST_CASE2();
 
   TEST_CASE3();
-  // TEST_CASE4();
+  TEST_CASE4();
 
   TEST_CASE5();
-  // TEST_CASE6();
+  TEST_CASE6();
 
   TEST_CASE7();
-  // TEST_CASE8();
+  TEST_CASE8();
 
   TEST_CASE9();
-  // TEST_CASE10();
+  TEST_CASE10();
 
   TEST_CASE11();
-  // TEST_CASE12();
+  TEST_CASE12();
 
   TEST_CASE13();
-  // TEST_CASE14();
+  TEST_CASE14();
 
   EXIT_CHECK();
 }
