@@ -25,14 +25,14 @@
 #include "util.h"
 
 extern size_t N_f64;
-extern double angles_f64[] __attribute__((aligned(4 * NR_LANES)));
-extern double results_f64[] __attribute__((aligned(4 * NR_LANES)));
-extern double gold_results_f64[] __attribute__((aligned(4 * NR_LANES)));
+extern double angles_f64[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern double results_f64[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern double gold_results_f64[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
 extern size_t N_f32;
-extern float angles_f32[] __attribute__((aligned(4 * NR_LANES)));
-extern float results_f32[] __attribute__((aligned(4 * NR_LANES)));
-extern float gold_results_f32[] __attribute__((aligned(4 * NR_LANES)));
+extern float angles_f32[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern float results_f32[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern float gold_results_f32[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
 #define THRESHOLD 1
 
