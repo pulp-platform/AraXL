@@ -25,10 +25,10 @@
 
 extern const unsigned int N;
 extern const float SCALE;
-extern const float I[] __attribute__((aligned(4 * NR_LANES)));
-extern const uint8_t SEL[] __attribute__((aligned(4 * NR_LANES)));
-extern float o[] __attribute__((aligned(4 * NR_LANES)));
-extern float o_gold[] __attribute__((aligned(4 * NR_LANES)));
+extern const float I[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern const uint8_t SEL[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern float o[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern float o_gold[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
 int main() {
   printf("\n");
