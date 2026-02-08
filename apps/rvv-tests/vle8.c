@@ -252,6 +252,38 @@ void TEST_CASE16(void) {
   asm volatile("vle8.v v8, (%0)" ::"r"(&LONG_I8[0]));
   LVCMP_U8(16, v8, LONG_I8);
 }
+
+//**** VL regression and misalignment load tests */
+
+// Test cases to load irregular vector lengths and misaligned start address
+uint8_t res[130] __attribute__((aligned(AXI_DWIDTH)));
+void TEST_CASE17(void) {
+  printf("Running vl regression tests with misaligned address\n");
+  int avl, vl;
+  int misalign = 3;
+
+  int vl_list[12] = {4, 8, 5, 9, 16, 17, 20, 21, 32, 33, 128, 129};
+
+  for (int i=0; i<12; i++) {
+    int vl = vl_list[i];
+    printf("vl=%d\n", vl);
+
+    asm volatile("vsetvli %0, %1, e8, m8, ta, ma" : "=r"(avl) : "r"(vl));
+    asm volatile("vle8.v v8, (%0)"::"r"(&LONG_I8[misalign]));
+    asm volatile("vse8.v v8, (%0)"::"r"(&res));
+
+    for (int idx=0; idx<vl; idx++) {
+      if (res[idx]!=LONG_I8[idx+misalign]) {
+        printf("Index error at idx:%d expected:%hhd got:%hhd\n",idx,LONG_I8[idx+misalign],res[idx]);
+        return;
+      }
+    }
+
+    printf("PASSED.\n");
+  }
+
+}
+
 int main(void) {
   INIT_CHECK();
   enable_vec();
@@ -273,6 +305,8 @@ int main(void) {
   // TEST_CASE14();
   TEST_CASE15();
   TEST_CASE16();
+
+  TEST_CASE17();
 
   EXIT_CHECK();
 }
