@@ -28,7 +28,8 @@ include $(COMMON_DIR)/default_args.mk
 # Number of clusters
 nr_clusters ?= 2
 
-APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
+APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(wildcard $(APPS_DIR)/*/main.c))
+
 # Don't automatically compile the benchmark app, which is only a wrapper around the other apps
 BINARIES := $(filter-out bin/benchmarks, $(addprefix bin/,$(APPS)))
 
@@ -109,6 +110,8 @@ bin/$1: $1/data.S.o $(addsuffix .o, $(shell find $(1) -name "*.c" -o -name "*.S"
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template,$(app))))
+
+include rivec.mk
 
 # Make the RISC-V tests
 riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)

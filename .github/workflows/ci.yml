@@ -202,6 +202,37 @@ jobs:
         name: tc-verilator
         path: tc-verilator.tar
 
+  rivec-bench-suite:
+    runs-on: ubuntu-22.04
+    steps:
+    - uses: actions/checkout@v4
+    - name: Recover the submodule commit hash
+      id: recover_hash
+      run: |
+        git submodule status apps/riscv-vectorized-benchmark-suite | cut -d' ' -f1
+        echo "rivec-bench-suite-hash=`git submodule status apps/riscv-vectorized-benchmark-suite | cut -d' ' -f1`" >> $GITHUB_ENV
+    - name: Cache RiVEC
+      uses: actions/cache@v4
+      id: rivec-bench-suite-cache
+      env:
+        cache-name: cache-rivec
+      with:
+        path: apps/riscv-vectorized-benchmark-suite
+        key: ${{ runner.os }}-build-rivec-${{ env.cache-name }}-${{ env.rivec-bench-suite-hash }}
+        restore-keys:
+          ${{ runner.os }}-build-rivec-${{ env.cache-name }}-${{ env.rivec-bench-suite-hash }}
+    - name: Download RiVEC
+      if: steps.rivec-bench-suite-cache.outputs.cache-hit != 'true'
+      run: |
+        git submodule update --init --recursive -- apps/riscv-vectorized-benchmark-suite
+    - name: Tar RiVEC
+      run: tar -cvf rivec-bench-suite.tar apps/riscv-vectorized-benchmark-suite
+    - name: Upload RiVEC
+      uses: actions/upload-artifact@v4
+      with:
+        name: rivec-bench-suite
+        path: rivec-bench-suite.tar
+
 ###################
 #  Compile stage  #
 ###################
@@ -213,7 +244,7 @@ jobs:
       matrix:
         ara_config: [4_lanes]
         cluster_config : [2, 4]
-    needs: tc-llvm
+    needs: ["tc-llvm", "rivec-bench-suite"]
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v4
@@ -231,8 +262,16 @@ jobs:
         name: tc-llvm
     - name: Untar LLVM
       run: tar xvf tc-llvm.tar
+    - name: Download RiVEC
+      uses: actions/download-artifact@v4
+      with:
+        name: rivec-bench-suite
+    - name: Untar RiVEC
+      run: tar xvf rivec-bench-suite.tar
     - name: Compile applications
-      run: config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C apps
+      run: |
+        config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C apps
+        config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make rivec_binaries -C apps
     - name: Upload applications
       uses: actions/upload-artifact@v4
       with:
