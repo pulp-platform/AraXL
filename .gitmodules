@@ -20,3 +20,7 @@
 	url = https://github.com/llvm/llvm-project.git
 	ignore = dirty
 	update = none
+[submodule "apps/riscv-vectorized-benchmark-suite"]
+	path = apps/riscv-vectorized-benchmark-suite
+	url = https://github.com/Navaneeth-KunhiPurayil/riscv-vectorized-benchmark-suite.git
+	branch = araxl/baremetal

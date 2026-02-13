@@ -29,6 +29,10 @@ include $(COMMON_DIR)/default_args.mk
 nr_clusters ?= 2
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
+
+include rivec.mk
+APPS := $(filter-out $(RIVEC_APPS),$(APPS))
+
 # Don't automatically compile the benchmark app, which is only a wrapper around the other apps
 BINARIES := $(filter-out bin/benchmarks, $(addprefix bin/,$(APPS)))
 
