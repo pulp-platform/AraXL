@@ -26,7 +26,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     output axi_aw_t                        axi_aw_o,
     output logic                           axi_aw_valid_o,
     input  logic                           axi_aw_ready_i,
-    output cluster_metadata_t              cluster_metadata_o,         
+    output cluster_metadata_t              cluster_metadata_o,
+    // Synchronization for indexed operations
+    output logic                           idx_completed_o,
+    input  logic                           idx_completed_sync_i,       
     // Interace with the dispatcher
     input  logic                           core_st_pending_i,
     // Interface with the main sequencer
@@ -206,6 +209,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         reduced_word = deshuffled_word[word_lane_ptr_q*$bits(elen_t) +: $bits(elen_t)];
     idx_addr = reduced_word;
 
+    idx_completed_o = 1'b0;
+
     case (state_q)
       IDLE: begin
         // Received a new request
@@ -355,15 +360,24 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       // This state exists not to create combinatorial paths on the interface
       ADDRGEN_IDX_OP_END : begin
         // Acknowledge the indexed memory operation
-        addrgen_ack_o     = 1'b1;
-        addrgen_req_valid = '0;
-        state_d           = IDLE;
-        // Reset pointers
-        elm_ptr_d       = '0;
-        word_lane_ptr_d = '0;
-        // Raise an error if necessary
-        if (idx_op_error_q) begin
-          addrgen_error_o = 1'b1;
+
+        // Request for synchronization with other clusters
+        idx_completed_o = 1'b1;
+        addrgen_ack_o   = 1'b0;
+
+        // For indexed operation, wait until you get a confirmation from GLSU
+        if (idx_completed_sync_i) begin
+          addrgen_ack_o    = 1'b1;
+          idx_completed_o  = 1'b0;
+          addrgen_req_valid = '0;
+          state_d           = IDLE;
+          // Reset pointers
+          elm_ptr_d       = '0;
+          word_lane_ptr_d = '0;
+          // Raise an error if necessary
+          if (idx_op_error_q) begin
+            addrgen_error_o = 1'b1;
+          end
         end
       end
     endcase
@@ -448,6 +462,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   // Assign cluster metadata
   assign cluster_metadata_o.vew = axi_addrgen_q.vew;
   assign cluster_metadata_o.vl = axi_addrgen_q.vl_cluster;
+  assign cluster_metadata_o.vl_local = pe_req_q.vl;
   assign cluster_metadata_o.use_eew1 = axi_addrgen_q.use_eew1;
   assign cluster_metadata_o.op = pe_req_q.op;
 

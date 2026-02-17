@@ -31,6 +31,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     output axi_req_t                axi_req_o,
     input  axi_resp_t               axi_resp_i,
     output cluster_metadata_t       cluster_metadata_o,
+    // Synchronization for indexed operations
+    output logic                    idx_completed_o,
+    input  logic                    idx_completed_sync_i,
     // Interface with the dispatcher
     input  logic                    core_st_pending_i,
     output logic                    load_complete_o,
@@ -106,6 +109,11 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   cluster_metadata_t cluster_metadata;
   `FF(cluster_metadata_o, cluster_metadata, cluster_metadata_t'('0), clk_i, rst_ni);
 
+  logic idx_completed;
+  logic idx_completed_sync;
+  `FF(idx_completed_o, idx_completed, 1'b0, clk_i, rst_ni);
+  `FF(idx_completed_sync, idx_completed_sync_i, 1'b0, clk_i, rst_ni);
+
   //////////////////////////
   //  Address Generation  //
   //////////////////////////
@@ -133,6 +141,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     .axi_ar_valid_o             (axi_req.ar_valid           ),
     .axi_ar_ready_i             (axi_resp.ar_ready          ),
     .cluster_metadata_o         (cluster_metadata           ),
+    .idx_completed_o            (idx_completed              ),
+    .idx_completed_sync_i       (idx_completed_sync         ),
     // Interface with dispatcher
     .core_st_pending_i          (core_st_pending_i          ),
     // Interface with the sequencer

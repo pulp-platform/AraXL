@@ -370,6 +370,7 @@ always_comb begin : p_global_ldst
     // ar
     if (cluster_metadata_i.op == VLXE) begin
       // For VLXE, only send ready to the cluster from which we have taken the request
+      axi_resp_o[i].ar_ready = (i == cluster_ar_q) ? r_req_ready : 1'b0;
     end else begin
       axi_resp_o[i].ar_ready = r_req_ready;
     end

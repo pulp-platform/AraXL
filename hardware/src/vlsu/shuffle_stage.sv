@@ -31,7 +31,11 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic                        clk_i,
   input  logic                        rst_ni,
 
-  input cluster_metadata_t            cluster_metadata_i,
+  input  cluster_metadata_t [NrClusters-1:0]  cluster_metadata_i,
+
+  // Synchronization with cluster addrgen for indexed operations 
+  output logic              [NrClusters-1:0]  idx_completed_o,
+  input logic                                 idx_completed_sync_i,
   
   input   axi_req_t  [NrClusters-1:0] axi_req_i,
   output  axi_req_t  [NrClusters-1:0] axi_req_o,
@@ -100,7 +104,9 @@ assign rd_full = (rd_cnt_q == NumTrackers);
 assign wr_full = (wr_cnt_q == NumTrackers);
 
 logic [$clog2(NrLanes):0] lane_ar_d, lane_ar_q;
+logic [$clog2(NrLanes):0] lane_aw_d, lane_aw_q;
 logic [$clog2(NrClusters):0] cluster_ar_d, cluster_ar_q;
+logic [$clog2(NrClusters):0] cluster_aw_d, cluster_aw_q;
 
 // To handle cases where vlsu of each cluster is ready to 
 // receive read resp or not.
@@ -237,7 +243,14 @@ assign wr_in_state = wr_tracker_q[wr_issue_pnt_q[0]].datapath;
 
 logic [NrClusters-1:0] wr_cluster_completed, rd_cluster_completed_d, rd_cluster_completed_q;
 logic [NumBuffers-1:0] rd_buffer_completed_d, rd_buffer_completed_q;
-logic [NumBuffers-1:0] wr_buffer_completed_d, wr_buffer_completed_q; 
+logic [NumBuffers-1:0] wr_buffer_completed_d, wr_buffer_completed_q;
+
+vlen_t [NrClusters-1:0] vl_idx_cluster_d, vl_idx_cluster_q;
+
+logic [NrClusters-1:0] idx_completed_d, idx_completed_q;
+assign idx_completed_o = idx_completed_d;
+
+logic pending_resp;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
@@ -286,6 +299,10 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     rd_buffer_completed_q <= '0;
     cluster_ar_q <= '0;
     lane_ar_q <= '0;
+    cluster_aw_q <= '0;
+    lane_aw_q <= '0;
+    vl_idx_cluster_q <= '0;
+    idx_completed_q <= '0;
   end else begin
     rd_tracker_q    <= rd_tracker_d;
     wr_tracker_q    <= wr_tracker_d;
@@ -300,6 +317,10 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     rd_buffer_completed_q <= rd_buffer_completed_d;
     cluster_ar_q <= cluster_ar_d;
     lane_ar_q <= lane_ar_d;
+    cluster_aw_q <= cluster_aw_d;
+    lane_aw_q <= lane_aw_d;
+    vl_idx_cluster_q <= vl_idx_cluster_d;
+    idx_completed_q <= idx_completed_d;
   end
 end
 
@@ -326,37 +347,47 @@ always_comb begin
   // Request taken from cluster 0
   lane_ar_d = lane_ar_q;
   cluster_ar_d = cluster_ar_q;
+  vl_idx_cluster_d = vl_idx_cluster_q;
+  idx_completed_d = idx_completed_q;
+
+  // If the clusters have synchronized, reset values
+  if (idx_completed_sync_i) begin
+    lane_ar_d = '0;
+    cluster_ar_d = '0;
+    idx_completed_d = 1'b0;
+  end
   
   if (axi_req_i[cluster_ar_q].ar_valid & axi_resp_o[cluster_ar_q].ar_ready) begin
+    automatic cluster_metadata_t cluster_metadata = cluster_metadata_i[cluster_ar_q];
     // Store element width
-    rd_tracker_d[rd_accept_pnt_q].vew = cluster_metadata_i.vew;
-    rd_tracker_d[rd_accept_pnt_q].use_eew1 = cluster_metadata_i.use_eew1;
+    rd_tracker_d[rd_accept_pnt_q].vew = cluster_metadata.vew;
+    rd_tracker_d[rd_accept_pnt_q].use_eew1 = cluster_metadata.use_eew1;
     // Track number of beats and vl
     for (int c=0; c<NrClusters; c++) begin
-      automatic int unsigned vl_tot = cluster_metadata_i.use_eew1 ? cluster_metadata_i.vl << 3 : cluster_metadata_i.vl;
+      automatic int unsigned vl_tot = cluster_metadata.use_eew1 ? cluster_metadata.vl << 3 : cluster_metadata.vl;
       automatic int unsigned vl_rem = vl_tot & (TotalNrLanes - 1);
       automatic int unsigned vl_base = vl_tot >> $clog2(TotalNrLanes);
       automatic int unsigned vl_rem_diff = vl_rem - (c * NrLanes);
       automatic int unsigned vl = (vl_base << $clog2(NrLanes)) + ((vl_rem >= (c + 1) * NrLanes) ? NrLanes : (vl_rem >= (c * NrLanes)) ? vl_rem_diff : '0);
 
       rd_tracker_d[rd_accept_pnt_q].len[c] = axi_req_i[cluster_ar_q].ar.len+1;
-      rd_tracker_d[rd_accept_pnt_q].vl[c] = cluster_metadata_i.use_eew1 ? (vl < 8) ? 1 : vl >> 3 : vl;
+      rd_tracker_d[rd_accept_pnt_q].vl[c] = cluster_metadata.use_eew1 ? (vl < 8) ? 1 : vl >> 3 : vl;
     end
     // Update pnt to accept next request
     rd_accept_pnt_d = (rd_accept_pnt_q == NumTrackers-1) ? '0 : rd_accept_pnt_q + 1;
     rd_cnt_d += 1;
     // To enable certain shuffle stages based on element width
     for (int s=0; s<NumStages; s++) begin
-      rd_tracker_d[rd_accept_pnt_q].shuffle_en[s] = cluster_metadata_i.use_eew1 ? 1'b1 : (s >= (3 + cluster_metadata_i.vew)) ? 1'b1 : 1'b0;
+      rd_tracker_d[rd_accept_pnt_q].shuffle_en[s] = cluster_metadata.use_eew1 ? 1'b1 : (s >= (3 + cluster_metadata.vew)) ? 1'b1 : 1'b0;
     end
     // To enable buffer for 64b element widths
-    rd_tracker_d[rd_accept_pnt_q].datapath = NumStages < (3 + cluster_metadata_i.vew) ? BUFFER : SHUFFLE;
-    rd_tracker_d[rd_accept_pnt_q].second_buffer_unused = cluster_metadata_i.vl <= (NrLanes * NrClusters / 2) && rd_tracker_d[rd_accept_pnt_q].datapath;
-    rd_tracker_d[rd_accept_pnt_q].op = cluster_metadata_i.op;
+    rd_tracker_d[rd_accept_pnt_q].datapath = NumStages < (3 + cluster_metadata.vew) ? BUFFER : SHUFFLE;
+    rd_tracker_d[rd_accept_pnt_q].second_buffer_unused = cluster_metadata.vl <= (NrLanes * NrClusters / 2) && rd_tracker_d[rd_accept_pnt_q].datapath;
+    rd_tracker_d[rd_accept_pnt_q].op = cluster_metadata.op;
 
     // If it is a VLXE request, take from the desired cluster
     // and switch clusters for every NrLanes requests
-    if (cluster_metadata_i.op == VLXE) begin
+    if (cluster_metadata.op == VLXE) begin
       lane_ar_d += 1;
       if (lane_ar_q == NrLanes - 1) begin
         cluster_ar_d += 1;
@@ -365,38 +396,68 @@ always_comb begin
         end
         lane_ar_d = '0;
       end
+      
+      // If a valid request is sent, track it for synchronization
+      if (axi_req_o[cluster_ar_q].ar_valid & axi_resp_i[cluster_ar_q].ar_ready) begin
+        vl_idx_cluster_d[cluster_ar_q] = vl_idx_cluster_q[cluster_ar_q] + 1;
+        if (vl_idx_cluster_q[cluster_ar_q] == (cluster_metadata.vl_local - 1)) begin
+          vl_idx_cluster_d[cluster_ar_q] = '0;
+          idx_completed_d[cluster_ar_q] = 1'b1;
+        end
+      end
     end else begin
       lane_ar_d = '0;
       cluster_ar_d = '0;
+      idx_completed_d = 1'b0;
     end
   end
 
-  if (axi_req_i[0].aw_valid & axi_resp_o[0].aw_ready) begin
+  lane_aw_d = lane_aw_q;
+  cluster_aw_d = cluster_aw_q;
+
+  if (axi_req_i[cluster_aw_q].aw_valid & axi_resp_o[cluster_aw_q].aw_ready) begin
+    automatic cluster_metadata_t cluster_metadata = cluster_metadata_i[cluster_aw_q];
     // Store element width
-    wr_tracker_d[wr_accept_pnt_q].vew = cluster_metadata_i.vew;
-    wr_tracker_d[wr_accept_pnt_q].use_eew1 = cluster_metadata_i.use_eew1;
+    wr_tracker_d[wr_accept_pnt_q].vew = cluster_metadata.vew;
+    wr_tracker_d[wr_accept_pnt_q].use_eew1 = cluster_metadata.use_eew1;
     // Track number of beats and vl
     for (int c=0; c<NrClusters; c++) begin
-      automatic int unsigned vl_tot = cluster_metadata_i.vl;
+      automatic int unsigned vl_tot = cluster_metadata.vl;
       automatic int unsigned vl_rem = vl_tot & (TotalNrLanes - 1);
       automatic int unsigned vl_base = vl_tot >> $clog2(TotalNrLanes);
       automatic int unsigned vl_rem_diff = vl_rem - (c * NrLanes);
       automatic int unsigned vl = (vl_base << $clog2(NrLanes)) + ((vl_rem >= (c + 1) * NrLanes) ? NrLanes : (vl_rem >= (c * NrLanes)) ? vl_rem_diff : '0);      
 
       wr_tracker_d[wr_accept_pnt_q].vl[c] = vl;
-      wr_tracker_d[wr_accept_pnt_q].len[c] = axi_req_i[0].aw.len+1;
+      wr_tracker_d[wr_accept_pnt_q].len[c] = axi_req_i[cluster_aw_q].aw.len+1;
     end
     // Update pnt to accept next request
     wr_accept_pnt_d = (wr_accept_pnt_q == NumTrackers-1) ? '0 : wr_accept_pnt_q + 1; 
     wr_cnt_d += 1;
     // To enable certain shuffle stages based on element width
     for (int s=0; s<NumStages; s++) begin
-      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = cluster_metadata_i.use_eew1 ? 1'b1 : (((NumStages -s -1) >= (3 + cluster_metadata_i.vew)) ? 1'b1 : 1'b0);
+      wr_tracker_d[wr_accept_pnt_q].shuffle_en[s] = cluster_metadata.use_eew1 ? 1'b1 : (((NumStages -s -1) >= (3 + cluster_metadata.vew)) ? 1'b1 : 1'b0);
     end
     // To enable buffer for 64b element widths
-    wr_tracker_d[wr_accept_pnt_q].datapath = NumStages < (3 + cluster_metadata_i.vew) ? BUFFER : SHUFFLE;
-    wr_tracker_d[wr_accept_pnt_q].second_buffer_unused = cluster_metadata_i.vl <= (NrLanes * NrClusters / 2) && wr_tracker_d[wr_accept_pnt_q].datapath;
-    wr_tracker_d[wr_accept_pnt_q].op = cluster_metadata_i.op;
+    wr_tracker_d[wr_accept_pnt_q].datapath = NumStages < (3 + cluster_metadata.vew) ? BUFFER : SHUFFLE;
+    wr_tracker_d[wr_accept_pnt_q].second_buffer_unused = cluster_metadata.vl <= (NrLanes * NrClusters / 2) && wr_tracker_d[wr_accept_pnt_q].datapath;
+    wr_tracker_d[wr_accept_pnt_q].op = cluster_metadata.op;
+
+    // If it is a VSXE request, take from the desired cluster
+    // and switch clusters for every NrLanes requests
+    if (cluster_metadata.op == VLXE) begin
+      lane_aw_d += 1;
+      if (lane_aw_q == NrLanes - 1) begin
+        cluster_aw_d += 1;
+        if (cluster_aw_q == NrClusters - 1) begin
+          cluster_aw_d = '0;
+        end
+        lane_aw_d = '0;
+      end
+    end else begin
+      lane_aw_d = '0;
+      cluster_aw_d = '0;
+    end
   end
 
   // Update counters for shuffle stage
@@ -460,7 +521,14 @@ always_comb begin
   rd_cluster_completed_d = rd_cluster_completed_q;
   rd_buffer_completed_d = rd_buffer_completed_q;
 
-  if (((rd_datapath == BUFFER) || (|buf_valid_q)) && (rd_op != VLXE)) begin
+  // If there is an existing valid data in the buffer and the next request does not use the buffer datapath
+  // we need to stall until the buffer responses are committed to the clusters
+  pending_resp = ((rd_datapath == SHUFFLE) || (rd_op == VLXE)) && (|buf_valid_q);
+
+  if ((((rd_datapath == BUFFER) || (|buf_valid_q)) && (rd_op == VLE))  || pending_resp) begin
+
+    ///// UNIT STRIDE LOADS /////
+    ///// 64b precision     /////
 
     // If have a valid handshake on response add to the buffer
     // If have a valid response from L2 after aligning buffer it first pointed by rdbuf_pnt_q
@@ -565,21 +633,23 @@ always_comb begin
     
     // The next buffer has to be available only then ready to receive
     r_ready_buf = (buf_valid_d[rdbuf_pnt_d] == 1'b0);
-  end
+  end 
+  else if (rd_op == VLXE & ~pending_resp) begin
 
-  ///// INDEXED LOADS /////
+    ///// INDEXED LOADS      /////
+    ///// All bit precisions ///// 
 
-  // If indexed operation, just forward the data coming from GLSU without shuffling or buffering
-  if (rd_op == VLXE) begin
-    automatic logic cluster_valid = 1'b0;
+    // If indexed operation, just forward the data coming from GLSU without shuffling or buffering
+    automatic logic single_cluster_handshake = 1'b0;
     for (int c=0; c < NrClusters; c++) begin
       axi_resp_buf_out[c].r_valid = axi_resp_i[c].r_valid;
       axi_resp_buf_out[c].r = axi_resp_i[c].r;
-      cluster_valid |= axi_resp_i[c].r_valid;
+      single_cluster_handshake |= (axi_resp_i[c].r_valid & axi_req_i[c].r_ready);
     end
 
     // Do this if we have any valid response
-    if (cluster_valid) begin
+    // Forward the data directly to axi_resp_o if we have a ready
+    if (single_cluster_handshake) begin
       rd_cnt_d -= 1;
       for (int i=0; i <NumStages; i++) begin
         rd_issue_pnt_d[i] = rd_issue_pnt_q[i] + 1;
@@ -720,7 +790,7 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].aw_ready = axi_resp_i[c].aw_ready && !wr_full;
 
   // If indexed load send ready only to one of the clusters
-  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i.op == VLXE) ? (c==cluster_ar_q) ? 1'b1 : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
+  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op == VLXE) ? (c==cluster_ar_q) ? 1'b1 : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
   
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
   assign axi_resp_o[c].b = axi_resp_i[c].b;
@@ -738,18 +808,18 @@ for (genvar c=0; c < NrClusters; c++) begin
 end
 
 // Valid input signal to use shuffle datapath
-assign r_valid[0]   = (rd_datapath == BUFFER) ? 1'b0 : (rd_tracker_q[rd_issue_pnt_q[0]].op == VLXE) ? 1'b0 : axi_resp_i[0].r_valid;
+assign r_valid[0]   = (rd_datapath == BUFFER) ? 1'b0 : (rd_op == VLXE) ? 1'b0 : axi_resp_i[0].r_valid;
 
 // Handle Request path
 for (genvar c=0; c < NrClusters; c++) begin
   assign axi_req_o[c].aw = axi_req_i[c].aw;
   assign axi_req_o[c].aw_valid = axi_req_i[c].aw_valid;
   assign axi_req_o[c].ar = axi_req_i[c].ar;
-  assign axi_req_o[c].ar_valid = (cluster_metadata_i.op == VLXE) ? ((c==cluster_ar_q) ? axi_req_i[c].ar_valid : 1'b0) : axi_req_i[c].ar_valid;
+  assign axi_req_o[c].ar_valid = ((cluster_metadata_i[c].op == VLXE) ? ((c==cluster_ar_q) ? axi_req_i[c].ar_valid : 1'b0) : axi_req_i[c].ar_valid) && !rd_full;
   assign axi_req_o[c].b_ready = axi_req_i[c].b_ready;
   
   // Reads
-  assign axi_req_o[c].r_ready = (rd_datapath == BUFFER) ? r_ready_buf_q : r_ready[0];
+  assign axi_req_o[c].r_ready = ((rd_datapath == BUFFER) ? (rd_op == VLXE ? axi_req_i[c].r_ready : r_ready_buf_q) : r_ready[0] ) & ~pending_resp;
   assign r_ready_i[c] = axi_req_i[c].r_ready;           // From input request, get ready inputs to stream fork
 
   // Writes
