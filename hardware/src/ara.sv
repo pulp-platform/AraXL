@@ -52,6 +52,10 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     input  axi_resp_t         axi_resp_i,
     output cluster_metadata_t cluster_metadata_o,
 
+    // Synchronization for indexed operations
+    output logic                    idx_completed_o,
+    input  logic                    idx_completed_sync_i,
+
     // Interface with Ring Interconnect
     output remote_data_t ring_data_o,
     output logic ring_valid_o, 
@@ -350,6 +354,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .axi_req_o                  (axi_req_o                                             ),
     .axi_resp_i                 (axi_resp_i                                            ),
     .cluster_metadata_o         (cluster_metadata_o                                    ),
+    .idx_completed_o            (idx_completed_o                                       ),
+    .idx_completed_sync_i       (idx_completed_sync_i                                  ),
     // Interface with the dispatcher
     .core_st_pending_i          (core_st_pending                                       ),
     .load_complete_o            (load_complete                                         ),

@@ -445,6 +445,7 @@ package ara_pkg;
   typedef struct packed {
     rvv_pkg::vew_e    vew;
     vlen_cluster_t    vl;
+    vlen_t            vl_local;
     logic             use_eew1;
     ara_op_e          op;
   } cluster_metadata_t;

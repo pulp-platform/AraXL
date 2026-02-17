@@ -136,6 +136,33 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   localparam int idx_no_ring_cut_left[8] = '{1, 3, 5, 7, 9, 11, 13, 15};
   localparam int idx_no_ring_cut_right[8] = '{0, 2, 4, 6, 8, 10, 12, 14};
 
+  // Synchronization logic between clusters for indexed operations
+  
+  logic [NrClusters-1:0] idx_completed_d, idx_completed_q, idx_completed;
+  logic [NrClusters-1:0] idx_completed_shuffle_d, idx_completed_shuffle_q, idx_completed_shuffle;
+  logic idx_completed_sync_all;
+
+  `FF(idx_completed_q, idx_completed_d, '0, clk_i, rst_ni)
+  `FF(idx_completed_shuffle_q, idx_completed_shuffle_d, '0, clk_i, rst_ni)
+
+  always_comb begin : p_sync_idx
+    idx_completed_d = idx_completed_q;
+    idx_completed_shuffle_d = idx_completed_shuffle_q;
+
+    idx_completed_d = idx_completed_q | idx_completed;
+    idx_completed_shuffle_d = idx_completed_shuffle_q | idx_completed_shuffle;
+    idx_completed_sync_all = 1'b0;
+
+    if ((idx_completed_q != '0) && (idx_completed_shuffle_q != '0)) begin
+      // If any cluster has completed, we can reset the synchronization signal for the next round
+      idx_completed_sync_all = (idx_completed_q == idx_completed_shuffle_q) ? 1'b1 : 1'b0;
+      if (idx_completed_sync_all) begin
+        idx_completed_d = '0;
+        idx_completed_shuffle_d = '0;
+      end
+    end
+  end
+
   for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster
       ara_macro #(
         .NrLanes           (NrLanes             ),
@@ -172,6 +199,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         .axi_req_o          (ara_axi_req[cluster]      ),
         .axi_resp_i         (ara_axi_resp[cluster]     ),
         .cluster_metadata_o (cluster_metadata[cluster] ),
+
+        .idx_completed_o     (idx_completed[cluster]         ),
+        .idx_completed_sync_i(idx_completed_sync_all         ), // TODO: check in BE if it is in critical path
 
         // Ring
         .ring_data_r_i       (ring_data_l_cut        [cluster == NrClusters-1 ? 0 : cluster + 1]     ),
@@ -353,7 +383,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     ) i_shuffle_stage (
       .clk_i              (clk_i                ),
       .rst_ni             (rst_ni               ),
-      .cluster_metadata_i (cluster_metadata_cut ),
+      .cluster_metadata_i   (cluster_metadata_shuffle_cut[ShuffleCuts]  ),
+      .idx_completed_o      (idx_completed_shuffle                      ),
+      .idx_completed_sync_i (idx_completed_sync_all                     ),
       .axi_req_i          (ara_axi_req_cut      ),
       .axi_resp_o         (ara_axi_resp_cut     ),
       .axi_req_o          (ldst_axi_req_cut     ),

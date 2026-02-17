@@ -54,8 +54,12 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     output accelerator_resp_t acc_resp_o,
 
     // AXI interface
-    output cluster_axi_req_t          axi_req_o,
-    input  cluster_axi_resp_t         axi_resp_i,
+    output cluster_axi_req_t     axi_req_o,
+    input  cluster_axi_resp_t    axi_resp_i,
+
+    // Synchronization for indexed operations
+    output logic                 idx_completed_o,
+    input  logic                 idx_completed_sync_i,
 
     // Ring
     input remote_data_t  ring_data_r_i,
@@ -256,6 +260,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
 
     // To GLSU
     .cluster_metadata_o  (cluster_metadata   ),
+    .idx_completed_o     (idx_completed_o    ),
+    .idx_completed_sync_i(idx_completed_sync_i),
     
     // To Ring Routers
     .ring_data_o         (sldu_o             ), 
