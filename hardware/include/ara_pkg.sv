@@ -443,9 +443,10 @@ package ara_pkg;
   ///// Cluster meta data /////
 
   typedef struct packed {
-    rvv_pkg::vew_e vew;
-    vlen_cluster_t vl;
-    logic use_eew1;
+    rvv_pkg::vew_e    vew;
+    vlen_cluster_t    vl;
+    logic             use_eew1;
+    ara_op_e          op;
   } cluster_metadata_t;
 
   /* The VRF data is stored into the lanes in a shuffled way, similar to how it was done

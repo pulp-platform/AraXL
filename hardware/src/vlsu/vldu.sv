@@ -256,6 +256,8 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         valid_bytes = issue_cnt_q < NrLanes * 8     ? vinsn_valid_bytes : vrf_valid_bytes;
         valid_bytes = valid_bytes < axi_valid_bytes ? valid_bytes       : axi_valid_bytes;
 
+        if (vinsn_issue_q.op == VLXE) valid_bytes = 1 << vinsn_issue_q.vtype.vsew;
+
         r_pnt_d   = r_pnt_q + valid_bytes;
         vrf_pnt_d = vrf_pnt_q + valid_bytes;
 
@@ -265,12 +267,10 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
           // And then shuffle it - shuffling has 2 components
           // First AxiDataWidth/8 byte indices are found from shuffle_index 
           // Second, for the next axi packets only the additional offset change depending on vrf_pnt_q
-          automatic int vrf_byte       = shuffle_index(axi_byte, NrLanes, vinsn_issue_q.vtype.vsew);
-          automatic int vrf_seq_offset = shuffle_offset(vrf_pnt_q, NrLanes, vinsn_issue_q.vtype.vsew);
-          vrf_byte = vrf_byte + vrf_seq_offset;
+          automatic int vrf_byte       = shuffle_index(axi_byte + vrf_pnt_q, NrLanes, vinsn_issue_q.vtype.vsew);
 
           // Is this byte a valid byte in the VRF word?
-          if (axi_byte < vinsn_valid_bytes && axi_byte < NrLanes * 8) begin
+          if (axi_byte < valid_bytes && axi_byte < NrLanes * 8) begin
             // At which lane, and what is the byte offset in that lane, of the byte vrf_byte?
             automatic int vrf_lane   = vrf_byte >> 3;
             automatic int vrf_offset = vrf_byte[2:0];
@@ -316,7 +316,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       // Consumed all valid bytes in this R beat
-      if (r_pnt_d == AxiDataWidth/8 || issue_cnt_d == '0) begin
+      if (vinsn_issue_q.op == VLXE || r_pnt_d == AxiDataWidth/8 || issue_cnt_d == '0) begin
         // Request another beat
         axi_r_ready_o = 1'b1;
         r_pnt_d       = '0;

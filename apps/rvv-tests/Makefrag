@@ -211,4 +211,5 @@ ara_tests = vadd \
                vle8 \
                vle16 \
                vle32 \
-               vle64
+               vle64 \
+               vluxei
