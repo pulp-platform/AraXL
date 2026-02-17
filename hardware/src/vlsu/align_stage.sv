@@ -51,6 +51,7 @@ typedef struct packed {
   cnt_t [NumStages-1:0] num_requests;
   logic [NumStages-1:0] shift_en;
   logic valid;
+  ara_op_e op;
 } req_track_t;
 
 // Tracking read requests
@@ -206,6 +207,7 @@ always_comb begin
     // Track vl expected to receive including misalignment
     tracker_d[w_pnt_q].len   = cluster_metadata_i.vl;
     tracker_d[w_pnt_q].vew   = vew;
+    tracker_d[w_pnt_q].op    = cluster_metadata_i.op;
     for (int s=0; s < NumStages; s++)
       tracker_d[w_pnt_q].num_requests[s] += 1;
     
@@ -221,7 +223,7 @@ always_comb begin
     end
 
     // If last request
-    if (vl_d >= cluster_metadata_i.vl) begin
+    if (vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op == VLXE) begin
       // Reset vl
       vl_d = 0;
       
@@ -265,41 +267,50 @@ always_comb begin
     last_d = axi_resp_i_cut[NumStages].r.last;
   end
 
-  // Combine the previous data and the current data packets using byte enable
-  if (data_valid_q && axi_req_cut_ready[NumStages]) begin
-    // Number of elements in a single AXI transaction
-    automatic vlen_t axi_valid_el = (AxiDataWidth/8) >> tracker_q[r_pnt_q_del[NumStages-1]].vew;
+  if (tracker_q[r_pnt_q[NumStages-1]].op != VLXE) begin
+    // Combine the previous data and the current data packets using byte enable
+    if (data_valid_q && axi_req_cut_ready[NumStages]) begin
+      // Number of elements in a single AXI transaction
+      automatic vlen_t axi_valid_el = (AxiDataWidth/8) >> tracker_q[r_pnt_q_del[NumStages-1]].vew;
 
-    // If misaligned, make sure you have a valid beat in the current cycle
-    // or if the transaction is short that is check if previous beat was the last beat
-    // Otherwise, we have a valid data if the request is aligned
-    automatic logic valid_data = (~be_final_d[AxiDataWidth/8-1] & (axi_resp_i_cut[NumStages].r_valid | last_q)) | be_final_d[AxiDataWidth/8-1];
-    for (int b=0; b<AxiDataWidth/8; b++) begin
-      axi_resp_o.r.data[b*8 +: 8] = be_final_d[b] ? data_q[b*8 +: 8] : axi_resp_i_cut[NumStages].r.data[b*8 +: 8];
+      // If misaligned, make sure you have a valid beat in the current cycle
+      // or if the transaction is short that is check if previous beat was the last beat
+      // Otherwise, we have a valid data if the request is aligned
+      automatic logic valid_data = (~be_final_d[AxiDataWidth/8-1] & (axi_resp_i_cut[NumStages].r_valid | last_q)) | be_final_d[AxiDataWidth/8-1];
+      for (int b=0; b<AxiDataWidth/8; b++) begin
+        axi_resp_o.r.data[b*8 +: 8] = be_final_d[b] ? data_q[b*8 +: 8] : axi_resp_i_cut[NumStages].r.data[b*8 +: 8];
+      end
+
+      if (valid_data) begin
+        // If valid data, set r_valid
+        axi_resp_o.r_valid  = 1'b1;
+
+        // Update vector length counter
+        tracker_d[r_pnt_q_del[NumStages-1]].len -= axi_valid_el;
+
+        // If aligned request, set data valid only if available valid beat
+        data_valid_d = be_final_d[AxiDataWidth/8-1] ? axi_resp_i_cut[NumStages].r_valid : 1'b1;
+      end
+
+      // Use vl from tracker to check if this is the last data packet or not
+      // Since using delayed data, using delayed pointer to the tracker
+      if (tracker_q[r_pnt_q_del[NumStages-1]].len <= axi_valid_el) begin
+        // Last packet
+        axi_resp_o.r.last = 1'b1;
+
+        // If the current data is not misaligned and we have a valid data
+        // Set valid data for the next subsequent load to avoid bubble
+        data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
+        last_d = 1'b0;
+      end
     end
-
-    if (valid_data) begin
-      // If valid data, set r_valid
-      axi_resp_o.r_valid  = 1'b1;
-
-      // Update vector length counter
-      tracker_d[r_pnt_q_del[NumStages-1]].len -= axi_valid_el;
-
-      // If aligned request, set data valid only if available valid beat
-      data_valid_d = be_final_d[AxiDataWidth/8-1] ? axi_resp_i_cut[NumStages].r_valid : 1'b1;
-    end
-
-    // Use vl from tracker to check if this is the last data packet or not
-    // Since using delayed data, using delayed pointer to the tracker
-    if (tracker_q[r_pnt_q_del[NumStages-1]].len <= axi_valid_el) begin
-      // Last packet
-      axi_resp_o.r.last = 1'b1;
-
-      // If the current data is not misaligned and we have a valid data
-      // Set valid data for the next subsequent load to avoid bubble
-      data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
-      last_d = 1'b0;
-    end
+  end else begin
+    // Indexed operation
+    axi_resp_o.r_valid  = data_valid_d;
+    axi_resp_o.r.last   = last_d;
+    axi_resp_o.r.data = data_d;
+    last_d = 1'b0;
+    data_valid_d = 1'b0;
   end
 
   ///// Pointer updates to align stages /////
@@ -329,6 +340,7 @@ end
 
 typedef struct packed {
   int len;
+  ara_op_e op;
 } wr_req_track_t;
 
 // Tracking write requests
@@ -397,11 +409,12 @@ always_comb begin
     wr_vl_d = wr_vl_q + vlen_request;
     
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
+    wr_track_d[wr_pnt_q].op            = cluster_metadata_i.op;
     b_track_d[b_pnt_q].count          += 1;
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= cluster_metadata_i.vl) begin
+    if (wr_vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op == VSXE) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end
