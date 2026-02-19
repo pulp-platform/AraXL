@@ -73,7 +73,10 @@ reset_vector:
     li      x31, 0
     // Initialize stack at the end of the DRAM region
     la      t0, dram_end_address_reg
-    ld      sp, 0(t0)
+    ld      t0, 0(t0)
+    csrr    t1, mhartid
+    slli    t1, t1, 12
+    sub     sp, t0, t1
     // Set up a PMP to permit all accesses
     li t0, (1 << (31 + (__riscv_xlen / 64) * (53 - 31))) - 1
     csrw pmpaddr0, t0
@@ -115,6 +118,7 @@ reset_vector:
 1:  // Return to _eoc
     la      ra, _eoc
     // Call main
+    csrr    a0, mhartid
     la      t0, main
     csrw    mepc, t0
     mret

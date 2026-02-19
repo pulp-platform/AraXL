@@ -75,6 +75,7 @@ module ctrl_registers #(
   logic [DataWidth-1:0] dram_end_address;
   logic [DataWidth-1:0] exit;
 
+
   axi_lite_regs #(
     .RegNumBytes (RegNumBytes    ),
     .AxiAddrWidth(AddrWidth      ),

@@ -88,13 +88,33 @@ int verify_matrix(float *result, float *gold, size_t R, size_t C,
 #define THRESHOLD64 0.000001
 #define THRESHOLD32 0.001
 
-int main() {
-  printf("\n");
-  printf("=============\n");
-  printf("=  FMATMUL  =\n");
-  printf("=============\n");
-  printf("\n");
-  printf("\n");
+int main(int hart_id) {
+  if (hart_id == 0) {
+    printf("\n");
+    printf("=============\n");
+    printf("=  FMATMUL  =\n");
+    printf("=============\n");
+    printf("\n");
+    printf("\n");
+  }
+
+  uint64_t P_hart = P / NR_CORES;
+  double *c_start = c + hart_id * P_hart;
+  double *b_start = b + hart_id * P_hart;
+
+  sync_barrier();
+
+  if (hart_id == 0) {
+    printf("From Hart:%d a:%x b:%x c:%x\n", hart_id, a, b_start, c_start);
+  }
+
+  sync_barrier();
+
+  if (hart_id == 1) {
+    printf("From Hart:%d a:%x b:%x c:%x\n", hart_id, a, b_start, c_start);
+  }
+
+  sync_barrier();
 
 #ifdef VCD_DUMP
   // Measure only the full-size matmul
@@ -102,61 +122,78 @@ int main() {
 #else
   for (uint64_t s = M; s <= M; s *= 2) {
 #endif
-    printf("\n");
-    printf("------------------------------------------------------------\n");
-    printf("Calculating a (%d x %d) x (%d x %d) matrix multiplication...\n", s,
-           N, N, P);
-    printf("------------------------------------------------------------\n");
-    printf("\n");
 
+    if (hart_id == 0) {
+      printf("\n");
+      printf("------------------------------------------------------------\n");
+      printf("Calculating a (%d x %d) x (%d x %d) matrix multiplication...\n", s,
+            N, N, P);
+      printf("------------------------------------------------------------\n");
+      printf("\n");
+    }
     // Matrices are initialized --> Start calculating
 #ifdef FP32
-    printf("Calculating fmatmul 32-bit...\n");
-    start_timer();
-    fmatmul32(c, a, b, s, N, P);
-    stop_timer();
+    if (hart_id == 0) {
+      printf("Calculating fmatmul 32-bit...\n");
+      start_timer();
+    }
+    
+    fmatmul32(c_start, a, b_start, s, N, P_hart);
+    if (hart_id == 0) {
+      stop_timer();
+    }
 #else
-    printf("Calculating fmatmul 64-bit...\n");
-    start_timer();
-    fmatmul(c, a, b, s, N, P);
-    stop_timer();
+    if (hart_id == 0) {
+      printf("Calculating fmatmul 64-bit...\n");
+      start_timer();
+    }
+    // Synchronize cores
+    sync_barrier();
+    fmatmul(c_start, a, b_start, s, N, P_hart);
+    if (hart_id == 0) {
+      stop_timer();
+    }
 #endif
 
-    // Metrics
-    int64_t runtime = get_timer();
+    if (hart_id == 0) {
+      // Metrics
+      int64_t runtime = get_timer();
 
-    float performance = 2.0 * s * N * P / runtime;
-    float utilization;
-    #ifdef FP32
-    utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * 2.0); // 2 FP32-ops/lane/cycle  
-    #else
-    utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);
-    #endif
-
-    printf("The execution took %d cycles.\n", runtime);
-    printf("The performance is %f FLOP/cycle (%f%% utilization).\n",
-           performance, utilization);
-
-    // Verify the result only for s == M (to keep it simple)
-    if (s == M) {
-      printf("Verifying result...\n");
-      int error;
-      
+      float performance = 2.0 * s * N * P / runtime;
+      float utilization;
       #ifdef FP32
-      error = verify_matrix(c, g, s, P, THRESHOLD32);
+      utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES * 2.0); // 2 FP32-ops/lane/cycle  
       #else
-      error = verify_matrix(c, g, s, P, THRESHOLD64);
+      utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES);
       #endif
 
-      if (error != 0) {
-        printf("Error code %d\n", error);
-        printf("c[%d]=%d\n", error, c[error]);
-        return error;
-      } else {
-        printf("Passed.\n");
+      printf("The execution took %d cycles.\n", runtime);
+      printf("The performance is %f FLOP/cycle (%f%% utilization).\n",
+            performance, utilization);
+
+      // Verify the result only for s == M (to keep it simple)
+      if (s == M) {
+        printf("Verifying result...\n");
+        int error;
+        
+        #ifdef FP32
+        error = verify_matrix(c, g, s, P, THRESHOLD32);
+        #else
+        error = verify_matrix(c, g, s, P, THRESHOLD64);
+        #endif
+
+        if (error != 0) {
+          printf("Error code %d\n", error);
+          printf("c[%d]=%d\n", error, c[error]);
+          return error;
+        } else {
+          printf("Passed.\n");
+        }
       }
     }
   }
+
+  sync_barrier();
 
   return 0;
 }
