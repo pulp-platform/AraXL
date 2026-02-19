@@ -2,7 +2,7 @@
 
 # Matrix sizes
 def_args_imatmul     ?= "16 64 128"
-def_args_fmatmul     ?= "16 64 128"
+def_args_fmatmul     ?= "16 64 $(shell expr 32 \* $(nr_lanes) \* $(nr_clusters) \* $(nr_cores))"
 # Matrix size, filter size
 def_args_iconv2d     ?= "112 7"
 def_args_fconv2d     ?= "64 64 7"

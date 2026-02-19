@@ -7,6 +7,7 @@
 // Description: Top level testbench module for Verilator.
 
 module ara_tb_verilator #(
+    parameter int unsigned NrCores    = `NR_CORES,
     parameter int unsigned NrLanes    = `NR_LANES,
     parameter int unsigned NrClusters = `NR_CLUSTERS
   )(
@@ -28,6 +29,7 @@ module ara_tb_verilator #(
    *********/
 
   ara_testharness #(
+    .NrCores     (NrCores         ),
     .NrLanes     (NrLanes         ),
     .NrClusters  (NrClusters      ),
     .AxiAddrWidth(AxiAddrWidth    ),
