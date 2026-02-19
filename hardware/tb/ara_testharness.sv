@@ -8,6 +8,7 @@
 //              Instantiates an AXI-Bus and memories.
 
 module ara_testharness #(
+    parameter int unsigned NrCores      = 0,
     // Ara-specific parameters
     parameter int unsigned NrLanes      = 0,
     parameter int unsigned NrClusters   = 0,
@@ -69,6 +70,7 @@ module ara_testharness #(
    *********/
 
   ara_soc #(
+    .NrCores     (NrCores      ),
     .NrLanes     (NrLanes      ),
     .NrClusters  (NrClusters   ),
     .AxiAddrWidth(AxiAddrWidth ),
@@ -158,13 +160,20 @@ module ara_testharness #(
     // If disabled
     if (!runtime_cnt_en_q)
       // Start only if the software allowed the enable and we detect the first V instruction 
-      // runtime_cnt_en_d = i_ara_soc.i_system.i_ara.acc_req_i.req_valid & cnt_en_mask;
-      runtime_cnt_en_d = i_ara_soc.i_system.i_ara_cluster.acc_req_i.acc_req.req_valid & cnt_en_mask; // TODO : Verify this!
+`ifndef USE_CLUSTER
+      runtime_cnt_en_d = i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid & cnt_en_mask;
+`else
+      runtime_cnt_en_d = i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid & cnt_en_mask;
+`endif 
+
     // If enabled
     if (runtime_cnt_en_q)
       // Stop counting only if the software disabled the counter and Ara returned idle
-      // runtime_cnt_en_d = cnt_en_mask | ~i_ara_soc.i_system.i_ara.ara_idle;
-      runtime_cnt_en_d = cnt_en_mask & ~i_ara_soc.i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle; // TODO : Verify this!
+`ifndef USE_CLUSTER
+      runtime_cnt_en_d = cnt_en_mask | ~i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle;
+`else
+      runtime_cnt_en_d = cnt_en_mask & ~i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle;
+`endif
   end
 
   // Vector runtime counter
@@ -184,18 +193,24 @@ module ara_testharness #(
     runtime_to_be_updated_d = runtime_to_be_updated_q;
 
     // Assert the update flag upon a new valid vector instruction
-    // if (!runtime_to_be_updated_q && i_ara_soc.i_system.i_ara.acc_req_i.req_valid) begin
-    if (!runtime_to_be_updated_q && i_ara_soc.i_system.i_ara_cluster.acc_req_i.acc_req.req_valid) begin
+  `ifndef USE_CLUSTER
+    if (!runtime_to_be_updated_q && i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid) begin
+  `else 
+    if (!runtime_to_be_updated_q && i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid) begin
+  `endif
       runtime_to_be_updated_d = 1'b1;
     end
 
     // Update the internal runtime and reset the update flag
-    // if (runtime_to_be_updated_q           &&
-    //     i_ara_soc.i_system.i_ara.ara_idle &&
-    //     !i_ara_soc.i_system.i_ara.acc_req_i.req_valid) begin
+    `ifndef USE_CLUSTER
     if (runtime_to_be_updated_q           &&
-        i_ara_soc.i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle &&
-        !i_ara_soc.i_system.i_ara_cluster.acc_req_i.acc_req.req_valid) begin
+        i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle &&
+        !i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid) begin
+    `else
+    if (runtime_to_be_updated_q           &&
+        i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle &&
+        !i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid) begin
+    `endif
       runtime_buf_d = runtime_cnt_q;
       runtime_to_be_updated_d = 1'b0;
     end
@@ -238,23 +253,26 @@ module ara_testharness #(
     dcache_stall_cnt_d = dcache_stall_cnt_q;
     icache_stall_cnt_d = icache_stall_cnt_q;
     sb_full_cnt_d      = sb_full_cnt_q;
-    if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_dcache_miss_i)
+    if (runtime_cnt_en_q && i_ara_soc.gen_ara_system[0].i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_dcache_miss_i)
       dcache_stall_cnt_d += 1;
-    if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_icache_miss_i)
+    if (runtime_cnt_en_q && i_ara_soc.gen_ara_system[0].i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_icache_miss_i)
       icache_stall_cnt_d += 1;
-    if (runtime_cnt_en_q && i_ara_soc.i_system.i_ariane.gen_perf_counter.perf_counters_i.sb_full_i)
+    if (runtime_cnt_en_q && i_ara_soc.gen_ara_system[0].i_system.i_ariane.gen_perf_counter.perf_counters_i.sb_full_i)
       sb_full_cnt_d      += 1;
   end
 
   // Update logic
   always_comb begin
     // Update the internal runtime and reset the update flag
-    // if (runtime_to_be_updated_q           &&
-    //     i_ara_soc.i_system.i_ara.ara_idle &&
-    //     !i_ara_soc.i_system.i_ara.acc_req_i.req_valid) begin
+`ifndef USE_CLUSTER
     if (runtime_to_be_updated_q           &&
-        i_ara_soc.i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle &&
-        !i_ara_soc.i_system.i_ara_cluster.acc_req_i.acc_req.req_valid) begin
+        i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle &&
+        !i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid) begin
+`else
+    if (runtime_to_be_updated_q           &&
+        i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle &&
+        !i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid) begin
+`endif
       dcache_stall_buf_d = dcache_stall_cnt_q;
       icache_stall_buf_d = icache_stall_cnt_q;
       sb_full_buf_d      = sb_full_cnt_q;

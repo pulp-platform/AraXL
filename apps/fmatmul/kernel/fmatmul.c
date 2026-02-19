@@ -24,29 +24,14 @@
 void fmatmul(double *c, const double *a, const double *b,
              const unsigned long int M, const unsigned long int N,
              const unsigned long int P) {
-  // if (M <= 4) {
-  //   fmatmul_4x4(c, a, b, M, N, P);
-  // } else if (M <= 8) {
-  //   fmatmul_8x8(c, a, b, M, N, P);
-  // } else if (M <= 64) {
-  //   fmatmul_16x16(c, a, b, M, N, P);
-  // } else if (M <= 128) {
-  //   // Vector length is 64 elements. With an 8x8 matmul,
-  //   // we can use LMUL=2, having a vl of 128.
-  //   fmatmul_8x8(c, a, b, M, N, P);
-  // } else {
-  //   // Vector length is 64 elements. With an 4x4 matmul,
-  //   // we can use LMUL=4, having a vl of 256.
-  //   fmatmul_4x4(c, a, b, M, N, P);
-  // }
 
   // 16 DP elements per lane for VLEN=1024
   if (P <= NR_LANES * NR_CLUSTERS * 16) { // Fits with  LMUL=1
-    fmatmul_16x16(c, a, b, M, N, P);
+   fmatmul_16x16(c, a, b, M, N, P);
   } else if (P <= NR_LANES * NR_CLUSTERS * 16 * 2) {
     fmatmul_8x8(c, a, b, M, N, P);        // Need LMUL=2
   } else {
-    fmatmul_4x4(c, a, b, M, N, P);        // Need LMUL=4
+   fmatmul_4x4(c, a, b, M, N, P);        // Need LMUL=4
   }
   
 }
@@ -80,7 +65,7 @@ void fmatmul_4x4(double *c, const double *a, const double *b,
     for (unsigned long int m = 0; m < M; m += block_size) {
       // Find pointer to the submatrices
       const double *a_ = a + m * N;
-      double *c__ = c_ + m * P;
+      double *c__ = c_ + m * P * NR_CORES;
 
       fmatmul_vec_4x4_slice_init();
       fmatmul_vec_4x4(c__, a_, b_, N, P);
@@ -105,7 +90,7 @@ void fmatmul_vec_4x4(double *c, const double *a, const double *b,
 
   // Prefetch one row of matrix B
   asm volatile("vle64.v v16, (%0);" ::"r"(b));
-  b += P;
+  b += P * NR_CORES;
 
   // Prefetch one row of scalar values
   t0 = *a, a += N;
@@ -134,7 +119,7 @@ void fmatmul_vec_4x4(double *c, const double *a, const double *b,
 
     // Load one row of B
     asm volatile("vle64.v v20, (%0);" ::"r"(b));
-    b += P;
+    b += P * NR_CORES;
 
     asm volatile("vfmacc.vf v4, %0, v16" ::"f"(t1));
     t1 = *a, a += N;
@@ -153,7 +138,7 @@ void fmatmul_vec_4x4(double *c, const double *a, const double *b,
 
     // Load one row of B
     asm volatile("vle64.v v16, (%0);" ::"r"(b));
-    b += P;
+    b += P * NR_CORES;
 
     asm volatile("vfmacc.vf v4, %0, v20" ::"f"(t1));
     t1 = *a, a += N;
@@ -166,13 +151,13 @@ void fmatmul_vec_4x4(double *c, const double *a, const double *b,
   // Last iteration: store results
   asm volatile("vfmacc.vf v0, %0, v20" ::"f"(t0));
   asm volatile("vse64.v v0, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v4, %0, v20" ::"f"(t1));
   asm volatile("vse64.v v4, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v8, %0, v20" ::"f"(t2));
   asm volatile("vse64.v v8, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v12, %0, v20" ::"f"(t3));
   asm volatile("vse64.v v12, (%0);" ::"r"(c));
 }
@@ -206,7 +191,7 @@ void fmatmul_8x8(double *c, const double *a, const double *b,
     for (unsigned long int m = 0; m < M; m += block_size) {
       // Find pointer to the submatrices
       const double *a_ = a + m * N;
-      double *c__ = c_ + m * P;
+      double *c__ = c_ + m * P * NR_CORES;
 
       fmatmul_vec_8x8_slice_init();
       fmatmul_vec_8x8(c__, a_, b_, N, P);
@@ -233,10 +218,6 @@ void fmatmul_vec_8x8(double *c, const double *a, const double *b,
   // Original pointer
   const double *a_ = a;
 
-  // Prefetch one row of matrix B
-  asm volatile("vle64.v v18, (%0);" ::"r"(b));
-  b += P;
-
   // Prefetch one row of scalar values
   t0 = *a, a += N;
   t1 = *a, a += N;
@@ -246,6 +227,10 @@ void fmatmul_vec_8x8(double *c, const double *a, const double *b,
   t5 = *a, a += N;
   t6 = *a, a += N;
   t7 = *a;
+
+  // Prefetch one row of matrix B
+  asm volatile("vle64.v v18, (%0);" ::"r"(b));
+  b += P * NR_CORES;
 
   // Compute the multiplication
   unsigned long int n = 0;
@@ -268,7 +253,7 @@ void fmatmul_vec_8x8(double *c, const double *a, const double *b,
 
     // Load one row of B
     asm volatile("vle64.v v20, (%0);" ::"r"(b));
-    b += P;
+    b += P * NR_CORES;
 
     asm volatile("vfmacc.vf v2, %0, v18" ::"f"(t1));
     t1 = *a, a += N;
@@ -295,7 +280,7 @@ void fmatmul_vec_8x8(double *c, const double *a, const double *b,
 
     // Load one row of B
     asm volatile("vle64.v v18, (%0);" ::"r"(b));
-    b += P;
+    b += P * NR_CORES;
 
     asm volatile("vfmacc.vf v2, %0, v20" ::"f"(t1));
     t1 = *a, a += N;
@@ -316,25 +301,25 @@ void fmatmul_vec_8x8(double *c, const double *a, const double *b,
   // Last iteration: store results
   asm volatile("vfmacc.vf v0, %0, v20" ::"f"(t0));
   asm volatile("vse64.v v0, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v2, %0, v20" ::"f"(t1));
   asm volatile("vse64.v v2, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v4, %0, v20" ::"f"(t2));
   asm volatile("vse64.v v4, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v6, %0, v20" ::"f"(t3));
   asm volatile("vse64.v v6, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v8, %0, v20" ::"f"(t4));
   asm volatile("vse64.v v8, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v10, %0, v20" ::"f"(t5));
   asm volatile("vse64.v v10, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v12, %0, v20" ::"f"(t6));
   asm volatile("vse64.v v12, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v14, %0, v20" ::"f"(t7));
   asm volatile("vse64.v v14, (%0);" ::"r"(c));
 }
@@ -368,7 +353,7 @@ void fmatmul_16x16(double *c, const double *a, const double *b,
     for (unsigned long int m = 0; m < M; m += block_size) {
       // Find pointer to the submatrices
       const double *a_ = a + m * N;
-      double *c__ = c_ + m * P;
+      double *c__ = c_ + m * P * NR_CORES;
 
       fmatmul_vec_16x16_slice_init();
       fmatmul_vec_16x16(c__, a_, b_, N, P);
@@ -423,7 +408,7 @@ void fmatmul_vec_16x16(double *c, const double *a, const double *b,
 
   // Prefetch one row of matrix B
   asm volatile("vle64.v v16, (%0);" ::"r"(b));
-  b += P;
+  b += P * NR_CORES;
 
   // Compute the multiplication
   unsigned long int n = 0;
@@ -446,7 +431,7 @@ void fmatmul_vec_16x16(double *c, const double *a, const double *b,
 
     // Load one row of B
     asm volatile("vle64.v v17, (%0);" ::"r"(b));
-    b += P;
+    b += P * NR_CORES;
 
     asm volatile("vfmacc.vf v1, %0, v16" ::"f"(t1));
     t1 = *a, a += N;
@@ -489,7 +474,7 @@ void fmatmul_vec_16x16(double *c, const double *a, const double *b,
 
     // Load one row of B
     asm volatile("vle64.v v16, (%0);" ::"r"(b));
-    b += P;
+    b += P * NR_CORES;
 
     asm volatile("vfmacc.vf v1, %0, v17" ::"f"(t1));
     t1 = *a, a += N;
@@ -526,49 +511,49 @@ void fmatmul_vec_16x16(double *c, const double *a, const double *b,
   // Last iteration: store results
   asm volatile("vfmacc.vf v0, %0, v17" ::"f"(t0));
   asm volatile("vse64.v v0, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v1, %0, v17" ::"f"(t1));
   asm volatile("vse64.v v1, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v2, %0, v17" ::"f"(t2));
   asm volatile("vse64.v v2, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v3, %0, v17" ::"f"(t3));
   asm volatile("vse64.v v3, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v4, %0, v17" ::"f"(t4));
   asm volatile("vse64.v v4, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v5, %0, v17" ::"f"(t5));
   asm volatile("vse64.v v5, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v6, %0, v17" ::"f"(t6));
   asm volatile("vse64.v v6, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v7, %0, v17" ::"f"(t7));
   asm volatile("vse64.v v7, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v8, %0, v17" ::"f"(t8));
   asm volatile("vse64.v v8, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v9, %0, v17" ::"f"(t9));
   asm volatile("vse64.v v9, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v10, %0, v17" ::"f"(t10));
   asm volatile("vse64.v v10, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v11, %0, v17" ::"f"(t11));
   asm volatile("vse64.v v11, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v12, %0, v17" ::"f"(t12));
   asm volatile("vse64.v v12, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v13, %0, v17" ::"f"(t13));
   asm volatile("vse64.v v13, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v14, %0, v17" ::"f"(t14));
   asm volatile("vse64.v v14, (%0);" ::"r"(c));
-  c += P;
+  c += P * NR_CORES;
   asm volatile("vfmacc.vf v15, %0, v17" ::"f"(t15));
   asm volatile("vse64.v v15, (%0);" ::"r"(c));
 }

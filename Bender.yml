@@ -10,6 +10,7 @@ package:
 
 dependencies:
   axi:                { git: "https://github.com/pulp-platform/axi.git",                version: 0.39.9      }
+  axi_riscv_atomics:  { git: "https://github.com/pulp-platform/axi_riscv_atomics.git",  version: 0.8.3       }
   common_cells:       { git: "https://github.com/pulp-platform/common_cells.git",       version: 1.38.0      }
   cva6:               { git: "https://github.com/pulp-platform/cva6.git",               rev: pulp-v2         }
   tech_cells_generic: { git: "https://github.com/pulp-platform/tech_cells_generic.git", version: 0.2.13      }

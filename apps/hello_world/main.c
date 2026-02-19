@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include "runtime.h"
 
 #ifndef SPIKE
 #include "printf.h"
@@ -26,8 +27,17 @@
 #include <stdio.h>
 #endif
 
-int main() {
-  printf("Ariane says Hello!\n");
+int main(int hart_id) {
+
+  if (hart_id == 0) {
+    printf("Hello World from core %d!\n", hart_id);
+  }
+  sync_barrier();
+
+  if (hart_id == 1) {
+    printf("Hello World from core %d!\n", hart_id);
+  }
+  sync_barrier();
 
   return 0;
 }
