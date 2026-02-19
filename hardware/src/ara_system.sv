@@ -239,73 +239,80 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
 `ifndef USE_CLUSTER
 
   ara #(
-    .NrLanes     (NrLanes         ),
-    .NrClusters    (1               ),
-    .FPUSupport  (FPUSupport      ),
-    .FPExtSupport(FPExtSupport    ),
-    .FixPtSupport(FixPtSupport    ),
-    .AxiDataWidth(AxiWideDataWidth),
-    .AxiAddrWidth(AxiAddrWidth    ),
-    .axi_ar_t    (ara_axi_ar_t    ),
-    .axi_r_t     (ara_axi_r_t     ),
-    .axi_aw_t    (ara_axi_aw_t    ),
-    .axi_w_t     (ara_axi_w_t     ),
-    .axi_b_t     (ara_axi_b_t     ),
-    .axi_req_t   (ara_axi_req_t   ),
-    .axi_resp_t  (ara_axi_resp_t  )
+    .NrLanes            (NrLanes             ),
+    .FPUSupport         (FPUSupport          ),
+    .FPExtSupport       (FPExtSupport        ),
+    .FixPtSupport       (FixPtSupport        ),
+    .CVA6Cfg            (CVA6Cfg             ),
+    .exception_t        (exception_t         ),
+    .accelerator_req_t  (accelerator_req_t   ),
+    .accelerator_resp_t (accelerator_resp_t  ),
+    .cva6_to_acc_t      (cva6_to_acc_t       ),
+    .acc_to_cva6_t      (acc_to_cva6_t       ),
+    .AxiDataWidth       (AxiWideDataWidth    ),
+    .AxiAddrWidth       (AxiAddrWidth        ),
+    .axi_ar_t           (ara_axi_ar_t        ),
+    .axi_r_t            (ara_axi_r_t         ),
+    .axi_aw_t           (ara_axi_aw_t        ),
+    .axi_w_t            (ara_axi_w_t         ),
+    .axi_b_t            (ara_axi_b_t         ),
+    .axi_req_t          (ara_axi_req_t       ),
+    .axi_resp_t         (ara_axi_resp_t      )
   ) i_ara (
-    .clk_i           (clk_i         ),
-    .rst_ni          (rst_ni        ),
-    .scan_enable_i   (scan_enable_i ),
-    .scan_data_i     (1'b0          ),
-    .scan_data_o     (/* Unused */  ),
-    .acc_req_i       (acc_req       ),
-    .acc_resp_o      (acc_resp      ),
-    .axi_req_o       (ara_axi_req   ),
-    .axi_resp_i      (ara_axi_resp  )
+    .clk_i              (clk_i               ),
+    .rst_ni             (rst_ni              ),
+    .scan_enable_i      (scan_enable_i       ),
+    .scan_data_i        (1'b0                ),
+    .scan_data_o        (/* Unused */        ),
+    .cluster_id_i       (id_cluster_t'(0)    ),
+    .num_clusters_i     (num_cluster_t'(0)   ),
+    .acc_req_i          (acc_req             ),
+    .acc_resp_o         (acc_resp            ),
+    .axi_req_o          (ara_axi_req         ),
+    .axi_resp_i         (ara_axi_resp        )
   );
 
 `else
 
   ara_cluster #(
-    .NrLanes     (NrLanes         ),
-    .NrClusters  (NrClusters      ),
-    .FPUSupport  (FPUSupport      ),
-    .FPExtSupport(FPExtSupport    ),
-    .FixPtSupport(FixPtSupport    ),
-    .CVA6Cfg           (CVA6Cfg              ),
-    .exception_t       (exception_t          ),
-    .accelerator_req_t (accelerator_req_t    ),
-    .accelerator_resp_t(accelerator_resp_t   ),
-    .cva6_to_acc_t     (cva6_to_acc_t        ),
-    .acc_to_cva6_t     (acc_to_cva6_t        ),
-    .AxiDataWidth(AxiWideDataWidth),
-    .AxiAddrWidth(AxiAddrWidth    ),
-    .ClusterAxiDataWidth(ClusterAxiDataWidth),
-    .axi_ar_t    (ara_axi_ar_t    ),
-    .axi_r_t     (ara_axi_r_t     ),
-    .axi_aw_t    (ara_axi_aw_t    ),
-    .axi_w_t     (ara_axi_w_t     ),
-    .axi_b_t     (ara_axi_b_t     ),
-    .axi_req_t   (ara_axi_req_t   ),
-    .axi_resp_t  (ara_axi_resp_t  ), 
-    .cluster_axi_ar_t    (cluster_axi_ar_t    ),
-    .cluster_axi_r_t     (cluster_axi_r_t     ),
-    .cluster_axi_aw_t    (cluster_axi_aw_t    ),
-    .cluster_axi_w_t     (cluster_axi_w_t     ),
-    .cluster_axi_b_t     (cluster_axi_b_t     ),
-    .cluster_axi_req_t   (cluster_axi_req_t   ),
-    .cluster_axi_resp_t  (cluster_axi_resp_t  )
+    .NrLanes            (NrLanes             ),
+    .NrClusters         (NrClusters          ),
+    .FPUSupport         (FPUSupport          ),
+    .FPExtSupport       (FPExtSupport        ),
+    .FixPtSupport       (FixPtSupport        ),
+    .CVA6Cfg            (CVA6Cfg             ),
+    .exception_t        (exception_t         ),
+    .accelerator_req_t  (accelerator_req_t   ),
+    .accelerator_resp_t (accelerator_resp_t  ),
+    .cva6_to_acc_t      (cva6_to_acc_t       ),
+    .acc_to_cva6_t      (acc_to_cva6_t       ),
+    .AxiDataWidth       (AxiWideDataWidth    ),
+    .AxiAddrWidth       (AxiAddrWidth        ),
+    .ClusterAxiDataWidth(ClusterAxiDataWidth ),
+    .axi_ar_t           (ara_axi_ar_t        ),
+    .axi_r_t            (ara_axi_r_t         ),
+    .axi_aw_t           (ara_axi_aw_t        ),
+    .axi_w_t            (ara_axi_w_t         ),
+    .axi_b_t            (ara_axi_b_t         ),
+    .axi_req_t          (ara_axi_req_t       ),
+    .axi_resp_t         (ara_axi_resp_t      ),
+    .cluster_axi_ar_t   (cluster_axi_ar_t    ),
+    .cluster_axi_r_t    (cluster_axi_r_t     ),
+    .cluster_axi_aw_t   (cluster_axi_aw_t    ),
+    .cluster_axi_w_t    (cluster_axi_w_t     ),
+    .cluster_axi_b_t    (cluster_axi_b_t     ),
+    .cluster_axi_req_t  (cluster_axi_req_t   ),
+    .cluster_axi_resp_t (cluster_axi_resp_t  )
   ) i_ara_cluster (
-    .clk_i           (clk_i         ),
-    .rst_ni          (rst_ni        ),
-    .scan_enable_i   (scan_enable_i ),
-    .scan_data_i     (1'b0          ),
-    .scan_data_o     (/* Unused */  ),
-    .acc_req_i       (acc_req   ),
-    .acc_resp_o      (acc_resp  ),
-    .axi_req_o       (ara_axi_req   ),
-    .axi_resp_i      (ara_axi_resp  )
+    .clk_i              (clk_i               ),
+    .rst_ni             (rst_ni              ),
+    .scan_enable_i      (scan_enable_i       ),
+    .scan_data_i        (1'b0                ),
+    .scan_data_o        (/* Unused */        ),
+    .acc_req_i          (acc_req             ),
+    .acc_resp_o         (acc_resp            ),
+    .axi_req_o          (ara_axi_req         ),
+    .axi_resp_i         (ara_axi_resp        )
   );
 
 `endif
@@ -340,24 +347,5 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .mst_req_o  (axi_req_o                            ),
     .mst_resp_i (axi_resp_i                           )
   );
-  
-  /*axi_cut #(
-    .ar_chan_t   (system_axi_ar_t     ),
-    .aw_chan_t   (system_axi_aw_t     ),
-    .b_chan_t    (system_axi_b_t      ),
-    .r_chan_t    (system_axi_r_t      ),
-    .w_chan_t    (system_axi_w_t      ),
-    .axi_req_t   (system_axi_req_t    ),
-    .axi_resp_t  (system_axi_resp_t   )
-  ) i_system_axi_cut (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    
-    .slv_req_i   (axi_req_o_cut),
-    .slv_resp_o  (axi_resp_i_cut),
-
-    .mst_req_o   (axi_req_o),
-    .mst_resp_i  (axi_resp_i)
-  );*/
 
 endmodule : ara_system

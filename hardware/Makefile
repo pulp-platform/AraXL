@@ -107,9 +107,22 @@ vlog_args += -work $(library)
 # Bender
 # Defines
 bender_defs += --define NR_LANES=$(nr_lanes) --define VLEN=$(vlen) --define ARIANE_ACCELERATOR_PORT=1
+
+# Vector processor configuration
+use_araxl ?= 1
+ifeq ($(use_araxl), 1)
+    # AraXL configuration
+	bender_defs += --define USE_CLUSTER
+endif
+
+# Used only for AraXL
 nr_clusters ?= 2
-ifneq ($(nr_clusters), 0)
-	bender_defs += --define USE_CLUSTER=1 --define NR_CLUSTERS=$(nr_clusters)
+bender_defs += --define NR_CLUSTERS=$(nr_clusters)
+
+# Multi-core configuration
+nr_cores ?= 1
+ifneq ($(nr_cores), 0)
+	bender_defs += --define NR_CORES=$(nr_cores)
 endif
 
 # Latency arguments for perf simulations
@@ -233,6 +246,8 @@ $(veril_library)/V$(veril_top): $(config_file) Makefile ../Bender.yml $(shell fi
   -CFLAGS "-DTOPLEVEL_NAME=$(veril_top)"                                        \
   -CFLAGS "-DNR_LANES=$(nr_lanes)"                                              \
   -CFLAGS "-DNR_CLUSTERS=$(nr_clusters)"                                        \
+  -CFLAGS "-DNR_CORES=$(nr_cores)"                                              \
+  $(if $(use_araxl),-CFLAGS "-DUSE_CLUSTER=1",)                                 \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_dpi/cpp       \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_memutil_verilator/cpp \
   -CFLAGS -I$(ROOT_DIR)/tb/verilator/lowrisc_dv_verilator_simutil_verilator/cpp \

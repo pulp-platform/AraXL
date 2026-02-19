@@ -23,6 +23,7 @@
 #define _RUNTIME_H_
 
 #include <stdint.h>
+#include <stdatomic.h>
 
 #define ENABLE_VEC                                                             \
   asm volatile(                                                                \
@@ -42,6 +43,20 @@ inline int64_t get_cycle_count() {
                : [cycle_count] "=r"(cycle_count));
   return cycle_count;
 };
+
+// Barrier implementation using atomic operations for multi-core configurations
+extern atomic_int sync_flag = 0;
+
+void sync_barrier() {
+  // Last core to arrive resets the counter
+  if (atomic_fetch_add(&sync_flag, 1) == NR_CORES - 1) {
+    atomic_store(&sync_flag, 0);
+  } else {
+    // Wait for all cores to reach the barrier
+    while (atomic_load(&sync_flag) != 0)
+      ;
+  }
+}
 
 #ifndef SPIKE
 // Enable and disable the hw-counter

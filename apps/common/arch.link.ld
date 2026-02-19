@@ -51,6 +51,9 @@ SECTIONS {
 
   .comment : ALIGN(ALIGNMENT) { *(.comment) } > L2
 
+  /* In non-cacheable region of main memory */
+  sync_flag              = 0xBFFFF800;
+
   eoc_address_reg        = 0xD0000000;
   dram_start_address_reg = 0xD0000008;
   dram_end_address_reg   = 0xD0000010;

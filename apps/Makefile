@@ -25,11 +25,13 @@ TESTS_DIR := $(ROOT_DIR)
 include $(COMMON_DIR)/runtime.mk
 include $(COMMON_DIR)/default_args.mk
 
-# Number of clusters
+# Number of clusters, used only for araxl
 nr_clusters ?= 2
 
-APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(wildcard $(APPS_DIR)/*/main.c))
+# Number of cores
+nr_cores ?= 1
 
+APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(wildcard $(APPS_DIR)/*/main.c))
 # Don't automatically compile the benchmark app, which is only a wrapper around the other apps
 BINARIES := $(filter-out bin/benchmarks, $(addprefix bin/,$(APPS)))
 

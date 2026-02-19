@@ -168,6 +168,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     vlen_cluster_t vl_cluster;
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
+        
+    // To specify this is a mask load vlm
+    logic use_eew1;
 
     // Request token, for registration in the sequencer
     logic token;

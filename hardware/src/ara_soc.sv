@@ -7,9 +7,10 @@
 // Ara's SoC, containing Ariane, Ara, and a L2 cache.
 
 module ara_soc import axi_pkg::*; import ara_pkg::*; #(
+    parameter  int           unsigned NrCores      = 1,                          // Number of Ariane cores in the system.
     // RVV Parameters
     parameter  int           unsigned NrLanes      = 0,                          // Number of parallel vector lanes.
-    parameter  int           unsigned NrClusters     = 0,                          // Number of Ara instances
+    parameter  int           unsigned NrClusters   = 0,                          // Number of Ara instances
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -68,20 +69,25 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   //  Memory Regions  //
   //////////////////////
 
-  localparam NrAXIMasters = 1; // Actually masters, but slaves on the crossbar
+  localparam NrAXIMasters = NrCores; // Actually masters, but slaves on the crossbar
 
-  typedef enum int unsigned {
-    L2MEM = 0,
-    UART  = 1,
-    CTRL  = 2
-  } axi_slaves_e;
+  localparam int L2MEM_0 = 0;
+  localparam int L2MEM_1 = 1;
+  localparam int L2MEM_2 = 2;
+  localparam int L2MEM_3 = 3;  
+  localparam int UART = NrCores;
+  localparam int CTRL = NrCores + 1;
+
   localparam NrAXISlaves = CTRL + 1;
+  localparam NrL2Slaves = (NrCores > 0) ? NrCores : 1;
 
   // Memory Map
   // 1GByte of DDR (split between two chips on Genesys2)
   localparam logic [63:0] DRAMLength = 64'h40000000;
   localparam logic [63:0] UARTLength = 64'h1000;
   localparam logic [63:0] CTRLLength = 64'h1000;
+
+  localparam logic [63:0] DRAMLengthPerCore = DRAMLength / NrCores;
 
   typedef enum logic [63:0] {
     DRAMBase = 64'h8000_0000,
@@ -100,17 +106,19 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   localparam AxiWideDataWidth   = AxiDataWidth;
   localparam AXiWideStrbWidth   = AxiWideDataWidth / 8;
 
-  localparam AxiSocIdWidth  = AxiIdWidth - $clog2(NrAXIMasters);
-  localparam AxiCoreIdWidth = AxiSocIdWidth - 1;
+  localparam AxiSocIdWidth  = AxiIdWidth;
+  localparam AxiSystemIdWidth = AxiIdWidth - $clog2(NrAXIMasters);
+  localparam AxiCoreIdWidth = AxiSystemIdWidth - 1;
 
   // Internal types
   typedef logic [AxiNarrowDataWidth-1:0] axi_narrow_data_t;
   typedef logic [AxiNarrowStrbWidth-1:0] axi_narrow_strb_t;
   typedef logic [AxiSocIdWidth-1:0] axi_soc_id_t;
+  typedef logic [AxiSystemIdWidth-1:0] axi_system_id_t;
   typedef logic [AxiCoreIdWidth-1:0] axi_core_id_t;
 
   // AXI Typedefs
-  `AXI_TYPEDEF_ALL(system, axi_addr_t, axi_id_t, axi_data_t, axi_strb_t, axi_user_t)
+  `AXI_TYPEDEF_ALL(system, axi_addr_t, axi_system_id_t, axi_data_t, axi_strb_t, axi_user_t)
   `AXI_TYPEDEF_ALL(ara_axi, axi_addr_t, axi_core_id_t, axi_data_t, axi_strb_t, axi_user_t)
   `AXI_TYPEDEF_ALL(ariane_axi, axi_addr_t, axi_core_id_t, axi_narrow_data_t, axi_narrow_strb_t,
     axi_user_t)
@@ -122,14 +130,18 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   `AXI_TYPEDEF_ALL(ara_cluster_axi, cluster_axi_addr_t, axi_core_id_t, cluster_axi_data_t, cluster_axi_strb_t, cluster_axi_user_t)
 
   // Buses
-  system_req_t  system_axi_req_spill;
-  system_resp_t system_axi_resp_spill;
-  system_resp_t system_axi_resp_spill_del;
-  system_req_t  system_axi_req;
-  system_resp_t system_axi_resp;
+  system_req_t  [NrAXIMasters-1:0] system_axi_req_spill;
+  system_resp_t [NrAXIMasters-1:0] system_axi_resp_spill;
+  system_resp_t [NrAXIMasters-1:0] system_axi_resp_spill_del;
+  system_req_t  [NrAXIMasters-1:0] system_axi_req;
+  system_resp_t [NrAXIMasters-1:0] system_axi_resp;
 
   soc_wide_req_t    [NrAXISlaves-1:0] periph_wide_axi_req;
+  soc_wide_req_t    [NrL2Slaves-1:0 ] periph_wide_axi_req_amo;
+
   soc_wide_resp_t   [NrAXISlaves-1:0] periph_wide_axi_resp;
+  soc_wide_resp_t   [NrL2Slaves-1:0 ] periph_wide_axi_resp_amo;
+
   soc_narrow_req_t  [NrAXISlaves-1:0] periph_narrow_axi_req;
   soc_narrow_resp_t [NrAXISlaves-1:0] periph_narrow_axi_resp;
 
@@ -145,8 +157,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     FallThrough       : 1'b0,
     LatencyMode       : axi_pkg::CUT_MST_PORTS,
     PipelineStages    : 0,
-    AxiIdWidthSlvPorts: AxiSocIdWidth,
-    AxiIdUsedSlvPorts : AxiSocIdWidth,
+    AxiIdWidthSlvPorts: AxiSystemIdWidth,
+    AxiIdUsedSlvPorts : AxiSystemIdWidth,
     UniqueIds         : 1'b0,
     AxiAddrWidth      : AxiAddrWidth,
     AxiDataWidth      : AxiWideDataWidth,
@@ -154,11 +166,30 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   };
 
   axi_pkg::xbar_rule_64_t [NrAXISlaves-1:0] routing_rules;
-  assign routing_rules = '{
-    '{idx: CTRL, start_addr: CTRLBase, end_addr: CTRLBase + CTRLLength},
-    '{idx: UART, start_addr: UARTBase, end_addr: UARTBase + UARTLength},
-    '{idx: L2MEM, start_addr: DRAMBase, end_addr: DRAMBase + DRAMLength}
-  };
+
+if (NrCores == 2) begin
+    assign routing_rules = '{
+      '{idx: CTRL,    start_addr: CTRLBase,                     end_addr: CTRLBase + CTRLLength         },
+      '{idx: UART,    start_addr: UARTBase,                     end_addr: UARTBase + UARTLength         },
+      '{idx: L2MEM_0 ,start_addr: DRAMBase,                     end_addr: DRAMBase + DRAMLengthPerCore  },
+      '{idx: L2MEM_1, start_addr: DRAMBase + DRAMLengthPerCore, end_addr: DRAMBase + 2*DRAMLengthPerCore}
+    };
+end else if (NrCores == 4) begin
+    assign routing_rules = '{
+      '{idx: CTRL,    start_addr: CTRLBase,                       end_addr: CTRLBase + CTRLLength         },
+      '{idx: UART,    start_addr: UARTBase,                       end_addr: UARTBase + UARTLength         },
+      '{idx: L2MEM_0 ,start_addr: DRAMBase,                       end_addr: DRAMBase + DRAMLengthPerCore  },
+      '{idx: L2MEM_1, start_addr: DRAMBase + DRAMLengthPerCore,   end_addr: DRAMBase + 2*DRAMLengthPerCore},
+      '{idx: L2MEM_2, start_addr: DRAMBase + 2*DRAMLengthPerCore, end_addr: DRAMBase + 3*DRAMLengthPerCore},
+      '{idx: L2MEM_3, start_addr: DRAMBase + 3*DRAMLengthPerCore, end_addr: DRAMBase + 4*DRAMLengthPerCore}
+    };
+end else begin
+    assign routing_rules = '{
+      '{idx: CTRL,     start_addr: CTRLBase,                  end_addr: CTRLBase + CTRLLength},
+      '{idx: UART,     start_addr: UARTBase,                  end_addr: UARTBase + UARTLength},
+      '{idx: L2MEM_0 , start_addr: DRAMBase,                  end_addr: DRAMBase + DRAMLength}
+    };
+end
 
   axi_xbar #(
     .Cfg          (XBarCfg                ),
@@ -177,98 +208,107 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .mst_resp_t   (soc_wide_resp_t        ),
     .rule_t       (axi_pkg::xbar_rule_64_t)
   ) i_soc_xbar (
-    .clk_i                (clk_i               ),
-    .rst_ni               (rst_ni              ),
-    .test_i               (1'b0                ),
-    .slv_ports_req_i      (system_axi_req      ),
-    .slv_ports_resp_o     (system_axi_resp     ),
-    .mst_ports_req_o      (periph_wide_axi_req ),
-    .mst_ports_resp_i     (periph_wide_axi_resp),
-    .addr_map_i           (routing_rules       ),
-    .en_default_mst_port_i('0                  ),
-    .default_mst_port_i   ('0                  )
+    .clk_i                (clk_i                   ),
+    .rst_ni               (rst_ni                  ),
+    .test_i               (1'b0                    ),
+    .slv_ports_req_i      (system_axi_req          ),
+    .slv_ports_resp_o     (system_axi_resp         ),
+    .mst_ports_req_o      (periph_wide_axi_req     ),
+    .mst_ports_resp_i     (periph_wide_axi_resp    ),
+    .addr_map_i           (routing_rules           ),
+    .en_default_mst_port_i('0                      ),
+    .default_mst_port_i   ('0                      )
   );
 
   //////////
   //  L2  //
   //////////
 
-  // The L2 memory does not support atomics
+  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_l2_atop_filter
 
-  soc_wide_req_t  l2mem_wide_axi_req_wo_atomics;
-  soc_wide_resp_t l2mem_wide_axi_resp_wo_atomics;
-  axi_atop_filter #(
-    .AxiIdWidth     (AxiSocIdWidth  ),
-    .AxiMaxWriteTxns(4              ),
-    .axi_req_t      (soc_wide_req_t ),
-    .axi_resp_t     (soc_wide_resp_t)
-  ) i_l2mem_atop_filter (
-    .clk_i     (clk_i                         ),
-    .rst_ni    (rst_ni                        ),
-    .slv_req_i (periph_wide_axi_req[L2MEM]    ),
-    .slv_resp_o(periph_wide_axi_resp[L2MEM]   ),
-    .mst_req_o (l2mem_wide_axi_req_wo_atomics ),
-    .mst_resp_i(l2mem_wide_axi_resp_wo_atomics)
-  );
+    // Module to handle riscv atomics on L2
+    axi_riscv_atomics_structs #(
+      .AxiAddrWidth    (AxiAddrWidth  ), 
+      .AxiDataWidth    (AxiDataWidth  ),
+      .AxiIdWidth      (AxiSocIdWidth ),
+      .AxiUserWidth    (AxiUserWidth  ),
+      .AxiMaxReadTxns  (8             ),
+      .AxiMaxWriteTxns (8             ),
+      .RiscvWordWidth  (64            ),
+      .axi_req_t       (soc_wide_req_t),
+      .axi_rsp_t       (soc_wide_resp_t)
+    ) i_axi_riscv_atomics_wrap (
+      .clk_i         (clk_i                        ),
+      .rst_ni        (rst_ni                       ),
+      .axi_slv_req_i (periph_wide_axi_req[i]       ),
+      .axi_slv_rsp_o (periph_wide_axi_resp[i]      ),
+      .axi_mst_req_o (periph_wide_axi_req_amo[i]   ),
+      .axi_mst_rsp_i (periph_wide_axi_resp_amo[i]  )
+    );
+  end
 
-  logic                      l2_req;
-  logic                      l2_we;
-  logic [AxiAddrWidth-1:0]   l2_addr;
-  logic [AxiDataWidth/8-1:0] l2_be;
-  logic [AxiDataWidth-1:0]   l2_wdata;
-  logic [AxiDataWidth-1:0]   l2_rdata;
-  logic                      l2_rvalid, l2_rvalid_1;
+  logic [NrL2Slaves-1:0]                      l2_req;
+  logic [NrL2Slaves-1:0]                      l2_we;
+  logic [NrL2Slaves-1:0][AxiAddrWidth-1:0]    l2_addr;
+  logic [NrL2Slaves-1:0][AxiDataWidth/8-1:0]  l2_be;
+  logic [NrL2Slaves-1:0][AxiDataWidth-1:0]    l2_wdata;
+  logic [NrL2Slaves-1:0][AxiDataWidth-1:0]    l2_rdata;
+  logic [NrL2Slaves-1:0]                      l2_rvalid;
 
-  axi_to_mem #(
-    .AddrWidth (AxiAddrWidth   ),
-    .DataWidth (AxiDataWidth   ),
-    .IdWidth   (AxiSocIdWidth  ),
-    .NumBanks  (1              ),
-    .axi_req_t (soc_wide_req_t ),
-    .axi_resp_t(soc_wide_resp_t)
-  ) i_axi_to_mem (
-    .clk_i       (clk_i                         ),
-    .rst_ni      (rst_ni                        ),
-    .axi_req_i   (l2mem_wide_axi_req_wo_atomics ),
-    .axi_resp_o  (l2mem_wide_axi_resp_wo_atomics),
-    .mem_req_o   (l2_req                        ),
-    .mem_gnt_i   (l2_req                        ), // Always available
-    .mem_we_o    (l2_we                         ),
-    .mem_addr_o  (l2_addr                       ),
-    .mem_strb_o  (l2_be                         ),
-    .mem_wdata_o (l2_wdata                      ),
-    .mem_rdata_i (l2_rdata                      ),
-    .mem_rvalid_i(l2_rvalid                     ),
-    .mem_atop_o  (/* Unused */                  ),
-    .busy_o      (/* Unused */                  )
-  );
+  // Generate NrL2Slaves instances of the L2 memory, and connect them to the crossbar through an AXI-to-memory adapter
+  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_axi_to_mem
+    axi_to_mem #(
+      .AddrWidth (AxiAddrWidth   ),
+      .DataWidth (AxiDataWidth   ),
+      .IdWidth   (AxiSocIdWidth  ),
+      .NumBanks  (1              ),
+      .axi_req_t (soc_wide_req_t ),
+      .axi_resp_t(soc_wide_resp_t)
+    ) i_axi_to_mem (
+      .clk_i       (clk_i                            ),
+      .rst_ni      (rst_ni                           ),
+      .axi_req_i   (periph_wide_axi_req_amo[i]       ),
+      .axi_resp_o  (periph_wide_axi_resp_amo[i]      ),
+      .mem_req_o   (l2_req[i]                        ),
+      .mem_gnt_i   (l2_req[i]                        ), // Always available
+      .mem_we_o    (l2_we[i]                         ),
+      .mem_addr_o  (l2_addr[i]                       ),
+      .mem_strb_o  (l2_be[i]                         ),
+      .mem_wdata_o (l2_wdata[i]                      ),
+      .mem_rdata_i (l2_rdata[i]                      ),
+      .mem_rvalid_i(l2_rvalid[i]                     ),
+      .mem_atop_o  (/* Unused */                     ),
+      .busy_o      (/* Unused */                     )
+    );
+  end
 
 `ifndef SPYGLASS
-  tc_sram #(
-    .NumWords (L2NumWords  ),
-    .NumPorts (1           ),
-    .DataWidth(AxiDataWidth),
-    .SimInit("random"),
-    .Latency(1)
-  ) i_dram (
-    .clk_i  (clk_i                                                                      ),
-    .rst_ni (rst_ni                                                                     ),
-    .req_i  (l2_req                                                                     ),
-    .we_i   (l2_we                                                                      ),
-    .addr_i (l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8):$clog2(AxiDataWidth/8)]),
-    .wdata_i(l2_wdata                                                                   ),
-    .be_i   (l2_be                                                                      ),
-    .rdata_o(l2_rdata                                                                   )
-  );
+  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_l2_mem
+    tc_sram #(
+      .NumWords (L2NumWords  ),
+      .NumPorts (1           ),
+      .DataWidth(AxiDataWidth),
+      .SimInit("zeros"),
+      .Latency(1)
+    ) i_dram (
+      .clk_i  (clk_i                                                                      ),
+      .rst_ni (rst_ni                                                                     ),
+      .req_i  (l2_req[i]                                                                  ),
+      .we_i   (l2_we[i]                                                                   ),
+      .addr_i (l2_addr[i][$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8):$clog2(AxiDataWidth/8)]),
+      .wdata_i(l2_wdata[i]                                                                ),
+      .be_i   (l2_be[i]                                                                   ),
+      .rdata_o(l2_rdata[i]                                                                )
+    );
+  end
 `else
-  assign l2_rdata = '0;
+  assign l2_rdata = '{default: '0};
 `endif
 
   // One-cycle latency
-  // `FF(l2_rvalid_1, l2_req, 1'b0);
-  // `FF(l2_rvalid, l2_rvalid_1, 1'b0);
-
-  `FF(l2_rvalid, l2_req, 1'b0);
+  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_l2_rvalid
+    `FF(l2_rvalid[i], l2_req[i], 1'b0);
+  end
 
   ////////////
   //  UART  //
@@ -405,7 +445,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   ctrl_registers #(
     .DRAMBaseAddr   (DRAMBase              ),
-    .DRAMLength     (DRAMLength            ),
+    .DRAMLength     (DRAMLength - 2048     ), // Keep last 2KB free for the non-cacheable region
     .DataWidth      (AxiNarrowDataWidth    ),
     .AddrWidth      (AxiAddrWidth          ),
     .axi_lite_req_t (soc_narrow_lite_req_t ),
@@ -452,9 +492,6 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   //  System  //
   //////////////
 
-  logic [2:0] hart_id;
-
-  assign hart_id = '0;
 
   // Modify configuration parameters
   function automatic config_pkg::cva6_user_cfg_t gen_usr_cva6_config(config_pkg::cva6_user_cfg_t cfg);
@@ -480,7 +517,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // cached region
     cfg.NrCachedRegionRules   = 1;
     cfg.CachedRegionAddrBase  = {DRAMBase};
-    cfg.CachedRegionLength    = {DRAMLength};
+    cfg.CachedRegionLength    = {DRAMLength - 2048};
     // Return modified config
     return cfg;
   endfunction
@@ -502,6 +539,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   `CVA6_INTF_TYPEDEF_CVA6_TO_ACC(cva6_to_acc_t, accelerator_req_t, acc_mmu_resp_t)
   `CVA6_INTF_TYPEDEF_ACC_TO_CVA6(acc_to_cva6_t, accelerator_resp_t, acc_mmu_req_t)
 
+// Create multiple instance of ara system
+for (genvar hart_id = 0; hart_id < NrCores; hart_id++) begin : gen_ara_system
 `ifndef TARGET_GATESIM
   ara_system #(
     .NrLanes           (NrLanes              ),
@@ -530,70 +569,71 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .ara_axi_req_t     (ara_axi_req_t        ),
     .ara_axi_resp_t    (ara_axi_resp_t       ),
 
-    .cluster_axi_ar_t      (ara_cluster_axi_ar_chan_t    ),
-    .cluster_axi_aw_t      (ara_cluster_axi_aw_chan_t    ),
-    .cluster_axi_b_t       (ara_cluster_axi_b_chan_t     ),
-    .cluster_axi_r_t       (ara_cluster_axi_r_chan_t     ),
-    .cluster_axi_w_t       (ara_cluster_axi_w_chan_t     ),
-    .cluster_axi_req_t     (ara_cluster_axi_req_t        ),
-    .cluster_axi_resp_t    (ara_cluster_axi_resp_t       ),
-    
-    .ariane_axi_ar_t   (ariane_axi_ar_chan_t ),
-    .ariane_axi_aw_t   (ariane_axi_aw_chan_t ),
-    .ariane_axi_b_t    (ariane_axi_b_chan_t  ),
-    .ariane_axi_r_t    (ariane_axi_r_chan_t  ),
-    .ariane_axi_w_t    (ariane_axi_w_chan_t  ),
-    .ariane_axi_req_t  (ariane_axi_req_t     ),
-    .ariane_axi_resp_t (ariane_axi_resp_t    ),
-    .system_axi_ar_t   (system_ar_chan_t     ),
-    .system_axi_aw_t   (system_aw_chan_t     ),
-    .system_axi_b_t    (system_b_chan_t      ),
-    .system_axi_r_t    (system_r_chan_t      ),
-    .system_axi_w_t    (system_w_chan_t      ),
-    .system_axi_req_t  (system_req_t         ),
-    .system_axi_resp_t (system_resp_t        ))
-`else
-  ara_group // For simulating PnR netlist
-`endif
-  i_system (
-    .clk_i        (clk_i                    ),
-    .rst_ni       (rst_ni                   ),
-    .boot_addr_i  (DRAMBase                 ), // start fetching from DRAM
-    .hart_id_i    (hart_id                  ),
-    .scan_enable_i(1'b0                     ),
-    .scan_data_i  (1'b0                     ),
-    .scan_data_o  (/* Unconnected */        ),
-`ifndef TARGET_GATESIM
-    .axi_req_o    (system_axi_req           ),
-    .axi_resp_i   (system_axi_resp          )
-  );
-`else
-    .axi_req_o    (system_axi_req_spill     ),
-    .axi_resp_i   (system_axi_resp_spill_del)
-  );
-`endif
+      .cluster_axi_ar_t      (ara_cluster_axi_ar_chan_t    ),
+      .cluster_axi_aw_t      (ara_cluster_axi_aw_chan_t    ),
+      .cluster_axi_b_t       (ara_cluster_axi_b_chan_t     ),
+      .cluster_axi_r_t       (ara_cluster_axi_r_chan_t     ),
+      .cluster_axi_w_t       (ara_cluster_axi_w_chan_t     ),
+      .cluster_axi_req_t     (ara_cluster_axi_req_t        ),
+      .cluster_axi_resp_t    (ara_cluster_axi_resp_t       ),
+      
+      .ariane_axi_ar_t   (ariane_axi_ar_chan_t ),
+      .ariane_axi_aw_t   (ariane_axi_aw_chan_t ),
+      .ariane_axi_b_t    (ariane_axi_b_chan_t  ),
+      .ariane_axi_r_t    (ariane_axi_r_chan_t  ),
+      .ariane_axi_w_t    (ariane_axi_w_chan_t  ),
+      .ariane_axi_req_t  (ariane_axi_req_t     ),
+      .ariane_axi_resp_t (ariane_axi_resp_t    ),
+      .system_axi_ar_t   (system_ar_chan_t     ),
+      .system_axi_aw_t   (system_aw_chan_t     ),
+      .system_axi_b_t    (system_b_chan_t      ),
+      .system_axi_r_t    (system_r_chan_t      ),
+      .system_axi_w_t    (system_w_chan_t      ),
+      .system_axi_req_t  (system_req_t         ),
+      .system_axi_resp_t (system_resp_t        ))
+  `else
+    ara_group // For simulating PnR netlist
+  `endif
+    i_system (
+      .clk_i        (clk_i                    ),
+      .rst_ni       (rst_ni                   ),
+      .boot_addr_i  (DRAMBase                 ), // start fetching from DRAM
+      .hart_id_i    (3'(hart_id)              ),
+      .scan_enable_i(1'b0                     ),
+      .scan_data_i  (1'b0                     ),
+      .scan_data_o  (/* Unconnected */        ),
+  `ifndef TARGET_GATESIM
+      .axi_req_o    (system_axi_req           [hart_id]    ),
+      .axi_resp_i   (system_axi_resp          [hart_id]    )
+    );
+  `else
+      .axi_req_o    (system_axi_req_spill     [hart_id]    ),
+      .axi_resp_i   (system_axi_resp_spill_del[hart_id]    )
+    );
+  `endif
 
 
-`ifdef TARGET_GATESIM
-  assign #(AxiRespDelay*1ps) system_axi_resp_spill_del = system_axi_resp_spill;
+  `ifdef TARGET_GATESIM
+    assign #(AxiRespDelay*1ps) system_axi_resp_spill_del[hart_id] = system_axi_resp_spill[hart_id];
 
-  axi_cut #(
-    .ar_chan_t   (system_ar_chan_t     ),
-    .aw_chan_t   (system_aw_chan_t     ),
-    .b_chan_t    (system_b_chan_t      ),
-    .r_chan_t    (system_r_chan_t      ),
-    .w_chan_t    (system_w_chan_t      ),
-    .axi_req_t   (system_req_t         ),
-    .axi_resp_t  (system_resp_t        )
-  ) i_system_cut (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .slv_req_i   (system_axi_req_spill),
-    .slv_resp_o  (system_axi_resp_spill),
-    .mst_req_o   (system_axi_req),
-    .mst_resp_i  (system_axi_resp)
-  );
-`endif
+    axi_cut #(
+      .ar_chan_t   (system_ar_chan_t     ),
+      .aw_chan_t   (system_aw_chan_t     ),
+      .b_chan_t    (system_b_chan_t      ),
+      .r_chan_t    (system_r_chan_t      ),
+      .w_chan_t    (system_w_chan_t      ),
+      .axi_req_t   (system_req_t         ),
+      .axi_resp_t  (system_resp_t        )
+    ) i_system_cut (
+      .clk_i       (clk_i),
+      .rst_ni      (rst_ni),
+      .slv_req_i   (system_axi_req_spill [hart_id]),
+      .slv_resp_o  (system_axi_resp_spill[hart_id]),
+      .mst_req_o   (system_axi_req       [hart_id]),
+      .mst_resp_i  (system_axi_resp      [hart_id])
+    );
+  `endif
+  end
 
   //////////////////
   //  Assertions  //
