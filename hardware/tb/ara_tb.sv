@@ -23,6 +23,12 @@ module ara_tb;
   timeprecision 1ps;
   `endif
 
+  `ifdef NR_CORES
+  localparam NrCores = `NR_CORES;
+  `else
+  localparam NrCores = 0;
+  `endif
+
   `ifdef NR_LANES
   localparam NrLanes = `NR_LANES;
   `else
@@ -84,6 +90,7 @@ module ara_tb;
   // we do not instantiate it when Verilating this module.
   `ifndef VERILATOR
   ara_testharness #(
+    .NrCores     (NrCores         ),
     .NrLanes     (NrLanes         ),
     .NrClusters  (NrClusters      ),
     .AxiAddrWidth(AxiAddrWidth    ),
@@ -136,7 +143,7 @@ module ara_tb;
           if (address >= DRAMAddrBase && address < DRAMAddrBase + DRAMLength)
             // This requires the sections to be aligned to AxiWideByteOffset,
             // otherwise, they can be over-written.
-            dut.i_ara_soc.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
+            dut.i_ara_soc.gen_l2_mem[0].i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
           else
             $display("Cannot initialize address %x, which doesn't fall into the L2 region.", address);
         end
@@ -176,17 +183,17 @@ module ara_tb;
     $display("Dump results on %s", OutResultFile);
   end
 
-  /*
-  assign ara_w       = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_req.w.data;
-  assign ara_w_strb  = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_req.w.strb;
-  assign ara_w_valid = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_req.w_valid;
-  assign ara_w_ready = dut.i_ara_soc.i_system.i_ara.i_vlsu.axi_resp.w_ready;
-  */
-
-  assign ara_w       = dut.i_ara_soc.i_system.i_ara_cluster.axi_req_o.w.data;
-  assign ara_w_strb  = dut.i_ara_soc.i_system.i_ara_cluster.axi_req_o.w.strb;
-  assign ara_w_valid = dut.i_ara_soc.i_system.i_ara_cluster.axi_req_o.w_valid;
-  assign ara_w_ready = dut.i_ara_soc.i_system.i_ara_cluster.axi_resp_i.w_ready;
+`ifndef USE_CLUSTER
+  assign ara_w       = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara.i_vlsu.axi_req.w.data;
+  assign ara_w_strb  = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara.i_vlsu.axi_req.w.strb;
+  assign ara_w_valid = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara.i_vlsu.axi_req.w_valid;
+  assign ara_w_ready = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara.i_vlsu.axi_resp.w_ready;
+`else
+  assign ara_w       = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.axi_req_o.w.data;
+  assign ara_w_strb  = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.axi_req_o.w.strb;
+  assign ara_w_valid = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.axi_req_o.w_valid;
+  assign ara_w_ready = dut.i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.axi_resp_i.w_ready;
+`endif
 
 `ifndef IDEAL_DISPATCHER
   assign dump_en_mask = dut.i_ara_soc.hw_cnt_en_o[0];
@@ -208,15 +215,17 @@ module ara_tb;
    *********/
 
 `ifndef TARGET_GATESIM
-  for (genvar gc = 0; gc < NrClusters; gc++) begin : gen_fpu_disp_cluster
-    for (genvar gl = 0; gl < NrLanes; gl++) begin : gen_fpu_disp_lane
-      always @(posedge clk) begin
-        if (exit[0] && !(exit >> 1)) begin
-          $display("cluster-%0d-lane-%0d [fpu-cycles] : %d", gc, gl, int'(dut.i_ara_soc.i_system.i_ara_cluster.p_cluster[gc].i_ara_macro.i_ara.gen_lanes[gl].i_lane.i_vfus.i_vmfpu.fpu_gen.vfpu_cnt_q));
+  for (genvar core = 0; core < NrCores; core++) begin : gen_fpu_disp_core
+    for (genvar gc = 0; gc < NrClusters; gc++) begin : gen_fpu_disp_cluster
+      for (genvar gl = 0; gl < NrLanes; gl++) begin : gen_fpu_disp_lane
+        always @(posedge clk) begin
+          if (exit[0] && !(exit >> 1)) begin
+            $display("cluster-%0d-lane-%0d [fpu-cycles] : %d", gc, gl, int'(dut.i_ara_soc.gen_ara_system[core].i_system.i_ara_cluster.p_cluster[gc].i_ara_macro.i_ara.gen_lanes[gl].i_lane.i_vfus.i_vmfpu.fpu_gen.vfpu_cnt_q));
+          end
         end
-      end
-    end
-  end
+      end : gen_fpu_disp_lane
+    end : gen_fpu_disp_cluster
+  end : gen_fpu_disp_core
 `endif
 
   always @(posedge clk) begin
