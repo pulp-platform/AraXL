@@ -81,6 +81,13 @@ To change the configuration set `nr_clusters=4` and `nr_lanes=8` when compiling 
 
 Prepend `config=chosen_ara_configuration` to your Makefile commands, or export the `ARA_CONFIGURATION` variable, to chose a configuration other than the `default` one.
 
+To simulate a single-core 64-lane configuration (1 core, 4 lanes per cluster, 16 clusters), a patch needs to be applied to the axi bender dependency to support datawidth of 2048 bits (1024 is the AXI maximum supported).
+
+```bash
+cd hardware/deps/axi
+git apply ../../../patches/AraXL-64L.patch
+```
+
 ## Software
 
 ### Build Applications
