@@ -34,6 +34,9 @@ extern int64_t timer;
 // SoC-level CSR
 extern uint64_t hw_cnt_en_reg;
 
+// Barrier implementation using atomic operations for multi-core configurations
+extern atomic_int sync_flag;
+
 // Return the current value of the cycle counter
 inline int64_t get_cycle_count() {
   int64_t cycle_count;
@@ -44,10 +47,7 @@ inline int64_t get_cycle_count() {
   return cycle_count;
 };
 
-// Barrier implementation using atomic operations for multi-core configurations
-extern atomic_int sync_flag = 0;
-
-void sync_barrier() {
+inline void sync_barrier() {
   // Last core to arrive resets the counter
   if (atomic_fetch_add(&sync_flag, 1) == NR_CORES - 1) {
     atomic_store(&sync_flag, 0);
