@@ -212,4 +212,6 @@ ara_tests = vadd \
                vle16 \
                vle32 \
                vle64 \
-               vluxei
+               vluxei \
+               vslide1up \
+               vslide1down
