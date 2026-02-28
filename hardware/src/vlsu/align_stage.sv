@@ -300,7 +300,7 @@ always_comb begin
 
         // If the current data is not misaligned and we have a valid data
         // Set valid data for the next subsequent load to avoid bubble
-        data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
+        data_valid_d = axi_resp_i_cut[NumStages].r_valid;
         last_d = 1'b0;
       end
     end
@@ -449,6 +449,14 @@ always_comb begin
     end
   end
 end
+
+// Assertion: Verify AXI response data does not change when there is no valid handshake
+`ifndef VERILATOR
+assert property (@(posedge clk_i) disable iff (~rst_ni)
+  (axi_resp_i_cut[NumStages].r_valid && axi_req_cut_ready[NumStages]) || 
+  (data_q == $past(data_d)))
+  else $error("AXI response data changed without valid request-response handshake");
+`endif
 
 endmodule
 
