@@ -16,7 +16,7 @@
 
 RIVEC_PATH := riscv-vectorized-benchmark-suite
 RIVEC_DIR := $(APPS_DIR)/$(RIVEC_PATH)
-RIVEC_APPS := _blackscholes
+RIVEC_APPS := _blackscholes _pathfinder
 RIVEC_BINARIES := $(addprefix bin/, $(RIVEC_APPS))
 
 rivec_binaries: $(RIVEC_BINARIES)

@@ -376,7 +376,7 @@ jobs:
       max-parallel: 1
       matrix:
         # app:        [hello_world, imatmul, fmatmul, iconv2d, fconv2d, jacobi2d, exp, softmax, dotproduct, fdotproduct, fconv3d, pathfinder, roi_align, lavamd, dwt, dropout, fft, gemv]
-        app:        [hello_world, fmatmul, exp, softmax, fdotproduct, fconv2d, cos, dropout]
+        app:        [hello_world, fmatmul, exp, softmax, fdotproduct, fconv2d, cos, dropout, _pathfinder, _blackscholes]
         ara_config: [4_lanes]
         cluster_config: [2, 4]
     needs: ["compile-ara", "compile-apps"]
