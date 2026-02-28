@@ -488,7 +488,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   elen_t [NrLanes-1:0] ring_data_prev_d, ring_data_prev_q;
   logic [NrLanes-1:0] ring_data_prev_valid_d, ring_data_prev_valid_q;
   logic slide_result_valid;
-  logic [NrLanes-1:0] slide_data_accepted;
+  logic [NrLanes-1:0] slide_data_accepted_d, slide_data_accepted_q;
   logic update_inp_op_pnt;
 
   // Some helper signals for slide operations
@@ -555,6 +555,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       n_ring_out_init_q      <= '0;
       n_ring_in_init_q       <= '0;
       eff_stride_q           <= '0;
+      slide_data_accepted_q  <= '0;
     end else begin
       ring_data_prev_q       <= ring_data_prev_d;
       ring_data_prev_valid_q <= ring_data_prev_valid_d;
@@ -570,6 +571,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       n_ring_out_init_q      <= n_ring_out_init_d;
       n_ring_in_init_q       <= n_ring_in_init_d;
       eff_stride_q           <= eff_stride_d;
+      slide_data_accepted_q  <= slide_data_accepted_d;
     end
   end
   
@@ -591,6 +593,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     result_queue_cnt_d       = result_queue_cnt_q;
 
     result_final_gnt_d = result_final_gnt_q;
+    slide_data_accepted_d = slide_data_accepted_q;
 
     // Vector instructions currently running
     vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
@@ -689,7 +692,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               automatic int cluster_strides = vinsn_issue_q.stride >> $clog2(8*NrLanes);
               automatic vlen_t stride = (vinsn_issue_q.stride >> int'(vinsn_issue_q.vtype.vsew));
               automatic vlen_t eff_stride;
-              // -> Supporting only slides by 1 for now.
+              
+              // Supporting only slides by 1 for now.
               // vslideup starts reading the source operand from its beginning
               in_pnt_d  = '0;
               // vslideup starts writing the destination vector at the slide offset
@@ -716,9 +720,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               issue_cnt_d = vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew);
 
               // Initialize be-enable-generation ancillary signals
-              output_limit_d = issue_cnt_d;
-                           
-              // issue_cnt_d -= ((cluster_strides + cluster_id_i) >> num_clusters_i) * 8 * NrLanes;   
+              output_limit_d = issue_cnt_d;  
 
               // Go to SLIDE_RUN_VSLIDE1UP_FIRST_WORD if this is a vslide1up instruction
               if (vinsn_issue_q.use_scalar_op)
@@ -728,7 +730,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               automatic vlen_t cluster_strides = vinsn_issue_q.stride >> ($clog2(8*NrLanes) + num_clusters_i);
               automatic vlen_t eff_stride = vinsn_issue_q.stride - (cluster_strides * ((8 * NrLanes) << num_clusters_i));
               automatic vlen_t eff_elem_stride = (eff_stride>> int'(vinsn_issue_q.vtype.vsew));
-              // -> Supporting only slides by 1 for now.
+              
+              // Supporting only slides by 1 for now.
+              
               // vslidedown starts reading the source operand from the slide offset
               in_pnt_d  = 0; // vinsn_issue_q.stride[idx_width(8*NrLanes)-1:0];
               // vslidedown starts writing the destination vector at its beginning
@@ -826,7 +830,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
           // Depending on the operation being performed, decide whether to update pointers
           // Also decide whether to use the ring or not for reductions.
-          // update_inp_op_pnt = 1'b0;
           if (vinsn_issue_q.op inside {VSLIDEUP, VSLIDEDOWN}) begin
             
             if (n_ring_out_d) begin 
@@ -864,6 +867,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               update_inp_op_pnt = 1'b1;
               slide_result_valid = 1'b1;
             end
+
+            // Assertion: update_inp_op_pnt should be 1 only with valid handshake or when done receiving
+            `ifndef VERILATOR
+            assert(~update_inp_op_pnt | (n_ring_out_q ? (fifo_ring_valid_out & fifo_ring_ready_inp) : (n_ring_in_q == 0)))
+              else $error("update_inp_op_pnt set without valid handshake on FIFO for SLIDE operations");
+            `endif
 
           end else begin
             // Reduction operation
@@ -919,7 +928,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             end else begin
               output_limit_d = 0;
             end
-            // If no incoming ring packet for this request, can just set result queue to valid
           end
 
           // In Jump to SLIDE_RUN if stride is P2
@@ -955,9 +963,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             in_pnt_d           = '0;
             sldu_operand_ready = '1;
             sldu_operand_ref_ready = '1;
-
-            // For the next incoming packet reset ring to send to lane 0 dst first
-            // reset the counter for number of ring packets
             
             // Left-rotate the logarithmic counter. Hacky way to write it, but it's to
             // deal with the 2-lanes design without complaints from Verilator...
@@ -1004,6 +1009,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               state_d = SLIDE_LATENCY;
 
             if (issue_cnt_q <= 8*NrLanes) begin
+                // Assertion: issue_cnt_q should not be 0 at this point
+                `ifndef VERILATOR
+                assert(issue_cnt_q != 0)
+                  else $error("issue_cnt_q should not be 0 here");
+                `endif
+                
                 state_d = SLIDE_IDLE;
                 
                 // Reset the logarighmic counter
@@ -1023,9 +1034,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             result_queue_write_pnt_d = result_queue_write_pnt_q+1;
             if (result_queue_write_pnt_q == ResultQueueDepth-1)
               result_queue_write_pnt_d = '0;
-
-            // if (state_q == SLIDE_NP2_COMMIT) 
-            //   state_d = SLIDE_NP2_WAIT;
           end
 
         end
@@ -1138,7 +1146,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     //////////////////////////////////
     //  Write results into the VRF  //
     //////////////////////////////////
-    slide_data_accepted = '0;
+
     for (int lane = 0; lane < NrLanes; lane++) begin: result_write
       sldu_result_req_o[lane]   = result_queue_valid_q[result_queue_read_pnt_q][lane] & (~(vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}));
       sldu_red_valid_o[lane]    = result_queue_valid_q[result_queue_read_pnt_q][lane] & (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu});
@@ -1157,14 +1165,15 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         result_queue_d[result_queue_read_pnt_q][lane]       = '0;
         // Reset the final gnt vector since we are now waiting for another final gnt
         result_final_gnt_d[lane] = 1'b0;
-        slide_data_accepted[lane] = 1'b1;
+        slide_data_accepted_d[lane] = 1'b1;
       end
     end: result_write
 
     // All lanes accepted the VRF request
     // If this was the last request, wait for all the final grants!
     // If this is a reduction, no need for the final grants
-    if (|slide_data_accepted) begin
+    if (&slide_data_accepted_d) begin
+      slide_data_accepted_d = '0;
       // There is something waiting to be written
       if (!result_queue_empty) begin
         if (!vinsn_commit.is_stride_np2) // if (state_q != SLIDE_NP2_SETUP)
@@ -1181,6 +1190,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         commit_cnt_d = commit_cnt_q - NrLanes * 8;
         if (commit_cnt_q <= (NrLanes * 8)) begin
           commit_cnt_d = '0;
+
+          `ifndef VERILATOR
+          assert(commit_cnt_q != 0) 
+            else $error("commit_cnt_q should not be 0 here");
+          assert((vinsn_queue_q.commit_pnt == vinsn_queue_q.ring_pnt) ? (commit_cnt_q >= ring_cnt_q) : 1'b1)
+            else $error("committing to VRF cannot be ahead of receiving packets on the ring for the same instruction");
+          `endif
         end
       end
     end
@@ -1436,6 +1452,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         ring_cnt_d = ring_cnt_q - 8*NrLanes;
       end else begin
         ring_cnt_d = '0;
+        `ifndef VERILATOR
+        assert(ring_cnt_q != 0)
+          else $error("ring_cnt_q should not be 0 here");
+        `endif
       end
 
       n_ring_in_d = n_ring_in_init_d;
@@ -1575,18 +1595,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       default: merge_ring_data_slidedown = new_data;
     endcase
   endfunction: merge_ring_data_slidedown
-
-  // Function to reorder bytes in data based on element width (vsew)
-  // This handles byte reorganization for different element sizes
-  function automatic elen_t reorder_data_by_sew(elen_t data, rvv_pkg::vew_e sew);
-    case (sew)
-      EW64: reorder_data_by_sew = {data};
-      EW32: reorder_data_by_sew = {data[31:0], data[63:32]};
-      EW16: reorder_data_by_sew = {data[15:0], data[31:16], data[63:32]};
-      EW8:  reorder_data_by_sew = {data[7:0], data[15:8], data[31:16], data[63:32]};
-      default: reorder_data_by_sew = data;
-    endcase
-  endfunction: reorder_data_by_sew
 
   // Function to extract and write scalar operand bits based on element width (vsew) at specified offset
   function automatic elen_t write_scalar_to_result(input elen_t wdata, input int offset, input elen_t scalar_op, input rvv_pkg::vew_e sew);
