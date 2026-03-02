@@ -29,8 +29,9 @@ void TEST_CASE1(void) {
 
 // Masked naive test
 void TEST_CASE2(void) {
+  uint8_t mask[2] = {0xAA, 0x55};
   VSET(16, e8, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_8(v6, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v2, 255);
   VLOAD_16(v4, 1);
@@ -38,7 +39,7 @@ void TEST_CASE2(void) {
   VCMP_U16(4, v4, 291);
 
   VSET(16, e16, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_16(v6, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v2, 1);
   VLOAD_32(v4, 1);
@@ -46,7 +47,7 @@ void TEST_CASE2(void) {
   VCMP_U32(5, v4, 37);
 
   VSET(16, e32, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_32(v6, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_64(v2, 1);
   VLOAD_64(v4, 1);
@@ -104,16 +105,19 @@ void TEST_CASE4(void) {
 
 // Odd number of elements, undisturbed policy, and mask
 void TEST_CASE5(void) {
+  uint8_t mask[2] = {0x00, 0x40};
   VSET(15, e8, m1);
-  VLOAD_8(v0, 0x00, 0x40);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_8(v6, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v2, 100, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   asm volatile("vwredsumu.vs v4, v6, v2, v0.t");
   VCMP_U16(13, v4, 107, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
 
+  mask[0] = 0xaa;
+  mask[1] = 0x55;
   VSET(1, e16, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_16(v6, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
@@ -121,7 +125,7 @@ void TEST_CASE5(void) {
   VCMP_U32(14, v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
 
   VSET(3, e32, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_32(v6, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_64(v2, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_64(v4, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
