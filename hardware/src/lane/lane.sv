@@ -71,6 +71,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     input  strb_t                                          sldu_result_be_i,
     output logic                                           sldu_result_gnt_o,
     input  logic                                           sldu_red_valid_i,
+    input  logic                                           sldu_red_pending_i,
     output logic                                           sldu_result_final_gnt_o,
     // Interface with the Load unit
     input  logic                                           ldu_result_req_i,
@@ -408,6 +409,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_mfpu_ready_o    (sldu_mfpu_ready                        ),
     .sldu_mfpu_gnt_i      (sldu_mfpu_gnt                          ),
     .sldu_operand_i       (sldu_result_wdata_i                    ),
+    .sldu_red_pending_i   (sldu_red_pending_i                     ),
     // Interface with the operand queues
     // ALU
     .alu_operand_i        (alu_operand                            ),

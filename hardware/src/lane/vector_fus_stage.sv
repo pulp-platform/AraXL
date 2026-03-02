@@ -70,6 +70,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     input  logic                              sldu_mfpu_valid_i,
     output logic                              sldu_mfpu_ready_o,
     input  logic                              sldu_mfpu_gnt_i,
+    input  logic                              sldu_red_pending_i,
     // Interface with the Mask unit
     output elen_t          [NrMaskFUnits-1:0] mask_operand_o,
     output logic           [NrMaskFUnits-1:0] mask_operand_valid_o,
@@ -107,6 +108,8 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .clk_i                (clk_i                          ),
     .rst_ni               (rst_ni                         ),
     .lane_id_i            (lane_id_i                      ),
+    .cluster_id_i         (cluster_id_i                   ),
+    .num_clusters_i       (num_clusters_i                 ),
     // Interface with Dispatcher
     .vxsat_flag_o         (alu_vxsat                      ),
     .alu_vxrm_i           (alu_vxrm_i                     ),
@@ -131,6 +134,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .sldu_operand_i       (sldu_operand_i                 ),
     .sldu_alu_valid_i     (sldu_alu_valid_i               ),
     .sldu_alu_ready_o     (sldu_alu_ready_o               ),
+    .sldu_red_pending_i   (sldu_red_pending_i             ),
     // Interface with the Slide Unit
     .alu_red_ready_i      (sldu_alu_gnt_i),
     // Interface with the Mask unit
@@ -187,6 +191,7 @@ module vector_fus_stage import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg
     .sldu_mfpu_valid_i    (sldu_mfpu_valid_i               ),
     .sldu_mfpu_ready_o    (sldu_mfpu_ready_o               ),
     .mfpu_red_ready_i     (sldu_mfpu_gnt_i                 ),
+    .sldu_red_pending_i   (sldu_red_pending_i              ),
     // Interface with the Mask unit
     .mask_operand_o       (mask_operand_o[MaskFUMFpu]      ),
     .mask_operand_valid_o (mask_operand_valid_o[MaskFUMFpu]),
