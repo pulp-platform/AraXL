@@ -256,25 +256,26 @@ void TEST_CASE16(void) {
 //**** VL regression and misalignment load tests */
 
 // Test cases to load irregular vector lengths and misaligned start address
-uint8_t res[130] __attribute__((aligned(AXI_DWIDTH)));
+uint8_t res[20][256] __attribute__((aligned(AXI_DWIDTH)));
 void TEST_CASE17(void) {
   printf("Running vl regression tests with misaligned address\n");
   int avl, vl;
   int misalign = 3;
 
-  int vl_list[12] = {4, 8, 5, 9, 16, 17, 20, 21, 32, 33, 128, 129};
+  int vl_list[20] = {143, 27, 198, 64, 215, 9, 172, 54, 241, 88,
+                      36, 159, 203, 71, 119, 6, 187, 95, 222, 41};
 
-  for (int i=0; i<12; i++) {
+  for (int i=0; i<20; i++) {
     int vl = vl_list[i];
     printf("vl=%d\n", vl);
 
     asm volatile("vsetvli %0, %1, e8, m8, ta, ma" : "=r"(avl) : "r"(vl));
     asm volatile("vle8.v v8, (%0)"::"r"(&LONG_I8[misalign]));
-    asm volatile("vse8.v v8, (%0)"::"r"(&res));
+    asm volatile("vse8.v v8, (%0)"::"r"(res[i]));
 
     for (int idx=0; idx<vl; idx++) {
-      if (res[idx]!=LONG_I8[idx+misalign]) {
-        printf("Index error at idx:%d expected:%hhd got:%hhd\n",idx,LONG_I8[idx+misalign],res[idx]);
+      if (res[i][idx]!=LONG_I8[idx+misalign]) {
+        printf("Index error at idx:%d expected:%hhd got:%hhd\n",idx,LONG_I8[idx+misalign],res[i][idx]);
         return;
       }
     }

@@ -40,17 +40,16 @@ void TEST_CASE2(void) {
   VSET(1, e32, m1);
   VLOAD_32(v2, 0x3F800000);
   VSET(16, e16, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  uint8_t mask[2] = {0xaa, 0x55};
+  asm volatile("vlm.v v0, (%0)"::"r"(mask));
   // 1 2 3 4 5 6 7 8 1 2 3 4 5 6 7 8
   VLOAD_16(v6, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800,
            0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800);
   asm volatile("vfwredsum.vs v4, v6, v2, v0.t");
   VCMP_U32(3, v4, 0x42140000);
 
-  VSET(1, e64, m1);
-  VLOAD_64(v2, 0x3FF0000000000000);
   VSET(16, e32, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_32(v6, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
            0x40C00000, 0x40E00000, 0x41000000, 0x3F800000, 0x40000000,
            0x40400000, 0x40800000, 0x40A00000, 0x40C00000, 0x40E00000,
@@ -211,8 +210,9 @@ void TEST_CASE4(void) {
 
 // Odd number of elements, undisturbed policy, and mask
 void TEST_CASE5(void) {
+  uint8_t mask[2] = {0x00, 0xff};
   VSET(7, e16, m1);
-  VLOAD_8(v0, 0x00, 0xff);
+  asm volatile("vlm.v v0, (%0)"::"r"(mask));
   // 1 2 3 4 5 6 7 8 1 2 3 4 5 6 7 8
   VLOAD_16(v6, 0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800,
            0x3c00, 0x4000, 0x4200, 0x4400, 0x4500, 0x4600, 0x4700, 0x4800);
@@ -230,8 +230,10 @@ void TEST_CASE5(void) {
            0x40400000, 0x40800000, 0x40A00000, 0x40C00000, 0x40E00000,
            0x41000000);
 
+  mask[0] = 0xff;
+  mask[1] = 0x00;
   VSET(1, e32, m1);
-  VLOAD_8(v0, 0xff, 0x00);
+  asm volatile("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_32(v6, 0x3F800000, 0x40000000, 0x40400000, 0x40800000, 0x40A00000,
            0x40C00000, 0x40E00000, 0x41000000, 0x3F800000, 0x40000000,
            0x40400000, 0x40800000, 0x40A00000, 0x40C00000, 0x40E00000,

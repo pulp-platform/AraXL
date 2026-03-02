@@ -34,32 +34,39 @@ void TEST_CASE1(void) {
 }
 // Masked naive test
 void TEST_CASE2(void) {
+  uint8_t mask[2] = {0x03, 0x00};
   VSET(16, e8, m1);
-  VLOAD_8(v0, 0x03, 0x00);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_8(v1, 1, -2, 3, 4, 5, 6, 7, 9, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_8(v2, 1);
   VLOAD_8(v3, 1);
   asm volatile("vredminu.vs v3, v1, v2, v0.t");
   VCMP_U8(5, v3, 1);
 
+  mask[0] = 0x00;
+  mask[1] = 0xC0;
   VSET(16, e16, m1);
-  VLOAD_8(v0, 0x00, 0xc0);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_16(v1, -1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_16(v2, 3);
   VLOAD_16(v3, 1);
   asm volatile("vredminu.vs v3, v1, v2, v0.t");
   VCMP_U16(6, v3, 3);
 
+  mask[0] = 0x00;
+  mask[1] = 0xC0;
   VSET(16, e32, m1);
-  VLOAD_8(v0, 0x00, 0xc0);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_32(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_32(v2, 8);
   VLOAD_32(v3, 1);
   asm volatile("vredminu.vs v3, v1, v2, v0.t");
   VCMP_U32(7, v3, 7);
 
+  mask[0] = 0xaa;
+  mask[1] = 0x55;
   VSET(16, e64, m1);
-  VLOAD_8(v0, 0xaa, 0x55);
+  asm volatile ("vlm.v v0, (%0)"::"r"(mask));
   VLOAD_64(v1, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8);
   VLOAD_64(v2, 4);
   VLOAD_64(v3, 1);

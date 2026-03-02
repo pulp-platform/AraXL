@@ -214,4 +214,10 @@ ara_tests = vadd \
                vle64 \
                vluxei \
                vslide1up \
-               vslide1down
+               vslide1down \
+               vredsum \
+               vredand \
+               vwredsum \
+               vfredusum \
+               vfredmax \
+               vfwredusum
