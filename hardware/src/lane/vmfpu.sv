@@ -57,6 +57,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  elen_t                        sldu_operand_i,
     input  logic                         sldu_mfpu_valid_i,
     output logic                         sldu_mfpu_ready_o,
+    input  logic                         sldu_red_pending_i,
     // Interface with the Mask unit
     output elen_t                        mask_operand_o,
     output logic                         mask_operand_valid_o,
@@ -585,16 +586,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // The following function determines how many partial results this lane must process during the
   // inter-lane reduction.
   typedef logic [idx_width(NrLanes*MaxNrClusters/2):0] reduction_rx_cnt_t;
-  reduction_rx_cnt_t reduction_rx_cnt_d, reduction_rx_cnt_q;
   reduction_rx_cnt_t simd_red_cnt_max_d, simd_red_cnt_max_q;
 
   // Reductions commit by zeroing the commit counter
   // When the workload is unbalanced, some lanes can start the operation with a zeroed commit counter
   // In this case, the ALU should NOT commit until the inter-lanes phase is over
   logic prevent_commit;
-
-  // Count how many transactions we must do in total to complete the reduction operation
-  logic [idx_width($clog2(NrLanes)+1):0] sldu_transactions_cnt_d, sldu_transactions_cnt_q;
 
   // Handshake synchronizer
   // Since the SLDU must receive a valid signals also from lanes that should not send anything,
@@ -724,12 +721,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       15: reduction_rx_cnt_init = reduction_rx_cnt_t'(4);
     endcase
   endfunction: reduction_rx_cnt_init
-
-  // Inter cluster reductions are handled like inter lane reductions.
-  // In inter cluster only the last lane participates.
-  // Finally, the lane-0 receives the last packet for SIMD
-  id_cluster_t max_cluster_id; 
-  assign max_cluster_id = (1 << num_clusters_i) - 1;
   
   ///////////
   //  FPU  //
@@ -1354,8 +1345,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
 
     first_op_d              = first_op_q;
     simd_red_cnt_d          = simd_red_cnt_q;
-    reduction_rx_cnt_d      = reduction_rx_cnt_q;
-    sldu_transactions_cnt_d = sldu_transactions_cnt_q;
     red_hs_synch_d          = red_hs_synch_q;
     mfpu_red_valid_o        = 1'b0;
     sldu_mfpu_ready_d       = 1'b0;
@@ -1755,21 +1744,16 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // If the workload is unbalanced and some lanes already have commit_cnt == '0,
         // delay the commit until we are over with the inter-lanes phase
         prevent_commit = 1'b1;
-        // If the lane is inactive, don't wait for a valid FPU output
-        if (reduction_rx_cnt_q == '0) begin
+
+        // Wait until the operand is valid in the result queue
+        if (result_queue_valid_q[result_queue_write_pnt_q]) begin
+          // This unit has finished processing data for this reduction instruction, send the partial result to the sliding unit
           mfpu_red_valid_o = 1'b1;
           if (mfpu_red_ready_i) begin
             mfpu_state_d = INTER_LANES_REDUCTION_RX;
-            // Clear the result queue
-            result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
-          end
-        end else begin
-          // Wait until the operand is valid in the result queue
-          if (result_queue_valid_q[result_queue_write_pnt_q]) begin
-            // This unit has finished processing data for this reduction instruction, send the partial result to the sliding unit
-            mfpu_red_valid_o = 1'b1;
-            if (mfpu_red_ready_i) begin
-              mfpu_state_d = INTER_LANES_REDUCTION_RX;
+            if (!sldu_red_pending_i) begin
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
+              mfpu_state_d = LN0_REDUCTION_COMMIT;
             end
           end
         end
@@ -1782,64 +1766,55 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // just handshake the SLDU to sync with the still active lanes
         if (sldu_mfpu_valid_q) begin
           // If the lane is still active, issue the operands
-          if (reduction_rx_cnt_q != '0) begin
-            operand_a = sldu_operand_q;
-            operand_b = result_queue_q[result_queue_write_pnt_q].wdata;
-            operand_c = sldu_operand_q;
-            // Wait for operand_b to be valid
-            if (result_queue_valid_q[result_queue_write_pnt_q]) begin
-              // Issue the operation
-              vfpu_in_valid = 1'b1;
-              // Wait for the unit
-              if (vfpu_in_ready) begin
-                // Handshake the SLDU
-                sldu_mfpu_ready_d = 1'b1;
-                // Count the successful transaction with the SLDU
-                sldu_transactions_cnt_d = sldu_transactions_cnt_q - 1;
-                // Send the result to the SLDU during next cycle
-                reduction_rx_cnt_d = reduction_rx_cnt_q - 1;
-                // Disable the used operand
-                result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
-              end
-            end
-          // If the lane is not active anymore, just sync with the other lanes
-          end else begin
-            // Handshake the SLDU
-            sldu_mfpu_ready_d = 1'b1;
-            // Count the successful transaction with the SLDU
-            sldu_transactions_cnt_d = sldu_transactions_cnt_q - 1;
-            // Is this the last cycle for the INTER-LANES phase?
-            if (sldu_transactions_cnt_q == 1) begin
-              // Lane 0 is receiving an already processed result
-              // and needs to SIMD-reduce the result
-              if (lane_id_i == '0) begin
-                result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
-                result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
-                unique case (vinsn_commit.vtype.vsew)
-                    EW8 : simd_red_cnt_max_d = 2'd3;
-                    EW16: simd_red_cnt_max_d = 2'd2;
-                    EW32: simd_red_cnt_max_d = 2'd1;
-                    EW64: simd_red_cnt_max_d = 2'd0;
-                endcase
-                simd_red_cnt_d = '0;
-                mfpu_state_d = SIMD_REDUCTION;
-              // The other lanes can commit
-              end else begin
-                // From this lane's perspective, the reduction is over
-                mfpu_state_d = LN0_REDUCTION_COMMIT;
-              end
-            // This lane is inactive, it can go to the TX state immediately
-            end else begin
-              mfpu_state_d = INTER_LANES_REDUCTION_TX;
+          operand_a = sldu_operand_q;
+          operand_b = result_queue_q[result_queue_write_pnt_q].wdata;
+          operand_c = sldu_operand_q;
+          // Wait for operand_b to be valid
+          if (result_queue_valid_q[result_queue_write_pnt_q]) begin
+            // Issue the operation
+            vfpu_in_valid = 1'b1;
+            // Wait for the unit
+            if (vfpu_in_ready) begin
+              // Handshake the SLDU
+              sldu_mfpu_ready_d = 1'b1;
+              // Disable the used operand
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
             end
           end
         end
+
         // If we have a valid result from the FPU,
         // write it in the queue and send it to the SLDU
         if (vfpu_out_valid && !result_queue_full) begin
-          result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
-          result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
-          mfpu_state_d = INTER_LANES_REDUCTION_TX;
+          if (sldu_red_pending_i) begin
+            result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+            result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+            mfpu_state_d = INTER_LANES_REDUCTION_TX;
+          end else begin
+            // If cluster 0, receive last data from SLDU, reduce and go to commit
+            // other clusters go to TX, send the last data to SLDU and commit 
+            if (lane_id_i==0  && cluster_id_i==0) begin
+              result_queue_d[result_queue_write_pnt_q].wdata = sldu_operand_q;
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+              unique case (vinsn_commit.vtype.vsew)
+                  EW8 : simd_red_cnt_max_d = 2'd3;
+                  EW16: simd_red_cnt_max_d = 2'd2;
+                  EW32: simd_red_cnt_max_d = 2'd1;
+                  EW64: simd_red_cnt_max_d = 2'd0;
+              endcase
+              simd_red_cnt_d = '0;
+              mfpu_state_d = SIMD_REDUCTION;
+            end else if (cluster_id_i==0) begin
+              // Rest of the cluster 0 lanes commit
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
+              mfpu_state_d = LN0_REDUCTION_COMMIT;
+            end else begin
+              result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
+              result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
+              // Rest all clusters go one last time to TX to send the reduced result
+              mfpu_state_d = INTER_LANES_REDUCTION_TX;
+            end
+          end
         end
       end
       LN0_REDUCTION_COMMIT: begin
@@ -2037,11 +2012,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // The next will be the first operation of this instruction
           // This information is useful for reduction operation
           first_op_d         = 1'b1;
-          reduction_rx_cnt_d = reduction_rx_cnt_init(NrLanes, lane_id_i); // Inter Lane
-          if (lane_id_i == NrLanes-1)
-            reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id, cluster_id_i); // Inter cluster
-          // Adding number of transactions involved in inter cluster reductions
-          sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
 
           // Allow the first valid
           red_hs_synch_d = !(vinsn_issue_d.op inside {VFREDOSUM, VFWREDOSUM}) & is_reduction(vinsn_issue_d.op);
@@ -2119,11 +2089,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           // The next will be the first operation of this instruction
           // This information is useful for reduction operation
           first_op_d         = 1'b1;
-          reduction_rx_cnt_d = reduction_rx_cnt_init(NrLanes, lane_id_i); // Inter Lane
-          if (lane_id_i == NrLanes-1)
-            reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id , cluster_id_i); // Inter Cluster
-          // Adding number of transactions involved in inter cluster reductions
-          sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
 
           // Allow the first valid
           red_hs_synch_d = !(vinsn_issue_d.op inside {VFREDOSUM, VFWREDOSUM}) & is_reduction(vinsn_issue_d.op);
@@ -2158,12 +2123,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
         // The next will be the first operation of this instruction
         // This information is useful for reduction operation
         first_op_d              = 1'b1;
-        reduction_rx_cnt_d      = reduction_rx_cnt_init(NrLanes, lane_id_i); // Inter Lane
-        if (lane_id_i == NrLanes-1)
-           reduction_rx_cnt_d += reduction_rx_cnt_init(max_cluster_id, cluster_id_i); // Inter Cluster
-        // Adding number of transactions involved in inter cluster reductions
-        // 4 clusters = c0->c1 c2->c3, c1->c3 c0-1, c1-2, c2-1, c3-3
-        sldu_transactions_cnt_d = $clog2(NrLanes) + reduction_rx_cnt_init(max_cluster_id, cluster_id_i) + 1;
 
         // Allow the first valid
         red_hs_synch_d          =
@@ -2232,9 +2191,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       latency_problem_q       <= 1'b0;
       simd_red_cnt_q          <= '0;
       mfpu_state_q            <= NO_REDUCTION;
-      reduction_rx_cnt_q      <= '0;
       first_op_q              <= 1'b0;
-      sldu_transactions_cnt_q <= '0;
       red_hs_synch_q          <= 1'b0;
       simd_red_cnt_max_q      <= '0;
       mfpu_red_ready_q        <= 1'b0;
@@ -2256,9 +2213,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       latency_problem_q       <= latency_problem_d;
       simd_red_cnt_q          <= simd_red_cnt_d;
       mfpu_state_q            <= mfpu_state_d;
-      reduction_rx_cnt_q      <= reduction_rx_cnt_d;
       first_op_q              <= first_op_d;
-      sldu_transactions_cnt_q <= sldu_transactions_cnt_d;
       red_hs_synch_q          <= red_hs_synch_d;
       simd_red_cnt_max_q      <= simd_red_cnt_max_d;
       mfpu_red_ready_q        <= mfpu_red_ready_i;
