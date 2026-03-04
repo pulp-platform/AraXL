@@ -300,7 +300,7 @@ always_comb begin
 
         // If the current data is not misaligned and we have a valid data
         // Set valid data for the next subsequent load to avoid bubble
-        data_valid_d = axi_resp_i_cut[NumStages].r_valid;
+        data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
         last_d = 1'b0;
       end
     end
