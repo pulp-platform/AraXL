@@ -223,9 +223,15 @@ logic [NumBuffers-1:0] buf_valid_d, buf_valid_q;
 logic r_ready_buf, r_ready_buf_q;
 
 datapath_t rd_datapath;
-assign rd_datapath = rd_tracker_q[rd_issue_pnt_q[0]].datapath;
 ara_op_e rd_op;
-assign rd_op = rd_tracker_q[rd_issue_pnt_q[0]].op;
+
+// If responses switch from BUFFER to SHUFFLE datapath, we stall to ensure that all responses for the BUFFER datapath have been handled
+// Otherwise the responses that need to use the BUFFER datapath erroneously go into the SHUFFLE datpath.
+logic stall_resp;
+assign stall_resp = (rd_tracker_q[rd_issue_pnt_q[1]].datapath == BUFFER) && (rd_tracker_q[rd_issue_pnt_q[0]].datapath == SHUFFLE) && (rd_cnt_q != 0);
+
+assign rd_datapath = stall_resp ? BUFFER : rd_tracker_q[rd_issue_pnt_q[0]].datapath;
+assign rd_op = stall_resp ? rd_tracker_q[rd_issue_pnt_q[1]].op : rd_tracker_q[rd_issue_pnt_q[0]].op;
 
 // Write packets
 logic [NrClusters-1:0] [ClusterAxiDataWidth*2-1:0]  wrbuf_d, wrbuf_q;
