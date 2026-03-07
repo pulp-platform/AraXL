@@ -10,12 +10,11 @@
 
 uint64_t counter;
 
-// Maximum size: (VLEN/8 Bytes * (MAX_LMUL == 8)) = VLEN
-// Define VLEN before compiling me
-// #define VLEN 4096
-uint8_t gold_vec_8b[VLEN];
-uint8_t zero_vec_8b[VLEN];
-uint8_t buf_vec_8b[VLEN];
+#define VLEN_CLUSTER (VLEN * NR_CLUSTERS)
+
+uint8_t gold_vec_8b[VLEN_CLUSTER];
+uint8_t zero_vec_8b[VLEN_CLUSTER];
+uint8_t buf_vec_8b[VLEN_CLUSTER];
 
 //////////
 // vs1r //
@@ -24,11 +23,11 @@ uint8_t buf_vec_8b[VLEN];
 // 1 whole register load
 void TEST_CASE1(void) {
   // Initialize a golden vector
-  INIT_MEM_CNT(gold_vec_8b, VLEN / 8);
+  INIT_MEM_CNT(gold_vec_8b, VLEN_CLUSTER / 8);
   // Initialize a zero golden vector
-  INIT_MEM_ZEROES(zero_vec_8b, VLEN / 8);
+  INIT_MEM_ZEROES(zero_vec_8b, VLEN_CLUSTER / 8);
   // Reserve space for a buffer in memory
-  INIT_MEM_ZEROES(buf_vec_8b, VLEN / 8);
+  INIT_MEM_ZEROES(buf_vec_8b, VLEN_CLUSTER / 8);
   // Set vl and vtype to super short values
   VSET(1, e64, m2);
   // Initialize register + neighbours to pattern value
@@ -37,10 +36,10 @@ void TEST_CASE1(void) {
   asm volatile("vl1re8.v v16, (%0)" ::"r"(gold_vec_8b));
   // Check that the whole register was loaded
   asm volatile("vs1r.v v16, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 0, buf_vec_8b, gold_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 0, buf_vec_8b, gold_vec_8b, VLEN_CLUSTER / 8);
   // Check that the neighbour registers are okay
   asm volatile("vs1r.v v17, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 0, buf_vec_8b, zero_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 0, buf_vec_8b, zero_vec_8b, VLEN_CLUSTER / 8);
 }
 
 //////////
@@ -50,11 +49,11 @@ void TEST_CASE1(void) {
 // 2 whole registers load
 void TEST_CASE2(void) {
   // Initialize a golden vector
-  INIT_MEM_CNT(gold_vec_8b, VLEN / 4);
+  INIT_MEM_CNT(gold_vec_8b, VLEN_CLUSTER / 4);
   // Initialize a zero golden vector
-  INIT_MEM_ZEROES(zero_vec_8b, VLEN / 4);
+  INIT_MEM_ZEROES(zero_vec_8b, VLEN_CLUSTER / 4);
   // Reserve space for a buffer in memory
-  INIT_MEM_ZEROES(buf_vec_8b, VLEN / 4);
+  INIT_MEM_ZEROES(buf_vec_8b, VLEN_CLUSTER / 4);
   // Set vl and vtype to super short values
   VSET(1, e64, m4);
   // Initialize register + neighbours to pattern value
@@ -63,10 +62,10 @@ void TEST_CASE2(void) {
   asm volatile("vl2re8.v v16, (%0)" ::"r"(gold_vec_8b));
   // Check that the whole register was loaded
   asm volatile("vs2r.v v16, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 1, buf_vec_8b, gold_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 1, buf_vec_8b, gold_vec_8b, VLEN_CLUSTER / 8);
   // Check that the neighbour registers are okay
   asm volatile("vs2r.v v18, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 1, buf_vec_8b, zero_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 1, buf_vec_8b, zero_vec_8b, VLEN_CLUSTER / 8);
 }
 
 //////////
@@ -76,11 +75,11 @@ void TEST_CASE2(void) {
 // 4 whole registers load
 void TEST_CASE3(void) {
   // Initialize a golden vector
-  INIT_MEM_CNT(gold_vec_8b, VLEN / 2);
+  INIT_MEM_CNT(gold_vec_8b, VLEN_CLUSTER / 2);
   // Initialize a zero golden vector
-  INIT_MEM_ZEROES(zero_vec_8b, VLEN / 2);
+  INIT_MEM_ZEROES(zero_vec_8b, VLEN_CLUSTER / 2);
   // Reserve space for a buffer in memory
-  INIT_MEM_ZEROES(buf_vec_8b, VLEN / 2);
+  INIT_MEM_ZEROES(buf_vec_8b, VLEN_CLUSTER / 2);
   // Set vl and vtype to super short values
   VSET(1, e64, m8);
   // Initialize register + neighbours to pattern value
@@ -89,10 +88,10 @@ void TEST_CASE3(void) {
   asm volatile("vl4re8.v v16, (%0)" ::"r"(gold_vec_8b));
   // Check that the whole register was loaded
   asm volatile("vs4r.v v16, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 2, buf_vec_8b, gold_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 2, buf_vec_8b, gold_vec_8b, VLEN_CLUSTER / 8);
   // Check that the neighbour registers are okay
   asm volatile("vs4r.v v20, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 2, buf_vec_8b, zero_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 2, buf_vec_8b, zero_vec_8b, VLEN_CLUSTER / 8);
 }
 
 //////////
@@ -102,11 +101,11 @@ void TEST_CASE3(void) {
 // 8 whole registers load
 void TEST_CASE4(void) {
   // Initialize a golden vector
-  INIT_MEM_CNT(gold_vec_8b, VLEN);
+  INIT_MEM_CNT(gold_vec_8b, VLEN_CLUSTER);
   // Initialize a zero golden vector
-  INIT_MEM_ZEROES(zero_vec_8b, VLEN);
+  INIT_MEM_ZEROES(zero_vec_8b, VLEN_CLUSTER);
   // Reserve space for a buffer in memory
-  INIT_MEM_ZEROES(buf_vec_8b, VLEN);
+  INIT_MEM_ZEROES(buf_vec_8b, VLEN_CLUSTER);
   // Set vl and vtype to super short values
   VSET(1, e64, m8);
   // Initialize register + neighbours to pattern value
@@ -116,10 +115,10 @@ void TEST_CASE4(void) {
   asm volatile("vl8re8.v v16, (%0)" ::"r"(gold_vec_8b));
   // Check that the whole register was loaded
   asm volatile("vs8r.v v16, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 3, buf_vec_8b, gold_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 3, buf_vec_8b, gold_vec_8b, VLEN_CLUSTER / 8);
   // Check that the neighbour registers are okay
   asm volatile("vs8r.v v24, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 3, buf_vec_8b, zero_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 3, buf_vec_8b, zero_vec_8b, VLEN_CLUSTER / 8);
 }
 
 ////////////
@@ -129,11 +128,11 @@ void TEST_CASE4(void) {
 // Check with initial vl == 0
 void TEST_CASE5(void) {
   // Initialize a golden vector
-  INIT_MEM_CNT(gold_vec_8b, VLEN / 8);
+  INIT_MEM_CNT(gold_vec_8b, VLEN_CLUSTER / 8);
   // Initialize a zero golden vector
-  INIT_MEM_ZEROES(zero_vec_8b, VLEN / 8);
+  INIT_MEM_ZEROES(zero_vec_8b, VLEN_CLUSTER / 8);
   // Reserve space for a buffer in memory
-  INIT_MEM_ZEROES(buf_vec_8b, VLEN / 8);
+  INIT_MEM_ZEROES(buf_vec_8b, VLEN_CLUSTER / 8);
   // Set vl and vtype to super short values
   VSET(0, e64, m2);
   // Initialize register + neighbours to pattern value
@@ -142,10 +141,10 @@ void TEST_CASE5(void) {
   asm volatile("vl1re8.v v16, (%0)" ::"r"(gold_vec_8b));
   // Check that the whole register was loaded
   asm volatile("vs1r.v v16, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 4, buf_vec_8b, gold_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 4, buf_vec_8b, gold_vec_8b, VLEN_CLUSTER / 8);
   // Check that the neighbour registers are okay
   asm volatile("vs1r.v v17, (%0)" ::"r"(buf_vec_8b));
-  VMCMP(uint8_t, % hhu, 4, buf_vec_8b, zero_vec_8b, VLEN / 8);
+  VMCMP(uint8_t, % hhu, 4, buf_vec_8b, zero_vec_8b, VLEN_CLUSTER / 8);
 }
 
 int main(void) {
