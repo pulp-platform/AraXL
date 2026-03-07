@@ -2712,7 +2712,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
               ara_req_valid_d  = 1'b1;
 
               // Maximum vector length. VLMAX = nf * VLEN / EW8.
-              ara_req_d.vtype.vsew = EW8;
               unique case (insn.vmem_type.nf)
                 3'd0: begin
                   ara_req_d.vl = VLENB << 0;
@@ -2735,6 +2734,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   illegal_insn     = 1'b1;
                 end
               endcase
+              ara_req_d.vl = ara_req_d.vl >> ara_req_d.vtype.vsew;
+              ara_req_d.vl_cluster = ara_req_d.vl << num_clusters_i;
             end
 
             // Wait until the back-end answers to acknowledge those instructions
@@ -2917,7 +2918,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
               ignore_zero_vl_check = 1'b1;
 
               // Maximum vector length. VLMAX = nf * VLEN / EW8.
-              ara_req_d.vtype.vsew = EW8;
               unique case (insn.vmem_type.nf)
                 3'd0: begin
                   ara_req_d.vl = VLENB << 0;
@@ -2940,7 +2940,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   illegal_insn     = 1'b1;
                 end
               endcase
-
+              ara_req_d.vl = ara_req_d.vl >> ara_req_d.vtype.vsew;
+              ara_req_d.vl_cluster = ara_req_d.vl << num_clusters_i;
               illegal_insn     = 1'b0;
               acc_resp_o.req_ready  = 1'b0;
               acc_resp_o.resp_valid = 1'b0;
