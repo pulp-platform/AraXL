@@ -34,8 +34,7 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   input  cluster_metadata_t [NrClusters-1:0]  cluster_metadata_i,
 
   // Synchronization with cluster addrgen for indexed operations 
-  output logic              [NrClusters-1:0]  idx_completed_o,
-  input logic                                 idx_completed_sync_i,
+  output logic                                idx_completed_o,
   
   input   axi_req_t  [NrClusters-1:0] axi_req_i,
   output  axi_req_t  [NrClusters-1:0] axi_req_o,
@@ -251,10 +250,7 @@ logic [NrClusters-1:0] wr_cluster_completed, rd_cluster_completed_d, rd_cluster_
 logic [NumBuffers-1:0] rd_buffer_completed_d, rd_buffer_completed_q;
 logic [NumBuffers-1:0] wr_buffer_completed_d, wr_buffer_completed_q;
 
-vlen_t [NrClusters-1:0] vl_idx_cluster_d, vl_idx_cluster_q;
-
-logic [NrClusters-1:0] idx_completed_d, idx_completed_q;
-assign idx_completed_o = idx_completed_d;
+vlen_cluster_t vl_idx_cluster_d, vl_idx_cluster_q;
 
 logic pending_resp;
 
@@ -308,7 +304,6 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     cluster_aw_q <= '0;
     lane_aw_q <= '0;
     vl_idx_cluster_q <= '0;
-    idx_completed_q <= '0;
   end else begin
     rd_tracker_q    <= rd_tracker_d;
     wr_tracker_q    <= wr_tracker_d;
@@ -326,7 +321,6 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     cluster_aw_q <= cluster_aw_d;
     lane_aw_q <= lane_aw_d;
     vl_idx_cluster_q <= vl_idx_cluster_d;
-    idx_completed_q <= idx_completed_d;
   end
 end
 
@@ -354,14 +348,7 @@ always_comb begin
   lane_ar_d = lane_ar_q;
   cluster_ar_d = cluster_ar_q;
   vl_idx_cluster_d = vl_idx_cluster_q;
-  idx_completed_d = idx_completed_q;
-
-  // If the clusters have synchronized, reset values
-  if (idx_completed_sync_i) begin
-    lane_ar_d = '0;
-    cluster_ar_d = '0;
-    idx_completed_d = 1'b0;
-  end
+  idx_completed_o = 1'b0;
   
   if (axi_req_i[cluster_ar_q].ar_valid & axi_resp_o[cluster_ar_q].ar_ready) begin
     automatic cluster_metadata_t cluster_metadata = cluster_metadata_i[cluster_ar_q];
@@ -405,16 +392,17 @@ always_comb begin
       
       // If a valid request is sent, track it for synchronization
       if (axi_req_o[cluster_ar_q].ar_valid & axi_resp_i[cluster_ar_q].ar_ready) begin
-        vl_idx_cluster_d[cluster_ar_q] = vl_idx_cluster_q[cluster_ar_q] + 1;
-        if (vl_idx_cluster_q[cluster_ar_q] == (cluster_metadata.vl_local - 1)) begin
-          vl_idx_cluster_d[cluster_ar_q] = '0;
-          idx_completed_d[cluster_ar_q] = 1'b1;
+        vl_idx_cluster_d = vl_idx_cluster_q + 1;
+        if (vl_idx_cluster_q == (cluster_metadata.vl - 1)) begin
+          vl_idx_cluster_d = '0;
+          idx_completed_o = 1'b1;
+          lane_ar_d = '0;
+          cluster_ar_d = '0;
         end
       end
     end else begin
       lane_ar_d = '0;
       cluster_ar_d = '0;
-      idx_completed_d = 1'b0;
     end
   end
 
