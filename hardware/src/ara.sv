@@ -218,8 +218,10 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   logic      [NrLanes-1:0]                     stu_operand_ready;
   // Slide unit/address generation operands
   elen_t     [NrLanes-1:0]                     sldu_addrgen_operand;
+  elen_t     [NrLanes-1:0]                     sldu_operand;
   target_fu_e[NrLanes-1:0]                     sldu_addrgen_operand_target_fu;
   logic      [NrLanes-1:0]                     sldu_addrgen_operand_valid;
+  logic      [NrLanes-1:0]                     sldu_red_operand_valid;
   logic      [NrLanes-1:0]                     sldu_operand_ready;
   sldu_mux_e                                   sldu_mux_sel;
   logic                                        addrgen_operand_ready;
@@ -305,8 +307,10 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .stu_operand_ready_i             (stu_operand_ready[lane]             ),
       // Interface with the slide/address generation unit
       .sldu_addrgen_operand_o          (sldu_addrgen_operand[lane]          ),
-      .sldu_addrgen_operand_target_fu_o(sldu_addrgen_operand_target_fu[lane]),
+      .sldu_operand_o                  (sldu_operand[lane]                  ),
       .sldu_addrgen_operand_valid_o    (sldu_addrgen_operand_valid[lane]    ),
+      .sldu_red_operand_valid_o        (sldu_red_operand_valid[lane]        ),
+      .sldu_addrgen_operand_target_fu_o(sldu_addrgen_operand_target_fu[lane]),
       .addrgen_operand_ready_i         (addrgen_operand_ready               ),
       .sldu_mux_sel_i                  (sldu_mux_sel                        ),
       .sldu_operand_ready_i            (sldu_operand_ready[lane]            ),
@@ -420,9 +424,10 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .pe_req_ready_o          (pe_req_ready[NrLanes+OffsetSlide]),
     .pe_resp_o               (pe_resp[NrLanes+OffsetSlide]     ),
     // Interface with the lanes
-    .sldu_operand_i          (sldu_addrgen_operand             ),
+    .sldu_operand_queue_valid_i  (sldu_addrgen_operand_valid   ),
+    .sldu_red_operand_valid_i    (sldu_red_operand_valid       ),
+    .sldu_operand_i          (sldu_operand                     ),
     .sldu_operand_target_fu_i(sldu_addrgen_operand_target_fu   ),
-    .sldu_operand_valid_i    (sldu_addrgen_operand_valid       ),
     .sldu_operand_ready_o    (sldu_operand_ready               ),
     .sldu_result_req_o       (sldu_result_req                  ),
     .sldu_result_addr_o      (sldu_result_addr                 ),

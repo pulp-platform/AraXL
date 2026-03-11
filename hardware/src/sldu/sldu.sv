@@ -30,7 +30,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the lanes
     input  elen_t    [NrLanes-1:0] sldu_operand_i,
     input  target_fu_e [NrLanes-1:0] sldu_operand_target_fu_i,
-    input  logic     [NrLanes-1:0] sldu_operand_valid_i,
+    input  logic     [NrLanes-1:0] sldu_operand_queue_valid_i,
+    input  logic     [NrLanes-1:0] sldu_red_operand_valid_i,
     output logic     [NrLanes-1:0] sldu_operand_ready_o,
     output logic     [NrLanes-1:0] sldu_result_req_o,
     output vid_t     [NrLanes-1:0] sldu_result_id_o,
@@ -270,19 +271,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
   always_comb begin
     for (int l = 0; l < NrLanes; l++) begin
-      sldu_operand_d[l] = np2_loop_mux_sel_q == NP2_EXT_SEL
-                                        ? sldu_operand_i[l]
-                                        : result_queue_q[NP2_BUFFER_PNT][l].wdata;
-      sldu_operand_valid_d[l] = (sldu_operand_target_fu_q[l] == ALU_SLDU)
-                                        ? (np2_loop_mux_sel_q == NP2_EXT_SEL
-                                        ? sldu_operand_valid_i[l]
-                                        : slide_np2_buf_valid_q)
-                                        : 1'b0;
-      sldu_operand_ready_o[l] = (sldu_operand_target_fu_q[l] == ALU_SLDU)
-                                        ? (np2_loop_mux_sel_q == NP2_EXT_SEL
-                                        ? sldu_operand_ready_q[l]
-                                        : 1'b0)
-                                        : 1'b0;
+      sldu_operand_d[l] = sldu_operand_i[l];
+      sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || sldu_red_operand_valid_i[l];
+      sldu_operand_ready_o[l] = sldu_operand_ready_q[l];
     end
   end
 
@@ -1089,7 +1080,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           cnt_latency_d = ADD_LATENCY_SLIDE;
           state_d = vinsn_issue_q.is_stride_np2 ? SLIDE_NP2_SETUP : SLIDE_RUN;
         end
-        if (sldu_operand_valid_i[0])
+        if (sldu_operand_queue_valid_i[0])
           np2_loop_mux_sel_d = NP2_LOOP_SEL;
       end
       SLIDE_RUN_OSUM: begin
@@ -1136,7 +1127,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // Prepare the read pointer
         result_queue_read_pnt_d = NP2_RESULT_PNT;
         // Setup the mux sel as soon as we get one operand
-        if (sldu_operand_valid_i[0])
+        if (sldu_operand_queue_valid_i[0])
           np2_loop_mux_sel_d = NP2_LOOP_SEL;
         // Setup the p2-stride generator
         p2_stride_gen_stride_d = stride_t'(eff_stride_d >> vinsn_issue_q.vtype.vsew); // stride_t'(vinsn_issue_q.stride >> vinsn_issue_q.vtype.vsew);
