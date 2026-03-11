@@ -52,6 +52,7 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   operand_queue_cmd_t cmd;
   logic               cmd_pop;
+  logic               cmd_empty;
 
   fifo_v3 #(
     .DEPTH(CmdBufDepth        ),
@@ -65,7 +66,7 @@ module operand_queue import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     .push_i    (operand_queue_cmd_valid_i),
     .full_o    (/* Unused */             ),
     .data_o    (cmd                      ),
-    .empty_o   (/* Unused */             ),
+    .empty_o   (cmd_empty                ),
     .pop_i     (cmd_pop                  ),
     .usage_o   (/* Unused */             )
   );
