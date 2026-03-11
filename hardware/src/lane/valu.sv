@@ -49,6 +49,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
     input  logic                         sldu_alu_valid_i,
     output logic                         sldu_alu_ready_o,
     input  logic                         sldu_red_pending_i,
+    input logic                          sldu_red_completed_i,
     // Interface with the Mask unit
     output elen_t                        mask_operand_o,
     output logic                         mask_operand_valid_o,
@@ -316,6 +317,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
   // In this case, the ALU should NOT commit until the inter-lanes phase is over
   logic prevent_commit;
 
+  logic sldu_red_completed_d, sldu_red_completed_q;
+
   // Input multiplexers.
   elen_t simd_red_operand;
   strb_t red_mask;
@@ -431,6 +434,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
     // Don't prevent commit by default
     prevent_commit = 1'b0;
+
+    sldu_red_completed_d = sldu_red_completed_q;
 
     ////////////////////////////////////////
     //  Write data into the result queue  //
@@ -597,6 +602,9 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
           // If the workload is unbalanced and some lanes already have commit_cnt == '0,
           // delay the commit until we are over with the inter-lanes phase
           prevent_commit = 1'b1;
+
+          sldu_red_completed_d = sldu_red_completed_i | sldu_red_completed_q;
+
           // This unit should either still participate to the reduction or
           // just handshake the SLDU to sync with the still active lanes
           if (sldu_alu_valid_q) begin
@@ -607,7 +615,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
             // Write the result
             result_queue_d[result_queue_write_pnt_q].wdata = valu_result;
 
-            if (sldu_red_pending_i) begin
+            if (!sldu_red_completed_q) begin
               // We have more inter-lanes / inter-cluster reduction transactions to do
               alu_state_d = INTER_LANES_REDUCTION_TX;
             end else begin
@@ -622,9 +630,11 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                     EW64: simd_red_cnt_max_d = 2'd0;
                 endcase
                 simd_red_cnt_d = '0;
+                sldu_red_completed_d = 1'b0;
                 alu_state_d = SIMD_REDUCTION;
               end else if (cluster_id_i == '0) begin
                 // Rest of the cluster 0 lanes commit
+                sldu_red_completed_d = 1'b0;
                 alu_state_d = LN0_REDUCTION_COMMIT;
               end else begin
                 // Rest all clusters go one last time to TX to send the reduced result
@@ -632,7 +642,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
               end
             end
           end else begin
-            if (!sldu_red_pending_i) begin
+            if (sldu_red_completed_q) begin
+              sldu_red_completed_d = 1'b0;
               alu_state_d = LN0_REDUCTION_COMMIT;
             end
           end
@@ -848,6 +859,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       first_op_q              <= 1'b0;
       simd_red_cnt_max_q      <= '0;
       alu_vxsat_q             <= '0;
+      sldu_red_completed_q    <= 1'b0;
     end else begin
       issue_cnt_q             <= issue_cnt_d;
       commit_cnt_q            <= commit_cnt_d;
@@ -857,6 +869,7 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
       first_op_q              <= first_op_d;
       simd_red_cnt_max_q      <= simd_red_cnt_max_d;
       alu_vxsat_q             <= alu_vxsat_d;
+      sldu_red_completed_q    <= sldu_red_completed_d;
     end
   end
 
