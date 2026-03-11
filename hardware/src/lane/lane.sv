@@ -63,7 +63,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output logic                                           sldu_red_operand_valid_o,
     output target_fu_e                                     sldu_addrgen_operand_target_fu_o,
     input  logic                                           sldu_operand_ready_i,
-    input  sldu_mux_e                                      sldu_mux_sel_i,
+    input  sldu_mux_e                                      sldu_issue_mux_sel_i,
+    input  sldu_mux_e                                      sldu_commit_mux_sel_i,
     input  logic                                           addrgen_operand_ready_i,
     // Interface with the Slide unit
     input  logic                                           sldu_result_req_i,
@@ -436,36 +437,26 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
    *  Slide Unit MUX  *
    ********************/
 
-  // Break the in2out path
-  sldu_mux_e sldu_mux_sel_q;
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      sldu_mux_sel_q <= NO_RED;
-    end else begin
-      sldu_mux_sel_q <= sldu_mux_sel_i;
-    end
-  end
-
   // During a reduction, the slide unit is directly connected to the functional units.
   // The selectors are controlled by the slide unit itself, which must know what it will receive next.
-  assign sldu_operand_o               = sldu_mux_sel_q == NO_RED ? sldu_addrgen_operand_opqueues :
-                                       (sldu_mux_sel_q == ALU_RED ? alu_result_wdata : mfpu_result_wdata);
-  assign sldu_operand_opqueues_ready  = sldu_operand_ready_i & (sldu_mux_sel_q == NO_RED);
-  assign sldu_alu_gnt                 = sldu_operand_ready_i & (sldu_mux_sel_q == ALU_RED);
-  assign sldu_mfpu_gnt                = sldu_operand_ready_i & (sldu_mux_sel_q == MFPU_RED);
+  assign sldu_operand_o               = sldu_issue_mux_sel_i == NO_RED ? sldu_addrgen_operand_opqueues :
+                                       (sldu_issue_mux_sel_i == ALU_RED ? alu_result_wdata : mfpu_result_wdata);
+  assign sldu_operand_opqueues_ready  = sldu_operand_ready_i & (sldu_issue_mux_sel_i == NO_RED);
+  assign sldu_alu_gnt                 = sldu_operand_ready_i & (sldu_issue_mux_sel_i == ALU_RED);
+  assign sldu_mfpu_gnt                = sldu_operand_ready_i & (sldu_issue_mux_sel_i == MFPU_RED);
 
-  assign sldu_alu_valid    = sldu_red_valid_i & (sldu_mux_sel_q == ALU_RED);
-  assign sldu_mfpu_valid   = sldu_red_valid_i & (sldu_mux_sel_q == MFPU_RED);
-  assign sldu_result_gnt_o = sldu_mux_sel_q == NO_RED ? sldu_result_gnt_opqueues :
-                            (sldu_mux_sel_q == ALU_RED ? sldu_alu_ready : sldu_mfpu_ready);
+  // SLDU to ALU/MFPU
+  assign sldu_alu_valid    = sldu_red_valid_i & (sldu_commit_mux_sel_i == ALU_RED);
+  assign sldu_mfpu_valid   = sldu_red_valid_i & (sldu_commit_mux_sel_i == MFPU_RED);
+  assign sldu_result_gnt_o = sldu_commit_mux_sel_i == NO_RED ? sldu_result_gnt_opqueues :
+                            (sldu_commit_mux_sel_i == ALU_RED ? sldu_alu_ready : sldu_mfpu_ready);
 
-  // Addrgen
+  // From Operand Queue to the SLDU or Addrgen of VLSU
   assign sldu_addrgen_operand_valid_o = sldu_addrgen_operand_opqueues_valid;
   assign sldu_addrgen_operand_o       = sldu_addrgen_operand_opqueues;
 
-  // Slide Unit
-  assign sldu_red_operand_valid_o = sldu_mux_sel_q == ALU_RED ? sldu_alu_req_valid_o : sldu_mfpu_req_valid_o;
+  // ALU/MFPU to SLDU
+  assign sldu_red_operand_valid_o = (sldu_issue_mux_sel_i == ALU_RED) ? sldu_alu_req_valid_o : sldu_mfpu_req_valid_o;
 
   //////////////////
   //  Assertions  //

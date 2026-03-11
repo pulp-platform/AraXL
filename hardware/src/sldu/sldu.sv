@@ -41,7 +41,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     input  logic     [NrLanes-1:0] sldu_result_gnt_i,
     input  logic     [NrLanes-1:0] sldu_result_final_gnt_i,
     // Support for reductions
-    output sldu_mux_e              sldu_mux_sel_o,
+    output sldu_mux_e              sldu_issue_mux_sel_o,
+    output sldu_mux_e              sldu_commit_mux_sel_o,
     output logic     [NrLanes-1:0] sldu_red_valid_o,
     output logic                   sldu_red_pending_o,
     output logic                   sldu_red_completed_o,
@@ -273,8 +274,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   always_comb begin
     for (int l = 0; l < NrLanes; l++) begin
       sldu_operand_d[l] = sldu_operand_i[l];
-      sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || sldu_red_operand_valid_i[l];
-      sldu_operand_ready_o[l] = sldu_operand_ready_q[l];
+      sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} && sldu_red_operand_valid_i[l]);
+      sldu_operand_ready_o[l] = sldu_operand_ready_q[l] & sldu_operand_valid_d[l];
     end
   end
 
@@ -369,12 +370,23 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   assign is_issue_vmfpu_reduction = vinsn_issue_valid_q & (vinsn_issue_q.vfu == VFU_MFpu);
   assign is_issue_reduction       = is_issue_alu_reduction | is_issue_vmfpu_reduction;
 
+  // Logic to request/write data from/to the ALU/MFPU during reductions. 
   always_comb begin
-    sldu_mux_sel_o = NO_RED;
-    if ((is_issue_alu_reduction && !(vinsn_commit_valid && vinsn_commit.vfu != VFU_Alu)) || (vinsn_commit_valid && vinsn_commit.vfu == VFU_Alu)) begin
-      sldu_mux_sel_o = ALU_RED;
-    end else if ((is_issue_vmfpu_reduction && !(vinsn_commit_valid && vinsn_commit.vfu != VFU_MFpu)) || (vinsn_commit_valid && vinsn_commit.vfu == VFU_MFpu)) begin
-      sldu_mux_sel_o = MFPU_RED;
+    sldu_issue_mux_sel_o = NO_RED;
+    sldu_commit_mux_sel_o = NO_RED;
+
+    if (is_issue_alu_reduction) begin
+      sldu_issue_mux_sel_o = ALU_RED;
+    end else if (is_issue_vmfpu_reduction) begin
+      sldu_issue_mux_sel_o = MFPU_RED;
+    end
+
+    if (vinsn_commit_valid && (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu})) begin
+      if (vinsn_commit.vfu == VFU_Alu) begin
+        sldu_commit_mux_sel_o = ALU_RED;
+      end else if (vinsn_commit.vfu == VFU_MFpu) begin
+        sldu_commit_mux_sel_o = MFPU_RED;
+      end
     end
   end
 
