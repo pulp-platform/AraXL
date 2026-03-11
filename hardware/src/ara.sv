@@ -223,7 +223,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   logic      [NrLanes-1:0]                     sldu_addrgen_operand_valid;
   logic      [NrLanes-1:0]                     sldu_red_operand_valid;
   logic      [NrLanes-1:0]                     sldu_operand_ready;
-  sldu_mux_e                                   sldu_mux_sel;
+  sldu_mux_e                                   sldu_issue_mux_sel;
+  sldu_mux_e                                   sldu_commit_mux_sel;
   logic                                        addrgen_operand_ready;
   logic      [NrLanes-1:0]                     sldu_red_valid;
 
@@ -314,7 +315,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .sldu_red_operand_valid_o        (sldu_red_operand_valid[lane]        ),
       .sldu_addrgen_operand_target_fu_o(sldu_addrgen_operand_target_fu[lane]),
       .addrgen_operand_ready_i         (addrgen_operand_ready               ),
-      .sldu_mux_sel_i                  (sldu_mux_sel                        ),
+      .sldu_issue_mux_sel_i            (sldu_issue_mux_sel                  ),
+      .sldu_commit_mux_sel_i           (sldu_commit_mux_sel                 ),
       .sldu_operand_ready_i            (sldu_operand_ready[lane]            ),
       .sldu_red_valid_i                (sldu_red_valid[lane]                ),
       // Interface with the mask unit
@@ -437,7 +439,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_result_be_o        (sldu_result_be                   ),
     .sldu_result_wdata_o     (sldu_result_wdata                ),
     .sldu_result_gnt_i       (sldu_result_gnt                  ),
-    .sldu_mux_sel_o          (sldu_mux_sel                     ),
+    .sldu_issue_mux_sel_o    (sldu_issue_mux_sel               ),
+    .sldu_commit_mux_sel_o   (sldu_commit_mux_sel              ),
     .sldu_red_valid_o        (sldu_red_valid                   ),
     .sldu_result_final_gnt_i (sldu_result_final_gnt            ),
     .sldu_red_pending_o      (sldu_red_pending                 ),
