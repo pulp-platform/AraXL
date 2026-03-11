@@ -706,9 +706,6 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 end
               end
 
-              // Commit and give the done to the main sequencer
-              commit_cnt_d = '0;
-
               // Bump pointers and counters of the result queue
               result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
               result_queue_cnt_d += 1;
@@ -716,6 +713,8 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
                 result_queue_write_pnt_d = 0;
               else
                 result_queue_write_pnt_d = result_queue_write_pnt_q + 1;
+
+              alu_state_d = NO_REDUCTION;
             end
           end
         end
@@ -756,9 +755,14 @@ module valu import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width;
 
       // Decrement the counter of remaining vector elements waiting to be written
       // Don't do it in case of a reduction
-      if (!is_reduction(vinsn_commit.op))
+      if (!is_reduction(vinsn_commit.op)) begin
         commit_cnt_d = commit_cnt_q - (1 << (int'(EW64) - vinsn_commit.vtype.vsew));
-      if (commit_cnt_q < (1 << (int'(EW64) - vinsn_commit.vtype.vsew))) commit_cnt_d = '0;
+        if (commit_cnt_q < (1 << (int'(EW64) - vinsn_commit.vtype.vsew)))
+          commit_cnt_d = '0;
+      end else begin
+        // Reduction result committed
+        commit_cnt_d = '0;
+      end
     end
 
     // Finished committing the results of a vector instruction
