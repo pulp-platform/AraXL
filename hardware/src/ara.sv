@@ -245,6 +245,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   logic      [NrLanes-1:0]                     sldu_result_gnt;
   logic      [NrLanes-1:0]                     sldu_result_final_gnt;
   logic                                        sldu_red_pending;
+  logic                                        sldu_red_completed;
   // Mask Unit
   logic      [NrLanes-1:0]                     masku_result_req;
   vid_t      [NrLanes-1:0]                     masku_result_id;
@@ -293,6 +294,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .sldu_result_gnt_o               (sldu_result_gnt[lane]               ),
       .sldu_result_final_gnt_o         (sldu_result_final_gnt[lane]         ),
       .sldu_red_pending_i              (sldu_red_pending                    ),
+      .sldu_red_completed_i            (sldu_red_completed                  ),
       // Interface with the load unit
       .ldu_result_req_i                (ldu_result_req[lane]                ),
       .ldu_result_addr_i               (ldu_result_addr[lane]               ),
@@ -439,6 +441,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_red_valid_o        (sldu_red_valid                   ),
     .sldu_result_final_gnt_i (sldu_result_final_gnt            ),
     .sldu_red_pending_o      (sldu_red_pending                 ),
+    .sldu_red_completed_o    (sldu_red_completed               ),
     // Interface with the Mask unit
     .mask_i                  (mask                             ),
     .mask_valid_i            (mask_valid                       ),

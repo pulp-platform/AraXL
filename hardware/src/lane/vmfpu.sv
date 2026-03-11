@@ -58,6 +58,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     input  logic                         sldu_mfpu_valid_i,
     output logic                         sldu_mfpu_ready_o,
     input  logic                         sldu_red_pending_i,
+    input  logic                         sldu_red_completed_i,
     // Interface with the Mask unit
     output elen_t                        mask_operand_o,
     output logic                         mask_operand_valid_o,
@@ -592,6 +593,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
   // When the workload is unbalanced, some lanes can start the operation with a zeroed commit counter
   // In this case, the ALU should NOT commit until the inter-lanes phase is over
   logic prevent_commit;
+
+  logic sldu_red_completed_d, sldu_red_completed_q;
 
   // Handshake synchronizer
   // Since the SLDU must receive a valid signals also from lanes that should not send anything,
@@ -1367,6 +1370,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // Don't prevent commit by default
     prevent_commit = 1'b0;
 
+    sldu_red_completed_d = sldu_red_completed_q;
+
     //////////////////////////////////////////////////////////////////
     //  Issue the instruction and Write data into the result queue  //
     //////////////////////////////////////////////////////////////////
@@ -1751,9 +1756,10 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           mfpu_red_valid_o = 1'b1;
           if (mfpu_red_ready_i) begin
             mfpu_state_d = INTER_LANES_REDUCTION_RX;
-            if (!sldu_red_pending_i) begin
+            if (sldu_red_completed_d) begin
               result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
               mfpu_state_d = LN0_REDUCTION_COMMIT;
+              sldu_red_completed_d = 1'b0;
             end
           end
         end
@@ -1782,11 +1788,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
             end
           end
         end
-
+ 
+        sldu_red_completed_d = sldu_red_completed_i | sldu_red_completed_q;
         // If we have a valid result from the FPU,
         // write it in the queue and send it to the SLDU
         if (vfpu_out_valid && !result_queue_full) begin
-          if (sldu_red_pending_i) begin
+          if (!sldu_red_completed_d)begin
             result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
             result_queue_valid_d[result_queue_write_pnt_q] = 1'b1;
             mfpu_state_d = INTER_LANES_REDUCTION_TX;
@@ -1803,10 +1810,12 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
                   EW64: simd_red_cnt_max_d = 2'd0;
               endcase
               simd_red_cnt_d = '0;
+              sldu_red_completed_d = 1'b0;
               mfpu_state_d = SIMD_REDUCTION;
             end else if (cluster_id_i==0) begin
               // Rest of the cluster 0 lanes commit
               result_queue_valid_d[result_queue_write_pnt_q] = 1'b0;
+              sldu_red_completed_d = 1'b0;
               mfpu_state_d = LN0_REDUCTION_COMMIT;
             end else begin
               result_queue_d[result_queue_write_pnt_q].wdata = vfpu_processed_result;
@@ -2202,6 +2211,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       osum_issue_cnt_q        <= '0;
       mfpu_vxsat_q            <= '0;
       clkgate_en_q            <= 1'b0;
+      sldu_red_completed_q    <= 1'b0;
     end else begin
       issue_cnt_q             <= issue_cnt_d;
       to_process_cnt_q        <= to_process_cnt_d;
@@ -2224,6 +2234,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       osum_issue_cnt_q        <= osum_issue_cnt_d;
       mfpu_vxsat_q            <= mfpu_vxsat_d;
       clkgate_en_q            <= clkgate_en_d;
+      sldu_red_completed_q    <= sldu_red_completed_d;
     end
   end
 

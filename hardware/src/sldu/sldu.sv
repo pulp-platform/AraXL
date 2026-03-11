@@ -44,6 +44,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     output sldu_mux_e              sldu_mux_sel_o,
     output logic     [NrLanes-1:0] sldu_red_valid_o,
     output logic                   sldu_red_pending_o,
+    output logic                   sldu_red_completed_o,
     // Interface with the Mask Unit
     input  strb_t    [NrLanes-1:0] mask_i,
     input  logic     [NrLanes-1:0] mask_valid_i,
@@ -662,6 +663,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     send_data_ring = 1'b0;
     receive_data_ring = 1'b0;
 
+    sldu_red_completed_o = 1'b0;
+
     // Some helper signals to handle sliding logic
     vl_tot = vinsn_ring.vl_cluster;
     if (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu}) begin
@@ -1221,6 +1224,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         commit_cnt_d = commit_cnt_q - NrLanes * 8;
         if (commit_cnt_q <= (NrLanes * 8)) begin
           commit_cnt_d = '0;
+
+          // Signal functional units that reduction has completed
+          if (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}) begin
+            sldu_red_completed_o = 1'b1;
+          end
 
           `ifndef VERILATOR
           assert(commit_cnt_q != 0) 
