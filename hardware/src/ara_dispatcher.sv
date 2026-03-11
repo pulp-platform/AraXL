@@ -328,6 +328,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
       // Inject a reshuffle instruction
       RESHUFFLE: begin
+        // TODO: Proper reshuffling yet to be implemented
         // Instruction is of one of the RVV types
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
@@ -359,6 +360,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         ara_req_d.vtype.vsew    = eew_new_buffer_q;
         // Always reshuffle one vreg at a time
         ara_req_d.vl            = VLENB >> ara_req_d.vtype.vsew;
+        ara_req_d.vl_cluster    = ara_req_d.vl << num_clusters_i;
         // Vl refers to current system vsew but operand requesters
         // will fetch from a register with a different eew
         ara_req_d.scale_vl      = 1'b1;
