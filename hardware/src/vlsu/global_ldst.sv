@@ -87,6 +87,8 @@ vlen_cluster_t vl_w_done;
 vew_e vew_d, vew_q;
 vlen_cluster_t vl_ldst_rd_d, vl_ldst_rd_q, vl_ldst_wr_d, vl_ldst_wr_q;
 
+logic fifo_push_d, fifo_push_q;
+
 // These are updated only when a new aw/ar is accepted
 assign cluster_metadata_o.vew = vew_d;
 assign cluster_metadata_o.vl = cluster_metadata_i.vl; 
@@ -104,10 +106,11 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     cluster_ar_q  <= '0;
     cluster_aw_q  <= '0;
     cluster_r_q   <= '0;
-    lane_ar_q <= '0;
-    lane_aw_q <= '0;
+    lane_ar_q     <= '0;
+    lane_aw_q     <= '0;
     r_resp_lane_q <= '0;
-    r_resp_rem_q <= '0;
+    r_resp_rem_q  <= '0;
+    fifo_push_q   <= 1'b0;
   end else begin
     r_req_valid_q <= r_req_valid_d;
     req_q         <= req_d;
@@ -118,10 +121,11 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     cluster_ar_q  <= cluster_ar_d;
     cluster_aw_q  <= cluster_aw_d;
     cluster_r_q   <= cluster_r_d;
-    lane_ar_q <= lane_ar_d;
-    lane_aw_q <= lane_aw_d;
+    lane_ar_q     <= lane_ar_d;
+    lane_aw_q     <= lane_aw_d;
     r_resp_lane_q <= r_resp_lane_d;
-    r_resp_rem_q <= r_resp_rem_d;
+    r_resp_rem_q  <= r_resp_rem_d;
+    fifo_push_q   <= fifo_push_d;
   end
 end
 
@@ -167,6 +171,7 @@ always_comb begin : p_global_ldst
   req_wrmem.aw_valid = 1'b0;
 
   fifo_push_i = 1'b0;
+  fifo_push_d = fifo_push_q;
 
   // Initialize cluster pointers and request counters
   cluster_aw_d = cluster_aw_q;
@@ -326,29 +331,41 @@ always_comb begin : p_global_ldst
         vl_ldst_rd_d -= vl_done;
         req_d.ar.addr = aligned_next_start_addr_d;     // Update request state
         r_req_valid_d = 1'b1;
+        fifo_push_i = 1'b1;
+        fifo_push_d = 1'b1;
       end else begin
         vl_split = vl_ldst_rd_d;
         vl_ldst_rd_d = '0;
         req_d = '0;
         r_req_valid_d = 1'b0;
+
+        // If request already pushed to fifo don't push again
+        fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
+        fifo_push_d = 1'b0;
       end
     end else begin
       // For VLXE, we decrement the vl by 1 as each request is for 1 element
       vl_ldst_rd_d -= 1;
       req_d = '0;
       r_req_valid_d = 1'b0;
-      if (vl_ldst_rd_q == 1) begin
+
+      // For indexed request push to fifo
+      fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
+      fifo_push_d = 1'b1;
+
+      if (vl_ldst_rd_d == 0) begin
         // If we have sent all the requests for this indexed vector load, we can move the AR pointer back to cluster 0.
         cluster_ar_d = '0;
         lane_ar_d = '0;
+        fifo_push_d = 1'b0;
       end
     end
 
-    // Push vector length and op info into the fifo to read later when responses come back. This is needed to know how many responses to expect for each vector load and when a vector load is completed.
-    idx_metadata_i.vl = (cluster_metadata_i.op == VLXE) ? cluster_metadata_i.vl : vl_split;  // For VLE add the required vector length if the request was split
+    // Push vector length and op info into the fifo to read later when responses come back. 
+    // This is needed to know how many responses to expect for each vector load and when a vector load is completed.
+    idx_metadata_i.vl = cluster_metadata_i.vl;
     idx_metadata_i.op = cluster_metadata_i.op;
     idx_metadata_i.vew = vew_d;
-    fifo_push_i = 1'b1;
   end
   axi_req_o.ar = req_final.ar;
   axi_req_o.ar_valid = req_final.ar_valid;
@@ -419,12 +436,7 @@ always_comb begin : p_global_ldst
         // Update which cluster should receive the read response for VLXE
         if (axi_resp_o[i].r_valid) begin
           // Count responses being sent in this cycle
-          // r_responses_to_decrement = r_responses_to_decrement + 1;
-
           r_resp_rem_d -= 1;
-
-          // pop from fifo for every idx response 
-          fifo_pop_o = 1'b1;
           
           // Increment response counter for current cluster
           r_resp_lane_d = r_resp_lane_q + 1;
@@ -450,13 +462,13 @@ always_comb begin : p_global_ldst
         r_resp_rem_d -= nelem;
       end else begin
         r_resp_rem_d = '0;
-        fifo_pop_o = 1'b1;
       end
     end
 
     if (r_resp_rem_d ==0) begin
       cluster_r_d = '0;
       r_resp_lane_d = '0;
+      fifo_pop_o = 1'b1;
     end
   end
   
