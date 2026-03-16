@@ -16,10 +16,13 @@
 
 RIVEC_PATH := riscv-vectorized-benchmark-suite
 RIVEC_DIR := $(APPS_DIR)/$(RIVEC_PATH)
-RIVEC_APPS := _axpy _blackscholes _pathfinder _streamcluster
+RIVEC_APPS := _axpy _blackscholes _pathfinder _streamcluster _spmv
 RIVEC_BINARIES := $(addprefix bin/, $(RIVEC_APPS))
 
 rivec_binaries: $(RIVEC_BINARIES)
+
+# RiVEC SpMV dataset path (used by riscv-vectorized-benchmark-suite/_spmv)
+def_args__spmv       ?= "input/football.mtx"
 
 # Adding compile flags for RiVEC
 
@@ -29,7 +32,7 @@ RISCV_CXXFLAGS += -I$(RIVEC_DIR) -DUSE_RISCV_VECTOR
 define rivec_gen_data_template
 .PHONY: $1/data.S
 $1/data.S:
-	cd $1 && if [ -d script ]; then ${PYTHON} script/gen_data.py $(subst ",,$(def_args_$1)) > data.S ; else touch data.S; fi
+	cd $1 && if [ -d script ]; then ${PYTHON} script/gen_data.py $(strip $(subst ",,$(or $(def_args_$(notdir $1)),$(def_args_$(patsubst _%,%,$(notdir $1)))))) > data.S ; else touch data.S; fi
 endef
 $(foreach app,$(RIVEC_APPS),$(eval $(call rivec_gen_data_template, $(RIVEC_PATH)/$(app))))
 
