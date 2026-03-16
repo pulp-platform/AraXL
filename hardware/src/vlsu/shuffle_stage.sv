@@ -557,7 +557,7 @@ always_comb begin
             automatic int cl = b ? (NrClusters / NumBuffers) + c : c;
             
             // Set valid to the response
-            axi_resp_buf_out[cl].r_valid = 1'b1;
+            axi_resp_buf_out[cl].r_valid = (rd_tracker_q[rd_issue_pnt_q[b]].vl[cl] > 0) ? 1'b1 : 1'b0;
             rd_tracker_d[rd_issue_pnt_q[b]].len[cl] -= 1;
 
             // If the response is the last response, set last
@@ -792,7 +792,8 @@ for (genvar c=0; c < NrClusters; c++) begin
   // Reads  
   assign r_data_in[0][c] = (rd_datapath == BUFFER) ? '0 : axi_resp_i[c].r;             // Copy input resp to first stage
 
-  // Take resp from the shuffle or the buffer datapath as necessary
+  // Take resp from the shuffle or the buffer datapath as necessary, currently prioritize shuffle path
+  // Usually responses from both shuffle and buffer paths do not exist simutaneously
   assign axi_resp_o[c].r = r_valid_o[c] ? r_data_out[NumStages-1][c] : axi_resp_buf_out[c].r;  // Copy output resp from last stage
   assign axi_resp_o[c].r_valid = r_valid_o[c] ? ((rd_tracker_q[rd_issue_pnt_q[NumStages-1]].vl[c] == 0) ? 1'b0 : 1'b1) : axi_resp_buf_out[c].r_valid;
   
