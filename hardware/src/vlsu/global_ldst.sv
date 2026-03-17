@@ -151,7 +151,10 @@ fifo_v3 # (
   .pop_i  (fifo_pop_o     ),
   .data_o (idx_metadata_o ),
   .full_o (fifo_full_o    ),
-  .empty_o(fifo_empty_o   )
+  .empty_o(fifo_empty_o   ),
+  .flush_i(1'b0           ),
+  .usage_o( /* unused */  ),
+  .testmode_i  (1'b0      )
 );
 
 always_comb begin : p_global_ldst

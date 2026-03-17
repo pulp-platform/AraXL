@@ -228,7 +228,6 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
 
   ara #(
     .NrLanes     (NrLanes         ),
-    .NrClusters    (1               ),
     .FPUSupport  (FPUSupport      ),
     .FPExtSupport(FPExtSupport    ),
     .FixPtSupport(FixPtSupport    ),
