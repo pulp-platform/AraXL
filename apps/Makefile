@@ -22,8 +22,8 @@ COMMON_DIR := $(ROOT_DIR)/common
 TESTS_DIR := $(ROOT_DIR)
 
 # This will overwrite the ROOT_DIR variable from the included makefile
-include $(COMMON_DIR)/runtime.mk
 include $(COMMON_DIR)/default_args.mk
+include $(COMMON_DIR)/runtime.mk
 
 # Number of clusters
 nr_clusters ?= 2
