@@ -73,7 +73,8 @@ typedef struct packed {
   ara_op_e op;
 } req_track_t;
 
-localparam int unsigned NumTrackers=8;
+localparam int unsigned NumTrackers=16;
+
 typedef logic [$clog2(NumTrackers)-1:0] pnt_t; 
 typedef logic [$clog2(NumTrackers):0] cnt_t; 
 
@@ -392,7 +393,7 @@ always_comb begin
       end
       
       // If a valid request is sent, track it for synchronization
-      if (axi_req_o[cluster_ar_q].ar_valid & axi_resp_i[cluster_ar_q].ar_ready) begin
+      if (axi_req_o[cluster_ar_q].ar_valid & axi_resp_o[cluster_ar_q].ar_ready) begin
         vl_idx_cluster_d = vl_idx_cluster_q + 1;
         if (vl_idx_cluster_q == (cluster_metadata.vl - 1)) begin
           vl_idx_cluster_d = '0;
@@ -785,7 +786,8 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].aw_ready = axi_resp_i[c].aw_ready && !wr_full;
 
   // If indexed load send ready only to one of the clusters
-  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? (c==cluster_ar_q) ? axi_resp_i[c].ar_ready : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
+  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? ((c==cluster_ar_q) ? 1'b1 : 1'b0) : 1'b1) 
+                                  && axi_resp_i[c].ar_ready && !rd_full;
   
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
   assign axi_resp_o[c].b = axi_resp_i[c].b;
