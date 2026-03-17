@@ -25,7 +25,8 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   // Shuffling starts from EEW1 to support mask loads
   localparam int           unsigned TotalNrLanes        = NrClusters * NrLanes,
   localparam int           unsigned NumStages           = $clog2(ClusterAxiDataWidth/NrLanes),
-  localparam int           unsigned NumBuffers          = 2
+  localparam int           unsigned NumBuffers          = 2,
+  localparam int           unsigned ClustersPerBuffer   = (NrClusters > NumBuffers) ? NrClusters / NumBuffers : 1
 ) (
   // Clock and Reset
   input  logic                        clk_i,
@@ -585,7 +586,7 @@ always_comb begin
           
           // If the clusters corresponding to a buffer completed,
           // Clear buffer valid and go to the next instruction
-          if (&(rd_cluster_completed_d[b*(NrClusters/NumBuffers)+:(NrClusters/NumBuffers)])) begin
+          if (&(rd_cluster_completed_d[b*ClustersPerBuffer +: ClustersPerBuffer])) begin
             // Change to next instruction for the particular buffer
             // Since each buffer can complete at different times, we maintain a different instruction pointer
             rd_issue_pnt_d[b] = (rd_issue_pnt_q[b] == NumTrackers-1) ? '0 : rd_issue_pnt_q[b] + 1;
@@ -595,7 +596,7 @@ always_comb begin
             shift_d[b] = 1'b0;
 
             // Set the clusters corresponding to the buffer as completed for the instruction
-            rd_cluster_completed_d[b*(NrClusters/NumBuffers)+:(NrClusters/NumBuffers)] = '0;
+            rd_cluster_completed_d[b*ClustersPerBuffer +: ClustersPerBuffer] = '0;
 
             // Set the buffer as completed
             rd_buffer_completed_d[b] = 1'b1;

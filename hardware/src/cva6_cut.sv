@@ -48,7 +48,7 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
         logic [63:0]                          inval_addr;
     } cva6_cut_t;
 
-    cva6_cut_t [NrCuts:0] cva6_cuts;
+    cva6_cut_t cva6_cuts [NrCuts:0];
 
     for (genvar cut=0; cut < NrCuts; cut++) begin
         // Cut Request interface
@@ -122,6 +122,16 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
         acc_resp_o.inval_valid    = cva6_cuts[0].inval_valid;
         acc_resp_o.inval_addr     = cva6_cuts[0].inval_addr;
 
+        //// Request to ARA
+        acc_req_o                 = cva6_cuts[NrCuts].acc_req;
+        acc_req_o.req_valid       = cva6_cuts[NrCuts].req_valid;
+        acc_req_o.resp_ready      = cva6_cuts[NrCuts].resp_ready;
+        acc_req_o.inval_ready     = cva6_cuts[NrCuts].inval_ready;
+        acc_req_o.store_pending   = cva6_cuts[NrCuts].store_pending_req;
+        acc_req_o.acc_cons_en     = cva6_cuts[NrCuts].acc_cons_en;
+    end
+
+    always_comb begin
         //// Resp from ARA
         cva6_cuts[NrCuts].acc_resp       = acc_resp_i;
         cva6_cuts[NrCuts].req_ready      = acc_resp_i.req_ready;
@@ -134,14 +144,6 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
         cva6_cuts[NrCuts].inval_valid    = acc_resp_i.inval_valid;
         cva6_cuts[NrCuts].inval_addr     = acc_resp_i.inval_addr;
 
-        //// Request to ARA
-        acc_req_o                 = cva6_cuts[NrCuts].acc_req;
-        acc_req_o.req_valid       = cva6_cuts[NrCuts].req_valid;
-        acc_req_o.resp_ready      = cva6_cuts[NrCuts].resp_ready;
-        acc_req_o.inval_ready     = cva6_cuts[NrCuts].inval_ready;
-        acc_req_o.store_pending   = cva6_cuts[NrCuts].store_pending_req;
-        acc_req_o.acc_cons_en     = cva6_cuts[NrCuts].acc_cons_en;
-
         //// Request from CVA6
         cva6_cuts[0].acc_req            = acc_req_i;
         cva6_cuts[0].req_valid          = acc_req_i.req_valid;  
@@ -150,6 +152,5 @@ module cva6_cut import ara_pkg::*; import rvv_pkg::*; #(
         cva6_cuts[0].store_pending_req  = acc_req_i.store_pending;
         cva6_cuts[0].acc_cons_en        = acc_req_i.acc_cons_en;
     end
-
 
 endmodule
