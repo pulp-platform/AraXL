@@ -5,6 +5,9 @@
 // Author: Matteo Perotti <mperotti@iis.ee.ethz.ch>
 
 #include "vector_macros.h"
+#include <stdio.h>					// (in path known to compiler)			needed by printf
+
+int8_t mask[1] = {0xAA};
 
 // Positive-stride tests
 void TEST_CASE1(void) {
@@ -119,7 +122,8 @@ void TEST_CASE11(void) {
   volatile uint8_t INP1[] = {0x9f, 0xe4, 0x19, 0x20, 0x8f, 0x2e, 0x05, 0xe0,
                              0xf9, 0xaa, 0x71, 0xf0, 0xc3, 0x94, 0xbb, 0xd3};
   uint64_t stride = 3;
-  VLOAD_8(v0, 0xAA);
+  // VLOAD_8(v0, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v1);
   asm volatile("vlse8.v v1, (%0), %1, v0.t" ::"r"(INP1), "r"(stride));
   VCMP_U8(11, v1, 0x00, 0x20, 0x00, 0xaa);
@@ -130,7 +134,8 @@ void TEST_CASE12(void) {
   volatile uint16_t INP1[] = {0x9fe4, 0x1920, 0x8f2e, 0x05e0,
                               0xf9aa, 0x71f0, 0xc394, 0xbbd3};
   uint64_t stride = 4;
-  VLOAD_8(v0, 0xAA);
+  // VLOAD_8(v0, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v1);
   asm volatile("vlse16.v v1, (%0), %1, v0.t" ::"r"(INP1), "r"(stride));
   VCMP_U16(12, v1, 0, 0x8f2e, 0, 0xc394);
@@ -141,7 +146,8 @@ void TEST_CASE13(void) {
   volatile uint32_t INP1[] = {0x9fe41920, 0x8f2e05e0, 0xf9aa71f0, 0xc394bbd3,
                               0xa11a9384, 0xa7163840, 0x99991348, 0xa9f38cd1};
   uint64_t stride = 8;
-  VLOAD_8(v0, 0xAA);
+  // VLOAD_8(v0, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v1);
   asm volatile("vlse32.v v1, (%0), %1, v0.t" ::"r"(INP1), "r"(stride));
   VCMP_U32(13, v1, 0, 0xf9aa71f0, 0, 0x99991348);
@@ -157,7 +163,8 @@ void TEST_CASE14(void) {
       0x9031850931584902, 0x3189759837598759, 0x8319599991911111,
       0x8913984898951989};
   uint64_t stride = 16;
-  VLOAD_8(v0, 0xAA);
+  // VLOAD_8(v0, 0xAA);
+  asm volatile ("vlm.v v0, (%0)"::"r"(&mask));
   VCLEAR(v1);
   asm volatile("vlse64.v v1, (%0), %1, v0.t" ::"r"(INP1), "r"(stride));
   VCMP_U64(14, v1, 0, 0xa11a9384a7163840, 0, 0x1893179501093489, 0,
@@ -165,22 +172,30 @@ void TEST_CASE14(void) {
 }
 
 int main(void) {
+  // Problematic: 5 6 7 10 14
+  printf("Testing vlse...\n");
   INIT_CHECK();
   enable_vec();
 
+  // Positive-stride tests
   TEST_CASE1();
   TEST_CASE2();
   TEST_CASE3();
   TEST_CASE4();
 
+  // Zero-stride tests
   TEST_CASE5();
   TEST_CASE6();
   TEST_CASE7();
 
+  // Negative-stride test
   TEST_CASE8();
+  // Stride greater than default Ara AXI width == 128-bit (4 lanes)
   TEST_CASE9();
+  // Fill Ara internal Load Buffer
   TEST_CASE10();
 
+  // Masked stride loads
   TEST_CASE11();
   TEST_CASE12();
   TEST_CASE13();
