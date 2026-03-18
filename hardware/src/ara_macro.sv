@@ -9,7 +9,6 @@
 module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     // RVV Parameters
     parameter  int           unsigned NrLanes      = 0,   // Number of parallel vector lanes per Ara instance
-
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7

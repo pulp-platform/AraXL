@@ -256,7 +256,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
         valid_bytes = issue_cnt_q < NrLanes * 8     ? vinsn_valid_bytes : vrf_valid_bytes;
         valid_bytes = valid_bytes < axi_valid_bytes ? valid_bytes       : axi_valid_bytes;
 
-        if (vinsn_issue_q.op == VLXE) valid_bytes = 1 << vinsn_issue_q.vtype.vsew;
+        if (vinsn_issue_q.op inside {VLXE, VLSE}) valid_bytes = 1 << vinsn_issue_q.vtype.vsew;
 
         r_pnt_d   = r_pnt_q + valid_bytes;
         vrf_pnt_d = vrf_pnt_q + valid_bytes;
@@ -316,7 +316,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       // Consumed all valid bytes in this R beat
-      if (vinsn_issue_q.op == VLXE || r_pnt_d == AxiDataWidth/8 || issue_cnt_d == '0) begin
+      if ((vinsn_issue_q.op inside {VLXE, VLSE}) || r_pnt_d == AxiDataWidth/8 || issue_cnt_d == '0) begin
         // Request another beat
         axi_r_ready_o = 1'b1;
         r_pnt_d       = '0;

@@ -378,9 +378,9 @@ always_comb begin
     rd_tracker_d[rd_accept_pnt_q].second_buffer_unused = cluster_metadata.vl <= (NrLanes * NrClusters / 2) && rd_tracker_d[rd_accept_pnt_q].datapath;
     rd_tracker_d[rd_accept_pnt_q].op = cluster_metadata.op;
 
-    // If it is a VLXE request, take from the desired cluster
+    // If it is a VLXE/VLSE request, take from the desired cluster
     // and switch clusters for every NrLanes requests
-    if (cluster_metadata.op == VLXE) begin
+    if (cluster_metadata.op inside {VLXE, VLSE}) begin
       lane_ar_d += 1;
       if (lane_ar_q == NrLanes - 1) begin
         cluster_ar_d += 1;
@@ -439,7 +439,7 @@ always_comb begin
 
     // If it is a VSXE request, take from the desired cluster
     // and switch clusters for every NrLanes requests
-    if (cluster_metadata.op == VLXE) begin
+    if (cluster_metadata.op == VSXE) begin
       lane_aw_d += 1;
       if (lane_aw_q == NrLanes - 1) begin
         cluster_aw_d += 1;
@@ -517,7 +517,7 @@ always_comb begin
 
   // If there is an existing valid data in the buffer and the next request does not use the buffer datapath
   // we need to stall until the buffer responses are committed to the clusters
-  pending_resp = ((rd_datapath == SHUFFLE) || (rd_op == VLXE)) && (|buf_valid_q);
+  pending_resp = ((rd_datapath == SHUFFLE) || (rd_op inside {VLXE, VLSE})) && (|buf_valid_q);
 
   if ((((rd_datapath == BUFFER) || (|buf_valid_q)) && (rd_op == VLE))  || pending_resp) begin
 
@@ -628,12 +628,12 @@ always_comb begin
     // The next buffer has to be available only then ready to receive
     r_ready_buf = (buf_valid_d[rdbuf_pnt_d] == 1'b0);
   end 
-  else if (rd_op == VLXE & ~pending_resp) begin
+  else if ((rd_op inside {VLXE, VLSE}) & ~pending_resp) begin
 
-    ///// INDEXED LOADS      /////
+    ///// INDEXED/STRIDED LOADS /////
     ///// All bit precisions ///// 
 
-    // If indexed operation, just forward the data coming from GLSU without shuffling or buffering
+    // If indexed and strided operation, just forward the data coming from GLSU without shuffling or buffering
     automatic logic single_cluster_handshake = 1'b0;
     for (int c=0; c < NrClusters; c++) begin
       axi_resp_buf_out[c].r_valid = axi_resp_i[c].r_valid;
@@ -784,7 +784,7 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].aw_ready = axi_resp_i[c].aw_ready && !wr_full;
 
   // If indexed load send ready only to one of the clusters
-  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op == VLXE) ? (c==cluster_ar_q) ? 1'b1 : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
+  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? (c==cluster_ar_q) ? axi_resp_i[c].ar_ready : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
   
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
   assign axi_resp_o[c].b = axi_resp_i[c].b;
@@ -803,18 +803,18 @@ for (genvar c=0; c < NrClusters; c++) begin
 end
 
 // Valid input signal to use shuffle datapath
-assign r_valid[0]   = (rd_datapath == BUFFER) ? 1'b0 : (rd_op == VLXE) ? 1'b0 : axi_resp_i[0].r_valid;
+assign r_valid[0]   = (rd_datapath == BUFFER) ? 1'b0 : (rd_op inside {VLXE, VLSE}) ? 1'b0 : axi_resp_i[0].r_valid;
 
 // Handle Request path
 for (genvar c=0; c < NrClusters; c++) begin
   assign axi_req_o[c].aw = axi_req_i[c].aw;
   assign axi_req_o[c].aw_valid = axi_req_i[c].aw_valid;
   assign axi_req_o[c].ar = axi_req_i[c].ar;
-  assign axi_req_o[c].ar_valid = ((cluster_metadata_i[c].op == VLXE) ? ((c==cluster_ar_q) ? axi_req_i[c].ar_valid : 1'b0) : axi_req_i[c].ar_valid) && !rd_full;
+  assign axi_req_o[c].ar_valid = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? ((c==cluster_ar_q) ? axi_req_i[c].ar_valid : 1'b0) : axi_req_i[c].ar_valid) && !rd_full;
   assign axi_req_o[c].b_ready = axi_req_i[c].b_ready;
   
   // Reads
-  assign axi_req_o[c].r_ready = ((rd_datapath == BUFFER) ? (rd_op == VLXE ? axi_req_i[c].r_ready : r_ready_buf_q) : r_ready[0] ) & ~pending_resp;
+  assign axi_req_o[c].r_ready = ((rd_datapath == BUFFER) ? ((rd_op inside {VLXE, VLSE}) ? axi_req_i[c].r_ready : r_ready_buf_q) : r_ready[0] ) & ~pending_resp;
   assign r_ready_i[c] = axi_req_i[c].r_ready;           // From input request, get ready inputs to stream fork
 
   // Writes
