@@ -142,6 +142,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster
       ara_macro #(
         .NrLanes           (NrLanes             ),
+        .NrClusters        (NrClusters          ),
         .FPUSupport        (FPUSupport          ),
         .FPExtSupport      (FPExtSupport        ),
         .FixPtSupport      (FixPtSupport        ),

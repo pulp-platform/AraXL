@@ -9,6 +9,7 @@
 module ara import ara_pkg::*; import rvv_pkg::*; #(
     // RVV Parameters
     parameter  int           unsigned NrLanes      = 0,  // Number of parallel vector lanes.
+    parameter  int           unsigned NrClusters   = 0,   // Number of Ara instances
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -347,6 +348,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
 
   vlsu #(
     .NrLanes     (NrLanes     ),
+    .NrClusters  (NrClusters  ),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .axi_ar_t    (axi_ar_t    ),
@@ -360,6 +362,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   ) i_vlsu (
     .clk_i                      (clk_i                                                 ),
     .rst_ni                     (rst_ni                                                ),
+    // Id
+    .cluster_id_i               (cluster_id_i                                          ),
     // AXI memory interface
     .axi_req_o                  (axi_req_o                                             ),
     .axi_resp_i                 (axi_resp_i                                            ),

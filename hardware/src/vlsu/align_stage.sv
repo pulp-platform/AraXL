@@ -223,7 +223,7 @@ always_comb begin
     end
 
     // If last request
-    if (vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op == VLXE) begin
+    if (vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op == VLXE || cluster_metadata_i.op == VLSE) begin
       // Reset vl
       vl_d = 0;
       
@@ -267,7 +267,7 @@ always_comb begin
     last_d = axi_resp_i_cut[NumStages].r.last;
   end
 
-  if (tracker_q[r_pnt_q[NumStages-1]].op != VLXE) begin
+  if ((tracker_q[r_pnt_q[NumStages-1]].op != VLXE) && (tracker_q[r_pnt_q[NumStages-1]].op != VLSE)) begin
     // Combine the previous data and the current data packets using byte enable
     if (data_valid_q && axi_req_cut_ready[NumStages]) begin
       // Number of elements in a single AXI transaction

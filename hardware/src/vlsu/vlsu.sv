@@ -10,6 +10,7 @@
 
 module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     parameter  int  unsigned NrLanes = 0,
+    parameter  int  unsigned NrClusters   = 0, // Number of Ara instances
     parameter  type          vaddr_t = logic,  // Type used to address vector register file elements
     // AXI Interface parameters
     parameter  int  unsigned AxiDataWidth = 0,
@@ -27,6 +28,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   ) (
     input  logic                    clk_i,
     input  logic                    rst_ni,
+    // Id
+    input  id_cluster_t             cluster_id_i,
     // AXI Memory Interface
     output axi_req_t                axi_req_o,
     input  axi_resp_t               axi_resp_i,
@@ -126,6 +129,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
 
   addrgen #(
     .NrLanes     (NrLanes     ),
+    .NrClusters  (NrClusters  ),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .axi_ar_t    (axi_ar_t    ),
@@ -133,6 +137,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   ) i_addrgen (
     .clk_i                      (clk_i                      ),
     .rst_ni                     (rst_ni                     ),
+    // Id
+    .cluster_id_i               (cluster_id_i               ),
     // AXI Memory Interface
     .axi_aw_o                   (axi_req.aw                 ),
     .axi_aw_valid_o             (axi_req.aw_valid           ),
