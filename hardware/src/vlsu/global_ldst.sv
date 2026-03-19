@@ -143,7 +143,7 @@ logic fifo_full_o, fifo_empty_o;
 fifo_v3 # (
   .DATA_WIDTH ( $bits(idx_metadata_i) ),
   .DEPTH      ( 8 ) // Maximum number of requests in flight for VLXE/VLSE
-) i_vl_fifo (
+) i_ldst_req_fifo (
   .clk_i  (clk_i          ),
   .rst_ni (rst_ni         ),
   .push_i (fifo_push_i    ),
@@ -268,7 +268,7 @@ always_comb begin : p_global_ldst
 
   // For indexed loads, select AR request from appropriate cluster
   // Start with cluster-0 and update the cluster by 1 if we have processed NrLanes requests and we have more requests to process
-  if (axi_req_i[cluster_ar_q].ar_valid && r_req_ready) begin
+  if (axi_req_i[cluster_ar_q].ar_valid && r_req_ready && (fifo_push_q == 1'b0 ? !fifo_full_o : 1'b1)) begin
     req_d.ar = axi_req_i[cluster_ar_q].ar;
     r_req_valid_d = 1'b1;
     vew_d = cluster_metadata_i.vew;
@@ -334,7 +334,8 @@ always_comb begin : p_global_ldst
         vl_ldst_rd_d -= vl_done;
         req_d.ar.addr = aligned_next_start_addr_d;     // Update request state
         r_req_valid_d = 1'b1;
-        fifo_push_i = 1'b1;
+        
+        fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
         fifo_push_d = 1'b1;
       end else begin
         vl_split = vl_ldst_rd_d;
