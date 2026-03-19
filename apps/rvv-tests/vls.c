@@ -172,7 +172,6 @@ void TEST_CASE14(void) {
 }
 
 int main(void) {
-  // Problematic: 5 6 7 10 14
   printf("Testing vlse...\n");
   INIT_CHECK();
   enable_vec();

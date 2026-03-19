@@ -784,7 +784,7 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].aw_ready = axi_resp_i[c].aw_ready && !wr_full;
 
   // If indexed load send ready only to one of the clusters
-  assign axi_resp_o[c].ar_ready = (((cluster_metadata_i[c].op == VLXE) || (cluster_metadata_i[c].op == VLSE)) ? (c==cluster_ar_q) ? 1'b1 : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
+  assign axi_resp_o[c].ar_ready = (((cluster_metadata_i[c].op == VLXE) || (cluster_metadata_i[c].op == VLSE)) ? (c==cluster_ar_q) ? axi_resp_i[c].ar_ready : 1'b0 : axi_resp_i[c].ar_ready) && !rd_full;
   
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
   assign axi_resp_o[c].b = axi_resp_i[c].b;

@@ -169,7 +169,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     IDLE,
     ADDRGEN,
     ADDRGEN_IDX_OP,
-    ADDRGEN_IDX_OP_END
+    ADDRGEN_OP_SYNC_END
   } state_q, state_d;
 
   // Cluster-wise base address for VLSE
@@ -271,10 +271,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           };
           addrgen_req_valid = 1'b1;
 
-          if (addrgen_req_ready) begin
-            addrgen_req_valid = '0;
-            addrgen_ack_o     = 1'b1;
-            state_d           = IDLE;
+          if (pe_req_q.op == VLSE) begin
+            if (addrgen_req_ready) begin
+              state_d           = ADDRGEN_OP_SYNC_END;
+            end
+          end else begin
+            if (addrgen_req_ready) begin
+              addrgen_req_valid = '0;
+              addrgen_ack_o     = 1'b1;
+              state_d           = IDLE;
+            end
           end
         end
       end
@@ -361,30 +367,37 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         end
 
         if (idx_op_error_d || addrgen_req_ready) begin
-          state_d = ADDRGEN_IDX_OP_END;
+          state_d = ADDRGEN_OP_SYNC_END;
         end
       end
-
       // This state exists not to create combinatorial paths on the interface
-      ADDRGEN_IDX_OP_END : begin
+      ADDRGEN_OP_SYNC_END : begin
         // Acknowledge the indexed memory operation
 
         // Request for synchronization with other clusters
         idx_completed_o = 1'b1;
         addrgen_ack_o   = 1'b0;
 
-        // For indexed operation, wait until you get a confirmation from GLSU
-        if (idx_completed_sync_i) begin
-          addrgen_ack_o    = 1'b1;
-          idx_completed_o  = 1'b0;
+        if (pe_req_q.op == VLXE) begin
+          // For indexed operation, wait until you get a confirmation from GLSU
+          if (idx_completed_sync_i) begin
+            addrgen_ack_o    = 1'b1;
+            idx_completed_o  = 1'b0;
+            addrgen_req_valid = '0;
+            state_d           = IDLE;
+            // Reset pointers
+            elm_ptr_d       = '0;
+            word_lane_ptr_d = '0;
+            // Raise an error if necessary
+            if (idx_op_error_q) begin
+              addrgen_error_o = 1'b1;
+            end
+          end
+        end else if (pe_req_q.op == VLSE) begin
           addrgen_req_valid = '0;
-          state_d           = IDLE;
-          // Reset pointers
-          elm_ptr_d       = '0;
-          word_lane_ptr_d = '0;
-          // Raise an error if necessary
-          if (idx_op_error_q) begin
-            addrgen_error_o = 1'b1;
+          if (idx_completed_sync_i) begin
+            addrgen_ack_o     = 1'b1;
+            state_d           = IDLE;
           end
         end
       end
