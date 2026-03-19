@@ -39,7 +39,7 @@ $(foreach app,$(RIVEC_APPS),$(eval $(call rivec_gen_data_template, $(RIVEC_PATH)
 define rivec_compile_template
 bin/$1: $(RIVEC_PATH)/$1/data.S.o $(addsuffix .o, $(shell find $(RIVEC_DIR)/$(1) -name "*.c" -o -name "*.S" -o -name "*.cpp")) $(RUNTIME_LLVM) linker_script
 	mkdir -p bin/
-	$$(RISCV_CC) $(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find $(RIVEC_DIR)/$(1) -name "*.c" -o -name "*.S" -o -name "*.cpp")) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS) -T$$(CURDIR)/common/link.ld
+	$$(RISCV_CC) $$(RISCV_CCFLAGS) -o $$@ $$(addsuffix .o, $$(shell find $(RIVEC_DIR)/$(1) -name "*.c" -o -name "*.S" -o -name "*.cpp")) $(RUNTIME_LLVM) $$(RISCV_LDFLAGS) -T$$(CURDIR)/common/link.ld
 	$$(RISCV_OBJDUMP) $$(RISCV_OBJDUMP_FLAGS) -D $$@ > $$@.dump
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 endef
