@@ -19,6 +19,9 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   ) (
     input  logic                           clk_i,
     input  logic                           rst_ni,
+    // id
+    input  id_cluster_t                    cluster_id_i,
+    input  num_cluster_t                   num_clusters_i,
     // Memory interface
     output axi_ar_t                        axi_ar_o,
     output logic                           axi_ar_valid_o,
@@ -166,8 +169,13 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     IDLE,
     ADDRGEN,
     ADDRGEN_IDX_OP,
-    ADDRGEN_IDX_OP_END
+    ADDRGEN_OP_SYNC_END
   } state_q, state_d;
+
+  // Cluster-wise base address for VLSE
+  axi_addr_t strided_addr_d, strided_addr_q;
+  // To which lane are we generating the address for VLSE
+  logic [$clog2(NrLanes+1) : 0] strided_lane_id_d, strided_lane_id_q;
 
   always_comb begin: addr_generation
     // Maintain state
@@ -263,10 +271,16 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           };
           addrgen_req_valid = 1'b1;
 
-          if (addrgen_req_ready) begin
-            addrgen_req_valid = '0;
-            addrgen_ack_o     = 1'b1;
-            state_d           = IDLE;
+          if (pe_req_q.op == VLSE) begin
+            if (addrgen_req_ready) begin
+              state_d           = ADDRGEN_OP_SYNC_END;
+            end
+          end else begin
+            if (addrgen_req_ready) begin
+              addrgen_req_valid = '0;
+              addrgen_ack_o     = 1'b1;
+              state_d           = IDLE;
+            end
           end
         end
       end
@@ -353,30 +367,37 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         end
 
         if (idx_op_error_d || addrgen_req_ready) begin
-          state_d = ADDRGEN_IDX_OP_END;
+          state_d = ADDRGEN_OP_SYNC_END;
         end
       end
-
       // This state exists not to create combinatorial paths on the interface
-      ADDRGEN_IDX_OP_END : begin
+      ADDRGEN_OP_SYNC_END : begin
         // Acknowledge the indexed memory operation
 
         // Request for synchronization with other clusters
         idx_completed_o = 1'b1;
         addrgen_ack_o   = 1'b0;
 
-        // For indexed operation, wait until you get a confirmation from GLSU
-        if (idx_completed_sync_i) begin
-          addrgen_ack_o    = 1'b1;
-          idx_completed_o  = 1'b0;
+        if (pe_req_q.op == VLXE) begin
+          // For indexed operation, wait until you get a confirmation from GLSU
+          if (idx_completed_sync_i) begin
+            addrgen_ack_o    = 1'b1;
+            idx_completed_o  = 1'b0;
+            addrgen_req_valid = '0;
+            state_d           = IDLE;
+            // Reset pointers
+            elm_ptr_d       = '0;
+            word_lane_ptr_d = '0;
+            // Raise an error if necessary
+            if (idx_op_error_q) begin
+              addrgen_error_o = 1'b1;
+            end
+          end
+        end else if (pe_req_q.op == VLSE) begin
           addrgen_req_valid = '0;
-          state_d           = IDLE;
-          // Reset pointers
-          elm_ptr_d       = '0;
-          word_lane_ptr_d = '0;
-          // Raise an error if necessary
-          if (idx_op_error_q) begin
-            addrgen_error_o = 1'b1;
+          if (idx_completed_sync_i) begin
+            addrgen_ack_o     = 1'b1;
+            state_d           = IDLE;
           end
         end
       end
@@ -482,6 +503,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     idx_addr_ready_d    = 1'b0;
     addrgen_error_vl_d  = '0;
 
+    // VLSE base address for this cluster
+    strided_addr_d    = strided_addr_q;
+    // Lane pointer for VLSE axi req
+    strided_lane_id_d = strided_lane_id_q;
+
     // No error by default
     idx_op_error_d = 1'b0;
 
@@ -517,6 +543,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
             eff_axi_dw_d     = AxiDataWidth/8;
             eff_axi_dw_log_d = $clog2(AxiDataWidth/8);
           end
+
+          // For VLSE, each cluster should have different address to issue:
+          // For cluster X, the initial address should be (baseaddr_cluster0 + stride*(cluster_id_i*NrLanes))
+          strided_addr_d = axi_addrgen_d.addr + (axi_addrgen_d.stride << $clog2(NrLanes)) * cluster_id_i;
         end
       end
       AXI_ADDRGEN_MISALIGNED: begin
@@ -627,7 +657,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // AR Channel
               if (axi_addrgen_q.is_load) begin
                 axi_ar_o = '{
-                  addr   : axi_addrgen_q.addr,
+                  addr   : strided_addr_q,
                   len    : 0,
                   size   : axi_addrgen_q.vew,
                   cache  : CACHE_MODIFIABLE,
@@ -639,7 +669,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // AW Channel
               else begin
                 axi_aw_o = '{
-                  addr   : axi_addrgen_q.addr,
+                  addr   : strided_addr_q,
                   len    : 0,
                   size   : axi_addrgen_q.vew,
                   cache  : CACHE_MODIFIABLE,
@@ -651,7 +681,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
               // Send this request to the load/store units
               axi_addrgen_queue = '{
-                addr   : axi_addrgen_q.addr,
+                addr   : strided_addr_q,
                 size   : axi_addrgen_q.vew,
                 len    : 0,
                 is_load: axi_addrgen_q.is_load
@@ -660,13 +690,28 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
               // Account for the requested operands
               axi_addrgen_d.len  = axi_addrgen_q.len - 1;
-              // Calculate the addresses for the next iteration, adding the correct stride
-              axi_addrgen_d.addr = axi_addrgen_q.addr + axi_addrgen_q.stride;
+
+              // For VLSE, Update lane id that the requests corresponds to
+              strided_lane_id_d  += 1'b1;
+              // Update strided address, the all the lanes inside this cluster have issued a request,
+              // We should update the base address since the following continuous-strided req should
+              // come from other clusters
+              if (strided_lane_id_d == NrLanes) begin
+                strided_lane_id_d = '0;
+                strided_addr_d  = strided_addr_q + (axi_addrgen_q.stride << $clog2(NrLanes)) * (1'b1 << num_clusters_i - 1);
+              end else begin
+                strided_addr_d  = strided_addr_q + axi_addrgen_q.stride;
+              end
+
+              // // Calculate the addresses for the next iteration, adding the correct stride
+              // axi_addrgen_d.addr = axi_addrgen_q.addr + axi_addrgen_q.stride;
 
               // Finished generating AXI requests
               if (axi_addrgen_d.len == 0) begin
                 addrgen_req_ready   = 1'b1;
                 axi_addrgen_state_d = AXI_ADDRGEN_IDLE;
+                // Reset lane pointer
+                strided_lane_id_d   = '0;
               end
             end else begin
 
@@ -748,6 +793,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       eff_axi_dw_q              <= '0;
       eff_axi_dw_log_q          <= '0;
       next_2page_msb_q          <= '0;
+      strided_addr_q            <= '0;
+      strided_lane_id_q         <= '0;
     end else begin
       axi_addrgen_state_q       <= axi_addrgen_state_d;
       axi_addrgen_q             <= axi_addrgen_d;
@@ -757,6 +804,8 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       eff_axi_dw_q              <= eff_axi_dw_d;
       eff_axi_dw_log_q          <= eff_axi_dw_log_d;
       next_2page_msb_q          <= next_2page_msb_d;
+      strided_addr_q            <= strided_addr_d;
+      strided_lane_id_q         <= strided_lane_id_d;
     end
   end
 

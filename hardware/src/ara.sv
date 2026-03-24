@@ -360,6 +360,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   ) i_vlsu (
     .clk_i                      (clk_i                                                 ),
     .rst_ni                     (rst_ni                                                ),
+    // Id
+    .cluster_id_i               (cluster_id_i                                          ),
+    .num_clusters_i             (num_clusters_i                                        ),
     // AXI memory interface
     .axi_req_o                  (axi_req_o                                             ),
     .axi_resp_i                 (axi_resp_i                                            ),

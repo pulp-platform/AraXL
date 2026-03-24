@@ -27,6 +27,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   ) (
     input  logic                    clk_i,
     input  logic                    rst_ni,
+    // Id
+    input  id_cluster_t             cluster_id_i,
+    input  num_cluster_t            num_clusters_i,
     // AXI Memory Interface
     output axi_req_t                axi_req_o,
     input  axi_resp_t               axi_resp_i,
@@ -133,6 +136,9 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   ) i_addrgen (
     .clk_i                      (clk_i                      ),
     .rst_ni                     (rst_ni                     ),
+    // Id
+    .cluster_id_i               (cluster_id_i               ),
+    .num_clusters_i             (num_clusters_i             ),
     // AXI Memory Interface
     .axi_aw_o                   (axi_req.aw                 ),
     .axi_aw_valid_o             (axi_req.aw_valid           ),

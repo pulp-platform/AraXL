@@ -52,10 +52,10 @@ logic w_last_d, w_last_q;   // If this is a last write packer
 // Pointers to clusters to which data has to be written or read from
 logic [$clog2(NrClusters)-1:0] cluster_start_r_d, cluster_start_r_q, cluster_start_wr_d, cluster_start_wr_q;
 
-// Tracks which cluster's request should be taken for VLXE
+// Tracks which cluster's request should be taken for VLXE/VLSE
 logic [$clog2(NrClusters)-1:0] cluster_ar_d, cluster_ar_q, cluster_aw_d, cluster_aw_q;
 
-// Tracks which cluster should receive read response for VLXE
+// Tracks which cluster should receive read response for VLXE/VLSE
 logic [$clog2(NrClusters)-1:0] cluster_r_d, cluster_r_q;  
 logic [$clog2(NrLanes):0] lane_ar_d, lane_ar_q;
 logic [$clog2(NrLanes):0] lane_aw_d, lane_aw_q;
@@ -142,7 +142,7 @@ logic fifo_full_o, fifo_empty_o;
 // Fifo to track the request metadata when response arrives
 fifo_v3 # (
   .DATA_WIDTH ( $bits(idx_metadata_i) ),
-  .DEPTH      ( 8 ) // Maximum number of requests in flight for VLXE
+  .DEPTH      ( 8 ) // Maximum number of requests in flight for VLXE/VLSE
 ) i_vl_fifo (
   .clk_i  (clk_i          ),
   .rst_ni (rst_ni         ),
@@ -272,7 +272,7 @@ always_comb begin : p_global_ldst
     vl_ldst_rd_d = (vl_ldst_rd_q == '0) ? cluster_metadata_i.vl : vl_ldst_rd_q;
 
     // If not an indexed load, always use cluster 0
-    if (cluster_metadata_i.op != VLXE) begin
+    if (!(cluster_metadata_i.op inside {VLXE, VLSE})) begin
       cluster_ar_d = '0;
     end else begin
       // Increment request counter for current cluster
@@ -294,7 +294,7 @@ always_comb begin : p_global_ldst
     automatic logic [8:0] burst_length;
     axi_addr_t aligned_start_addr_d, aligned_next_start_addr_d, aligned_end_addr_d;
     automatic logic [($bits(aligned_start_addr_d) - 12)-1:0] next_2page_msb_d;
-    automatic vlen_cluster_t vl_req = (cluster_metadata_i.op == VLXE) ? 1 : vl_ldst_rd_d;
+    automatic vlen_cluster_t vl_req = (cluster_metadata_i.op inside {VLXE, VLSE}) ? 1 : vl_ldst_rd_d;
     automatic vlen_cluster_t vl_split;
 
     req_final.ar        = req_d.ar;             // Copy request state
@@ -325,7 +325,7 @@ always_comb begin : p_global_ldst
     req_final.ar.len = burst_length - 1;
     vl_done = (aligned_next_start_addr_d - req_d.ar.addr) >> int'(vew_d);
 
-    if (cluster_metadata_i.op != VLXE) begin
+    if (!(cluster_metadata_i.op inside {VLXE, VLSE})) begin
       if (vl_ldst_rd_d > vl_done) begin
         vl_split = vl_done;
         vl_ldst_rd_d -= vl_done;
@@ -344,7 +344,7 @@ always_comb begin : p_global_ldst
         fifo_push_d = 1'b0;
       end
     end else begin
-      // For VLXE, we decrement the vl by 1 as each request is for 1 element
+      // For VLXE and VLSE, we decrement the vl by 1 as each request is for 1 element
       vl_ldst_rd_d -= 1;
       req_d = '0;
       r_req_valid_d = 1'b0;
@@ -385,7 +385,7 @@ always_comb begin : p_global_ldst
     // aw
     axi_resp_o[i].aw_ready = w_req_ready;
     // ar
-    if (cluster_metadata_i.op == VLXE) begin
+    if (cluster_metadata_i.op inside {VLXE, VLSE}) begin
       // For VLXE, only send ready to the cluster from which we have taken the request
       axi_resp_o[i].ar_ready = (i == cluster_ar_q) ? r_req_ready : 1'b0;
     end else begin
@@ -397,6 +397,8 @@ always_comb begin : p_global_ldst
   // Collect AxiDataWidth data and distribute amongst NrClusters*ClusterAxiDataWidth
   // Send data to all Clusters once NrClusters*ClusterAxiDataWidth is filled.
   cluster_axi_resp_data_d = cluster_axi_resp_data_q;
+  cluster_start_r_d       = cluster_start_r_q;
+  
   for (int i=0; i<NrClusters; i++) begin
     cluster_axi_resp_data_d[i].r_valid = 1'b0;
     axi_resp_o[i].r_valid = 1'b0;
@@ -411,13 +413,20 @@ always_comb begin : p_global_ldst
     if (axi_resp_i.r_valid) begin : p_valid_read_resp
       // Assign the valid data from System to required to AxiDataWidth/ClusterAxiDataWidth clusters.
       for (int i=0; i<(AxiDataWidth/ClusterAxiDataWidth); i++) begin
-        cluster_axi_resp_data_d[cluster_r_q+i].r.data = axi_resp_i.r.data[i*ClusterAxiDataWidth +: ClusterAxiDataWidth];
-        cluster_axi_resp_data_d[cluster_r_q+i].r.id   = axi_resp_i.r.id;
-        cluster_axi_resp_data_d[cluster_r_q+i].r.resp = axi_resp_i.r.resp;
-        cluster_axi_resp_data_d[cluster_r_q+i].r.last = 1'b0;
-        cluster_axi_resp_data_d[cluster_r_q+i].r.user = axi_resp_i.r.user;
+        if (idx_metadata_o.op inside {VLXE, VLSE}) begin
+          cluster_axi_resp_data_d[cluster_start_r_q+i].r.data = axi_resp_i.r.data[0*ClusterAxiDataWidth +: ClusterAxiDataWidth];
+        end else begin
+          cluster_axi_resp_data_d[cluster_start_r_q+i].r.data = axi_resp_i.r.data[i*ClusterAxiDataWidth +: ClusterAxiDataWidth];
+        end
+        cluster_axi_resp_data_d[cluster_start_r_q+i].r.id   = axi_resp_i.r.id;
+        cluster_axi_resp_data_d[cluster_start_r_q+i].r.resp = axi_resp_i.r.resp;
+        cluster_axi_resp_data_d[cluster_start_r_q+i].r.last = 1'b0;
+        cluster_axi_resp_data_d[cluster_start_r_q+i].r.user = axi_resp_i.r.user;
       end
       cluster_start_r_d = cluster_r_q + (AxiDataWidth/ClusterAxiDataWidth);
+      // TODO: One thing to check: what if for the last round, only first few clusters need data, all the other clusters dont need?
+      //       If so, would we mix data from two load instructions together? Also one question, for VLSE, we only need data from
+      //       cluster 0, it seems like that we should not wait for all the clusters, similar for VLXE
       if ((cluster_r_q == (NrClusters - (AxiDataWidth/ClusterAxiDataWidth))) || axi_resp_i.r.last) begin
         cluster_start_r_d = 0;
         for (int i=0; i<NrClusters; i++) begin
@@ -430,10 +439,10 @@ always_comb begin : p_global_ldst
     
     for (int i=0; i<NrClusters; i++) begin  
       axi_resp_o[i].r = cluster_axi_resp_data_d[i].r;
-      if (idx_metadata_o.op == VLXE) begin
-        // If indexed load send reponse only to the desired cluster
+      if (idx_metadata_o.op inside {VLXE, VLSE}) begin
+        // For VLXE and VLSE, send reponse only to the desired cluster
         axi_resp_o[i].r_valid = (i == cluster_r_q) ? cluster_axi_resp_data_d[i].r_valid : 1'b0;
-        // Update which cluster should receive the read response for VLXE
+        // Update which cluster should receive the read response for VLXE and VLSE
         if (axi_resp_o[i].r_valid) begin
           // Count responses being sent in this cycle
           r_resp_rem_d -= 1;
@@ -455,8 +464,8 @@ always_comb begin : p_global_ldst
       end
     end
 
-    // Since all clusters receive data synchronously for VLE, just check for valid from cluster 0
-    if (idx_metadata_o.op != VLXE && axi_resp_o[0].r_valid && axi_req_i[0].r_ready) begin
+    // For VLE, since all clusters receive data synchronously for VLE, just check for valid from cluster 0
+    if ((!(idx_metadata_o.op inside {VLXE, VLSE})) && axi_resp_o[0].r_valid && axi_req_i[0].r_ready) begin
       automatic logic [$clog2(AxiDataWidth/8):0] nelem = ((AxiDataWidth/8) >> idx_metadata_o.vew);
       if (r_resp_rem_d > nelem) begin
         r_resp_rem_d -= nelem;
