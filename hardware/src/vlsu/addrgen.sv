@@ -378,7 +378,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
         idx_completed_o = 1'b1;
         addrgen_ack_o   = 1'b0;
 
-        if (pe_req_q.op == VLXE) begin
+        if (pe_req_q.op inside {VLXE, VSXE}) begin
           // For indexed operation, wait until you get a confirmation from GLSU
           if (idx_completed_sync_i) begin
             addrgen_ack_o    = 1'b1;
