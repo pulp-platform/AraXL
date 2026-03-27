@@ -260,6 +260,37 @@ riscv_tests_simv: $(tests)
 $(tests): rv%: $(app_path)/rv%
 	$(veril_library)/V$(veril_top) $(if $(trace),-t,) -l ram,$<,elf &> $(buildpath)/$@.trace
 
+# Run all RISC-V tests on QuestaSim
+.PHONY: riscv_tests_simc
+riscv_tests_simc: compile
+	@failed_tests=""; \
+	GREEN='\033[92m'; RED='\033[91m'; RESET='\033[0m'; \
+	echo -e "========================================================================================="; \
+	echo -e "Running RISC-V Vector tests on QuestaSim $(nr_lanes) lanes and $(nr_clusters) clusters"; \
+	echo -e "========================================================================================="; \
+	for test in $(tests); do \
+		make simc app=$$test > $(buildpath)/$${test}.log 2>&1; \
+		if grep -q "FAILED" $(buildpath)/transcript; then \
+			printf "  ✗ %-60s $${RED}FAILED$${RESET}\n" "$$test"; \
+			failed_tests="$$failed_tests $$test"; \
+		else \
+			printf "  ✓ %-60s $${GREEN}PASSED$${RESET}\n" "$$test"; \
+		fi; \
+		cp $(buildpath)/transcript $(buildpath)/$${test}.transcript; \
+	done; \
+	if [ -n "$$failed_tests" ]; then \
+		echo -e ""; \
+		echo -e "==============================================="; \
+		echo -e "$${RED}FAILED TESTS:$$failed_tests$${RESET}"; \
+		echo -e "==============================================="; \
+		exit 1; \
+	else \
+		echo -e ""; \
+		echo -e "==============================================="; \
+		echo -e "$${GREEN}ALL TESTS PASSED$${RESET}"; \
+		echo -e "==============================================="; \
+	fi
+
 # Lint
 .PHONY: lint spyglass/tmp/files
 
