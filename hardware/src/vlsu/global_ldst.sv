@@ -45,12 +45,8 @@ import axi_pkg::aligned_addr;
 import axi_pkg::BURST_INCR;
 import axi_pkg::CACHE_MODIFIABLE;
 
-logic w_ready_q, w_ready_d; // If this unit is ready to receive data from ARA
-logic w_valid_d, w_valid_q; // If this unit has a walid write data to System 
-logic w_last_d, w_last_q;   // If this is a last write packer
-
 // Pointers to clusters to which data has to be written or read from
-logic [$clog2(NrClusters)-1:0] cluster_start_r_d, cluster_start_r_q, cluster_start_wr_d, cluster_start_wr_q;
+logic [$clog2(NrClusters)-1:0] cluster_start_r_d, cluster_start_r_q;
 
 // Tracks which cluster's request should be taken for VLXE/VLSE
 logic [$clog2(NrClusters)-1:0] cluster_ar_d, cluster_ar_q, cluster_aw_d, cluster_aw_q;
@@ -65,12 +61,6 @@ logic [$clog2(NrLanes):0] r_resp_lane_d, r_resp_lane_q;
 vlen_cluster_t r_resp_rem_d, r_resp_rem_q;
 
 cluster_axi_resp_t [NrClusters-1:0] cluster_axi_resp_data_d, cluster_axi_resp_data_q;
-cluster_axi_req_t  [NrClusters-1:0] axi_req_data_d, axi_req_data_q; 
-
-// For Shuffling
-logic [NrClusters-1:0] w_cluster_valid;
-logic [NrClusters-1:0] w_cluster_ready_d, w_cluster_ready_q;
-logic [NrClusters-1:0] w_cluster_last_d, w_cluster_last_q; 
 
 int len_r, len_w;
 
@@ -129,6 +119,57 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
   end
 end
 
+///// Signals for AXI B channel
+
+// Tracks which cluster should receive b response (write response)
+logic [$clog2(NrClusters)-1:0] cluster_b_d, cluster_b_q;
+logic [$clog2(NrLanes):0] lane_b_d, lane_b_q;
+
+// Tracks remaining responses for current load
+vlen_cluster_t b_resp_rem_d, b_resp_rem_q;
+
+always_ff @(posedge clk_i or negedge rst_ni) begin
+  if(~rst_ni) begin
+    cluster_b_q  <= '0;
+    lane_b_q     <= '0;
+    b_resp_rem_q <= '0;
+  end else begin
+    cluster_b_q  <= cluster_b_d;
+    lane_b_q     <= lane_b_d;
+    b_resp_rem_q <= b_resp_rem_d;
+  end
+end
+
+///// Signals for AXI W channel
+
+// Tracks which cluster should receive write data for VSXE
+logic [$clog2(NrClusters)-1:0] cluster_w_d, cluster_w_q;
+logic [$clog2(NrLanes):0] lane_w_d, lane_w_q;
+
+// Pointers to clusters to which data has to be written or read from
+logic [$clog2(NrClusters)-1:0] cluster_start_wr_d, cluster_start_wr_q;
+
+logic w_ready_q, w_ready_d; // If this unit is ready to receive data from ARA
+logic w_valid_d, w_valid_q; // If this unit has a walid write data to System 
+logic w_last_d, w_last_q;   // If this is a last write packer
+
+cluster_axi_req_t  [NrClusters-1:0] axi_req_data_d, axi_req_data_q; 
+
+// For Shuffling
+logic [NrClusters-1:0] w_cluster_valid;
+logic [NrClusters-1:0] w_cluster_ready_d, w_cluster_ready_q;
+logic [NrClusters-1:0] w_cluster_last_d, w_cluster_last_q; 
+
+always_ff @(posedge clk_i or negedge rst_ni) begin
+  if(~rst_ni) begin
+    cluster_w_q <= '0;
+    lane_w_q    <= '0;
+  end else begin
+    cluster_w_q <= cluster_w_d;
+    lane_w_q    <= lane_w_d;
+  end
+end
+
 typedef struct packed {
   vlen_cluster_t vl;
   ara_op_e op;
@@ -157,6 +198,30 @@ fifo_v3 # (
   .testmode_i  (1'b0      )
 );
 
+// Fifo to track the request metadata when b signal arrives
+// It could happen that the GLSU proceeds to the next instruction when the b arrives,
+// this FIFO tracks the vector length to send the b signal to the desired clusters
+logic b_fifo_pop_o, b_fifo_push_i;
+logic b_fifo_full_o, b_fifo_empty_o;
+indexed_op_metadata_t b_fifo_idx_metadata;
+
+fifo_v3 # (
+  .DATA_WIDTH ( $bits(idx_metadata_i) ),
+  .DEPTH      ( 8 ) // Maximum number of requests in flight for VLXE/VLSE
+) i_b_fifo (
+  .clk_i  (clk_i               ),
+  .rst_ni (rst_ni              ),
+  .push_i (b_fifo_push_i       ),
+  .data_i (idx_metadata_i      ),
+  .pop_i  (b_fifo_pop_o        ),
+  .data_o (b_fifo_idx_metadata ),
+  .full_o (b_fifo_full_o       ),
+  .empty_o(b_fifo_empty_o      ),
+  .flush_i(1'b0                ),
+  .usage_o( /* unused */       ),
+  .testmode_i  (1'b0           )
+);
+
 always_comb begin : p_global_ldst
   
   // Copy data between ARA<->System
@@ -174,11 +239,18 @@ always_comb begin : p_global_ldst
   req_wrmem.aw_valid = 1'b0;
 
   fifo_push_i = 1'b0;
+  b_fifo_push_i = 1'b0;
   fifo_push_d = fifo_push_q;
 
   // Initialize cluster pointers and request counters
   cluster_aw_d = cluster_aw_q;
   lane_aw_d = lane_aw_q;
+
+  /////////////////
+  //  AXI AR/AW  //
+  /////////////////
+
+  ///// WRITE REQUESTS /////
 
   // If we have an indexed load, choose the axi request from the desired cluster instead of cluster-0.
   // Start with cluster-0 and update the cluster by 1 if we have processed NrLanes requests and we have more requests to process
@@ -186,7 +258,7 @@ always_comb begin : p_global_ldst
     req_d.aw = axi_req_i[cluster_aw_q].aw;
     w_req_valid_d = 1'b1;
     vew_d = cluster_metadata_i.vew;
-    vl_ldst_wr_d = cluster_metadata_i.vl;
+    vl_ldst_wr_d = (vl_ldst_wr_q == '0) ? cluster_metadata_i.vl : vl_ldst_wr_q;
 
     // If not an indexed load, always use cluster 0
     if (cluster_metadata_i.op != VSXE) begin
@@ -211,6 +283,7 @@ always_comb begin : p_global_ldst
     automatic logic [8:0] w_burst_length;
     automatic axi_addr_t wr_aligned_start_addr_d, wr_aligned_next_start_addr_d, wr_aligned_end_addr_d;
     automatic logic [($bits(wr_aligned_start_addr_d) - 12)-1:0] wr_next_2page_msb_d;
+    automatic vlen_cluster_t vl_req = (cluster_metadata_i.op inside {VSXE}) ? 1 : vl_ldst_wr_d;
 
     req_wrmem.aw        = req_d.aw;             // Copy request state
     req_wrmem.aw.size   = size_axi;
@@ -220,7 +293,7 @@ always_comb begin : p_global_ldst
 
     // Check if the address is unaligned for AxiDataWidth bits
     wr_aligned_start_addr_d = aligned_addr(req_wrmem.aw.addr, size_axi);
-    wr_aligned_next_start_addr_d = aligned_addr(req_wrmem.aw.addr + (vl_ldst_wr_d << vew_d) -1, size_axi) + AxiDataWidth/8;
+    wr_aligned_next_start_addr_d = aligned_addr(req_wrmem.aw.addr + (vl_req << vew_d) -1, size_axi) + AxiDataWidth/8;
     wr_aligned_end_addr_d = wr_aligned_next_start_addr_d - 1;
     wr_next_2page_msb_d = wr_aligned_start_addr_d[AxiAddrWidth-1:12] + 1;
     // 1 - Check for 4KB page boundary
@@ -240,16 +313,44 @@ always_comb begin : p_global_ldst
     req_wrmem.aw.len = w_burst_length - 1;
 
     vl_w_done = (wr_aligned_next_start_addr_d - req_d.aw.addr) >> int'(vew_d);
-    if (vl_ldst_wr_d > vl_w_done) begin
-      vl_ldst_wr_d -= vl_w_done;
-      req_d.aw.addr = wr_aligned_next_start_addr_d;     // Update request state
-      w_req_valid_d = 1'b1;
+    
+    if (!(cluster_metadata_i.op inside {VSXE})) begin
+      if (vl_ldst_wr_d > vl_w_done) begin
+        vl_ldst_wr_d -= vl_w_done;
+        req_d.aw.addr = wr_aligned_next_start_addr_d;     // Update request state
+        w_req_valid_d = 1'b1;
+        b_fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
+        fifo_push_d = 1'b1;
+      end else begin
+        vl_ldst_wr_d = '0;
+        w_req_valid_d = 1'b0;
+        b_fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
+        fifo_push_d = 1'b0;
+      end
     end else begin
+      vl_ldst_wr_d -= 1;
+      // If request already pushed to fifo don't push again
+      b_fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
+      fifo_push_d = 1'b1;
+      if (vl_ldst_wr_d == 0) begin
+        // If we have sent all the requests for this indexed vector store, we can move the AW pointer back to cluster 0.
+        cluster_aw_d = '0;
+        lane_aw_d = '0;
+        fifo_push_d = 1'b0;
+      end
       w_req_valid_d = 1'b0;
-    end
+    end 
+
+    // Push vector length and op info into the fifo to read later when responses come back. 
+    // This is needed to know how many responses to expect for each vector load and when a vector load is completed.
+    idx_metadata_i.vl = cluster_metadata_i.vl;
+    idx_metadata_i.op = cluster_metadata_i.op;
+    idx_metadata_i.vew = vew_d;
   end
   axi_req_o.aw = req_wrmem.aw;
   axi_req_o.aw_valid = req_wrmem.aw_valid;
+
+  ///// READ REQUESTS /////
 
   // Alignment is only done for the read request channel AR
   // ar channel
@@ -374,8 +475,6 @@ always_comb begin : p_global_ldst
   axi_req_o.ar = req_final.ar;
   axi_req_o.ar_valid = req_final.ar_valid;
   
-  // b channel
-  axi_req_o.b_ready = axi_req_i[cluster_aw_q].b_ready;
   // r channel
   axi_req_o.r_ready = 1'b1;
   for (int i=0; i<NrClusters; i++)
@@ -383,19 +482,20 @@ always_comb begin : p_global_ldst
 
   // Distribute response to Lane Groups
   for (int i=0; i<NrClusters; i++) begin
-    // b
-    axi_resp_o[i].b_valid = axi_resp_i.b_valid;
-    axi_resp_o[i].b = axi_resp_i.b;
-    // aw
-    axi_resp_o[i].aw_ready = w_req_ready;
-    // ar
+    // ar_ready/aw_ready
     if (cluster_metadata_i.op inside {VLXE, VLSE}) begin
       // For VLXE, only send ready to the cluster from which we have taken the request
       axi_resp_o[i].ar_ready = (i == cluster_ar_q) ? r_req_ready : 1'b0;
+      axi_resp_o[i].aw_ready = (i == cluster_aw_q) ? w_req_ready : 1'b0;
     end else begin
       axi_resp_o[i].ar_ready = r_req_ready;
+      axi_resp_o[i].aw_ready = w_req_ready;
     end
   end
+
+  ///////////////
+  //   AXI R   //
+  ///////////////
   
   ////////////// Handle BW mismatch between System and ARA for Read Responses
   // Collect AxiDataWidth data and distribute amongst NrClusters*ClusterAxiDataWidth
@@ -484,28 +584,51 @@ always_comb begin : p_global_ldst
       fifo_pop_o = 1'b1;
     end
   end
-  
-  /////////// Handle BW mismatch between System and ARA for Write Request
 
-  for (int i=0; i<NrClusters; i++) begin
-    w_cluster_valid[i] = axi_req_i[i].w_valid;
-    w_cluster_ready_d[i] = w_cluster_ready_q[i] ? ~axi_req_i[i].w_valid : w_cluster_ready_q[i];
-  end
+  ///////////////
+  //   AXI W   //
+  ///////////////
+
+  // Initialize cluster pointer and lane counter for write data
+  cluster_w_d = cluster_w_q;
+  lane_w_d = lane_w_q;
+
+  w_valid_d = w_valid_q;
+  w_ready_d = w_ready_q;
 
   cluster_start_wr_d = cluster_start_wr_q;
   axi_req_data_d = axi_req_data_q;
-  
-  w_valid_d = w_valid_q;
-  w_ready_d = w_ready_q;
+
+  for (int i=0; i<NrClusters; i++) begin
+    // For VSXE operations, only track valid from the active cluster
+    if (cluster_metadata_i.op == VSXE) begin
+      w_cluster_valid[i] = (i == cluster_w_q) ? axi_req_i[i].w_valid : 1'b1;
+    end else begin
+      w_cluster_valid[i] = axi_req_i[i].w_valid;
+    end
+    w_cluster_ready_d[i] = w_cluster_ready_q[i] ? ~axi_req_i[i].w_valid : w_cluster_ready_q[i];
+  end
+
   // If we are ready to receive data, receive new request
   // otherwise assign previous request state.
   for (int i=0; i<NrClusters; i++) begin
-    axi_req_data_d[i] = w_cluster_ready_q[i] ? axi_req_i[i] : axi_req_data_q[i];
-    w_cluster_last_d[i] = w_cluster_ready_q[i] ? axi_req_i[0].w.last : w_cluster_last_q[i];  // Only expecting last signal from cluster-0
+    // For VSXE operations, only accept data from current write data cluster
+    if (cluster_metadata_i.op == VSXE) begin
+      if (i == cluster_w_q) begin
+        axi_req_data_d[i] = w_cluster_ready_q[i] ? axi_req_i[i] : axi_req_data_q[i];
+        w_cluster_last_d[i] = w_cluster_ready_q[i] ? axi_req_i[i].w.last : w_cluster_last_q[i];
+      end else begin
+        axi_req_data_d[i] = axi_req_data_q[i];
+        // For inactive clusters in VSXE, set last to 1 so AND reduction passes
+        w_cluster_last_d[i] = 1'b1;
+      end
+    end else begin
+      axi_req_data_d[i] = w_cluster_ready_q[i] ? axi_req_i[i] : axi_req_data_q[i];
+      w_cluster_last_d[i] = w_cluster_ready_q[i] ? axi_req_i[0].w.last : w_cluster_last_q[i];  // Only expecting last signal from cluster-0
+    end
   end
   w_last_d = w_ready_q ? axi_req_i[0].w.last : w_last_q;
 
-  //if (axi_req_i[0].w_valid) begin : p_valid_write_data
   if (&w_cluster_valid) begin : p_valid_write_data
     // If Total BW of all clusters == System AXI BW, we can support full write
     // BW, otherwise set not ready to receive data.
@@ -524,8 +647,12 @@ always_comb begin : p_global_ldst
       axi_req_o.w.user = axi_req_data_d[cluster_start_wr_q + i].w.user;
     end
     axi_req_o.w_valid = 1'b1;
-    axi_req_o.w.last = 1'b0;
-    
+    axi_req_o.w.last = (cluster_metadata_i.op == VSXE);
+    if (cluster_metadata_i.op == VSXE) begin
+      axi_req_o.w.data[0 +: ClusterAxiDataWidth] = axi_req_data_d[cluster_w_q].w.data;
+      axi_req_o.w.strb[0 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_w_q].w.strb;
+    end
+
     if (axi_resp_i.w_ready) begin
       // If downstream AXI is ready to receive request only then update the
       // pointer to cluster data.
@@ -545,9 +672,87 @@ always_comb begin : p_global_ldst
   end
 
   for (int i=0; i<NrClusters; i++) begin
-    axi_resp_o[i].w_ready = w_cluster_ready_q[i];
+    // For VSXE operations, only send ready to the cluster from which we are receiving write data
+    if (cluster_metadata_i.op == VSXE) begin
+      axi_resp_o[i].w_ready = (i == cluster_w_q) ? w_cluster_ready_q[i] : 1'b0;
+    end else begin
+      axi_resp_o[i].w_ready = w_cluster_ready_q[i];
+    end
   end
 
+  // Update cluster and lane pointers for write data when data is received
+  if (cluster_metadata_i.op == VSXE && w_cluster_ready_q[cluster_w_q] && axi_req_i[cluster_w_q].w_valid) begin
+    // Increment lane counter for current cluster
+    lane_w_d = lane_w_q + 1;
+    
+    // If we have processed NrLanes data beats and have more data to process, move to next cluster
+    if (lane_w_q == NrLanes - 1) begin
+      lane_w_d = '0;
+      if (cluster_w_q == NrClusters - 1) begin
+        cluster_w_d = '0;
+      end else begin
+        cluster_w_d = cluster_w_q + 1;
+      end
+    end
+  end else if (cluster_metadata_i.op != VSXE) begin
+    // For non-VSXE operations, always use cluster 0
+    cluster_w_d = '0;
+    lane_w_d = '0;
+  end
+
+  ///////////////
+  //   AXI B   //
+  ///////////////
+
+  b_fifo_pop_o = 1'b0;
+  b_resp_rem_d = b_resp_rem_q;
+  lane_b_d = lane_b_q;
+  cluster_b_d = cluster_b_q;
+
+  for (int i=0; i<NrClusters; i++) begin
+    axi_resp_o[i].b = axi_resp_i.b;
+    axi_resp_o[i].b_valid = 1'b0;
+  end
+  axi_req_o.b_ready = axi_req_i[cluster_b_q].b_ready;
+
+  if (!b_fifo_empty_o) begin
+    if (b_fifo_idx_metadata.op == VSXE) begin
+      // Index stores
+      b_resp_rem_d = b_resp_rem_q ? b_resp_rem_q : b_fifo_idx_metadata.vl;
+      
+      // Update cluster and lane pointers for b responses for indexed stores
+      if (axi_resp_i.b_valid && axi_req_i[cluster_b_q].b_ready) begin
+        b_resp_rem_d -= 1;
+
+        lane_b_d = lane_b_q + 1;
+        if (lane_b_q == NrLanes - 1) begin
+          lane_b_d = '0;
+          if (cluster_b_q == NrClusters - 1) begin
+            cluster_b_d = '0;
+          end else begin
+            cluster_b_d = cluster_b_q + 1;
+          end
+        end
+
+        if (b_resp_rem_d == 0) begin
+          b_fifo_pop_o = 1'b1;
+          cluster_b_d = '0;
+          lane_b_d = '0;
+        end
+      end
+      for (int i=0; i<NrClusters; i++) begin
+        axi_resp_o[i].b_valid = (i == cluster_b_q) ? axi_resp_i.b_valid : 1'b0;
+      end
+    end else begin
+      // Unit-stride stores
+      for (int i=0; i<NrClusters; i++) begin
+        axi_resp_o[i].b_valid = axi_resp_i.b_valid;
+      end
+      if (axi_resp_i.b_valid) begin
+        b_fifo_pop_o = 1'b1;
+      end
+    end
+  end
 end : p_global_ldst
 
 always_ff @(posedge clk_i or negedge rst_ni) begin

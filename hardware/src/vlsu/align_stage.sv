@@ -154,8 +154,6 @@ assign tracker_empty = (rd_cnt_q==0);
 // Req Channel assignments
 assign axi_req_o.aw = axi_req_i.aw;
 assign axi_req_o.aw_valid = axi_req_i.aw_valid && axi_resp_o.aw_ready;
-// assign axi_req_o.w = axi_req_i.w;
-assign axi_req_o.w_valid = axi_req_i.w_valid;
 assign axi_req_o.ar = axi_req_i.ar;
 assign axi_req_o.ar_valid = axi_req_i.ar_valid && axi_resp_o.ar_ready;
 assign axi_req_o.b_ready = axi_req_i.b_ready;
@@ -165,7 +163,6 @@ assign axi_req_cut_ready[NumStages] = axi_req_i.r_ready;
 
 // Resp channel assignments
 assign axi_resp_o.ar_ready = axi_resp_i.ar_ready && !tracker_full; 
-assign axi_resp_o.w_ready = axi_resp_i.w_ready;
 
 assign axi_resp_i_cut[0].r = axi_resp_i.r;
 assign axi_resp_i_cut[0].r_valid = axi_resp_i.r_valid;
@@ -345,6 +342,7 @@ end
 typedef struct packed {
   int len;
   ara_op_e op;
+  axi_addr_t addr;
 } wr_req_track_t;
 
 // Tracking write requests
@@ -364,8 +362,9 @@ b_track_t [NumTrackers-1:0] b_track_d, b_track_q;
 pnt_t b_pnt_d, b_pnt_q;
 pnt_t b_commit_pnt_d, b_commit_pnt_q;
 
-logic wr_tracker_full;
+logic wr_tracker_full, wr_tracker_empty;
 assign wr_tracker_full = (wr_cnt_q == NumTrackers);
+assign wr_tracker_empty = (wr_cnt_q == 0);
 assign axi_resp_o.aw_ready = axi_resp_i.aw_ready && !wr_tracker_full;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -416,6 +415,7 @@ always_comb begin
     automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew;
     wr_vl_d = wr_vl_q + vlen_request;
     
+    wr_track_d[wr_pnt_q].addr          = axi_req_i.aw.addr;
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
     wr_track_d[wr_pnt_q].op            = cluster_metadata_i.op;
     b_track_d[b_pnt_q].count          += 1;
@@ -446,6 +446,33 @@ always_comb begin
       axi_req_o.w.last = 1'b1;
     end
     
+    // Set the strobe and data according to the address
+    if (wr_track_q[wr_commit_pnt_q].op == VSXE) begin
+      automatic axi_addr_t addr = wr_track_q[wr_commit_pnt_q].addr;
+      automatic logic [$clog2(AxiDataWidth/8)-1:0] start_byte_pos = addr[$clog2(AxiDataWidth/8)-1:0];
+      axi_req_o.w.strb = '0;
+      axi_req_o.w.data = '0;
+      // Set the strb at the correct byte position depending on the address and the element width
+      unique case (cluster_metadata_i.vew)
+        EW8:  begin 
+          axi_req_o.w.strb[start_byte_pos +: 1]    = axi_req_i.w.strb[0 +: 1];
+          axi_req_o.w.data[start_byte_pos*8 +: 8]  = axi_req_i.w.data[0 +: 8];
+        end
+        EW16: begin
+          axi_req_o.w.strb[start_byte_pos +: 2]    = axi_req_i.w.strb[0 +: 2];
+          axi_req_o.w.data[start_byte_pos*8 +: 16] = axi_req_i.w.data[0 +: 16];
+        end
+        EW32: begin
+          axi_req_o.w.strb[start_byte_pos +: 4]    = axi_req_i.w.strb[0 +: 4];
+          axi_req_o.w.data[start_byte_pos*8 +: 32] = axi_req_i.w.data[0 +: 32];
+        end
+        EW64: begin
+          axi_req_o.w.strb[start_byte_pos +: 8]    = axi_req_i.w.strb[0 +: 8];
+          axi_req_o.w.data[start_byte_pos*8 +: 64] = axi_req_i.w.data[0 +: 64];
+        end
+        default: axi_req_o.w.strb = '0;
+      endcase
+    end
   end
 
   // Ignore all b responses except last one
@@ -461,6 +488,11 @@ always_comb begin
     end
   end
 end
+
+// If no request present, do not receive write packet yet
+// Maybe this is not strictly necessary, but done to avoid counter going to negative values
+assign axi_resp_o.w_ready = axi_resp_i.w_ready && !wr_tracker_empty;
+assign axi_req_o.w_valid = axi_req_i.w_valid && !wr_tracker_empty;
 
 // Assertion: Verify AXI response data does not change when there is no valid handshake
 `ifndef VERILATOR
