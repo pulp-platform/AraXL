@@ -679,7 +679,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
     // Some helper signals to handle sliding logic
     vl_tot = vinsn_ring.vl_cluster;
-    if (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu}) begin
+    // If no more ring packets to receive and reductions in progress use the issue stage of request to know the vector length
+    if (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} && vinsn_issue_valid_q) begin
       vl_tot = vinsn_issue_q.vl_cluster;
     end
     vl_rem = vl_tot & ((1 << num_clusters_i << $clog2(NrLanes)) - 1);
@@ -873,6 +874,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                 if (dstlane < 0)
                   dstlane += total_lanes;
                 dst_cluster = dstlane / NrLanes;
+                if (dst_cluster > last_cluster_id && vinsn_issue_q.vl_cluster <= total_lanes)
+                  dst_cluster = last_cluster_id;
                 dst_lane = dstlane[$clog2(NrLanes)-1:0];
                 src_lane = src_lane_q;
               end else begin
@@ -883,6 +886,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                   dst_cluster = dstlane / NrLanes;
                 else
                   dst_cluster = (dstlane - total_lanes) / NrLanes;
+                if (dst_cluster > last_cluster_id && vinsn_issue_q.vl_cluster <= total_lanes)
+                  dst_cluster = '0;
                 dst_lane = dstlane[$clog2(NrLanes)-1:0];
               end
 
