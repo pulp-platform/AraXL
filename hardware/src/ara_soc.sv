@@ -299,7 +299,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     axi_addr_t   end_addr;
   } uart_apb_rule_t;
 
-  uart_apb_rule_t uart_apb_map = '{idx: 0, start_addr: '0, end_addr: '1};
+  uart_apb_rule_t uart_apb_map;
+  assign uart_apb_map = '{idx: 0, start_addr: '0, end_addr: '1};
 
   axi_lite_to_apb #(
     .NoApbSlaves     (32'd1           ),

@@ -49,7 +49,7 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
 // 2) Buffer - to buffer the data coming from memory if the element width is 64b and ClusterAxiDataWidth is 32N, since in this case, the data coming from memory needs to be stored and sent in 2 cycles to the clusters. 
 // This is only needed for loads, for stores we can just buffer the write data until we have enough data to send to the clusters.
 
-typedef enum  { SHUFFLE, BUFFER } datapath_t;
+typedef enum logic { SHUFFLE, BUFFER } datapath_t;
 
 // This is the main tracking structure for the requests coming into the shuffle stage. 
 // It keeps track of the status of each request and is used to configure the shuffle and buffer datapath.

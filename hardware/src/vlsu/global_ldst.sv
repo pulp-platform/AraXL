@@ -85,6 +85,8 @@ assign cluster_metadata_o.vl = cluster_metadata_i.vl;
 assign cluster_metadata_o.use_eew1 = cluster_metadata_i.use_eew1;
 assign cluster_metadata_o.op = cluster_metadata_i.op;
 
+cluster_axi_resp_t  [NrClusters-1:0] axi_resp_d, axi_resp_q;
+
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
     r_req_valid_q <= 1'b0;
@@ -101,6 +103,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     r_resp_lane_q <= '0;
     r_resp_rem_q  <= '0;
     fifo_push_q   <= 1'b0;
+    axi_resp_q    <= '0;
   end else begin
     r_req_valid_q <= r_req_valid_d;
     req_q         <= req_d;
@@ -116,8 +119,11 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     r_resp_lane_q <= r_resp_lane_d;
     r_resp_rem_q  <= r_resp_rem_d;
     fifo_push_q   <= fifo_push_d;
+    axi_resp_q    <= axi_resp_d;
   end
 end
+
+assign axi_resp_o = axi_resp_d;
 
 ///// Signals for AXI B channel
 
@@ -245,6 +251,9 @@ always_comb begin : p_global_ldst
   // Initialize cluster pointers and request counters
   cluster_aw_d = cluster_aw_q;
   lane_aw_d = lane_aw_q;
+
+  idx_metadata_i = '0;
+  axi_resp_d = axi_resp_q;
 
   /////////////////
   //  AXI AR/AW  //
@@ -485,15 +494,15 @@ always_comb begin : p_global_ldst
     // ar_ready/aw_ready
     if (cluster_metadata_i.op inside {VLXE, VLSE}) begin
       // For VLXE/VLSE, only send ready to the cluster from which we have taken the request
-      axi_resp_o[i].ar_ready = (i == cluster_ar_q) ? r_req_ready : 1'b0;
-      axi_resp_o[i].aw_ready = 1'b0;
+      axi_resp_d[i].ar_ready = (i == cluster_ar_q) ? r_req_ready : 1'b0;
+      axi_resp_d[i].aw_ready = 1'b0;
     end else if (cluster_metadata_i.op inside {VSXE, VSSE}) begin
       // For VSXE/VSSE, only send ready to the cluster from which we have taken the request
-      axi_resp_o[i].ar_ready = 1'b0;
-      axi_resp_o[i].aw_ready = (i == cluster_aw_q) ? w_req_ready : 1'b0;
+      axi_resp_d[i].ar_ready = 1'b0;
+      axi_resp_d[i].aw_ready = (i == cluster_aw_q) ? w_req_ready : 1'b0;
     end else begin
-      axi_resp_o[i].ar_ready = r_req_ready;
-      axi_resp_o[i].aw_ready = w_req_ready;
+      axi_resp_d[i].ar_ready = r_req_ready;
+      axi_resp_d[i].aw_ready = w_req_ready;
     end
   end
 
@@ -509,7 +518,7 @@ always_comb begin : p_global_ldst
   
   for (int i=0; i<NrClusters; i++) begin
     cluster_axi_resp_data_d[i].r_valid = 1'b0;
-    axi_resp_o[i].r_valid = 1'b0;
+    axi_resp_d[i].r_valid = 1'b0;
   end
   
   fifo_pop_o = 1'b0;
@@ -546,12 +555,12 @@ always_comb begin : p_global_ldst
     end : p_valid_read_resp
     
     for (int i=0; i<NrClusters; i++) begin  
-      axi_resp_o[i].r = cluster_axi_resp_data_d[i].r;
+      axi_resp_d[i].r = cluster_axi_resp_data_d[i].r;
       if (idx_metadata_o.op inside {VLXE, VLSE}) begin
         // For VLXE and VLSE, send reponse only to the desired cluster
-        axi_resp_o[i].r_valid = (i == cluster_r_q) ? cluster_axi_resp_data_d[i].r_valid : 1'b0;
+        axi_resp_d[i].r_valid = (i == cluster_r_q) ? cluster_axi_resp_data_d[i].r_valid : 1'b0;
         // Update which cluster should receive the read response for VLXE and VLSE
-        if (axi_resp_o[i].r_valid) begin
+        if (axi_resp_d[i].r_valid) begin
           // Count responses being sent in this cycle
           r_resp_rem_d -= 1;
           
@@ -568,12 +577,12 @@ always_comb begin : p_global_ldst
           end
         end
       end else begin
-        axi_resp_o[i].r_valid = cluster_axi_resp_data_d[0].r_valid;
+        axi_resp_d[i].r_valid = cluster_axi_resp_data_d[0].r_valid;
       end
     end
 
     // For VLE, since all clusters receive data synchronously for VLE, just check for valid from cluster 0
-    if ((!(idx_metadata_o.op inside {VLXE, VLSE})) && axi_resp_o[0].r_valid && axi_req_i[0].r_ready) begin
+    if ((!(idx_metadata_o.op inside {VLXE, VLSE})) && axi_resp_d[0].r_valid && axi_req_i[0].r_ready) begin
       automatic logic [$clog2(AxiDataWidth/8):0] nelem = ((AxiDataWidth/8) >> idx_metadata_o.vew);
       if (r_resp_rem_d > nelem) begin
         r_resp_rem_d -= nelem;
@@ -680,9 +689,9 @@ always_comb begin : p_global_ldst
   for (int i=0; i<NrClusters; i++) begin
     // For VSXE/VSSE operations, only send ready to the cluster from which we are receiving write data
     if (cluster_metadata_i.op inside {VSXE, VSSE}) begin
-      axi_resp_o[i].w_ready = (i == cluster_w_q) ? w_cluster_ready_q[i] : 1'b0;
+      axi_resp_d[i].w_ready = (i == cluster_w_q) ? w_cluster_ready_q[i] : 1'b0;
     end else begin
-      axi_resp_o[i].w_ready = w_cluster_ready_q[i];
+      axi_resp_d[i].w_ready = w_cluster_ready_q[i];
     end
   end
 
@@ -717,8 +726,8 @@ always_comb begin : p_global_ldst
   cluster_b_d = cluster_b_q;
 
   for (int i=0; i<NrClusters; i++) begin
-    axi_resp_o[i].b = axi_resp_i.b;
-    axi_resp_o[i].b_valid = 1'b0;
+    axi_resp_d[i].b = axi_resp_i.b;
+    axi_resp_d[i].b_valid = 1'b0;
   end
   axi_req_o.b_ready = axi_req_i[cluster_b_q].b_ready;
 
@@ -748,12 +757,12 @@ always_comb begin : p_global_ldst
         end
       end
       for (int i=0; i<NrClusters; i++) begin
-        axi_resp_o[i].b_valid = (i == cluster_b_q) ? axi_resp_i.b_valid : 1'b0;
+        axi_resp_d[i].b_valid = (i == cluster_b_q) ? axi_resp_i.b_valid : 1'b0;
       end
     end else begin
       // Unit-stride stores
       for (int i=0; i<NrClusters; i++) begin
-        axi_resp_o[i].b_valid = axi_resp_i.b_valid;
+        axi_resp_d[i].b_valid = axi_resp_i.b_valid;
       end
       if (axi_resp_i.b_valid) begin
         b_fifo_pop_o = 1'b1;

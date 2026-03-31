@@ -496,10 +496,12 @@ assign axi_req_o.w_valid = axi_req_i.w_valid && !wr_tracker_empty;
 
 // Assertion: Verify AXI response data does not change when there is no valid handshake
 `ifndef VERILATOR
+`ifndef TARGET_SYNTHESIS
 assert property (@(posedge clk_i) disable iff (~rst_ni)
   (axi_resp_i_cut[NumStages].r_valid && axi_req_cut_ready[NumStages]) || 
   (data_q == $past(data_d)))
   else $error("AXI response data changed without valid request-response handshake");
+`endif
 `endif
 
 endmodule
