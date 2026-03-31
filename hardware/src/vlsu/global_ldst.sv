@@ -527,11 +527,11 @@ always_comb begin : p_global_ldst
         cluster_axi_resp_data_d[cluster_start_r_q+i].r.last = 1'b0;
         cluster_axi_resp_data_d[cluster_start_r_q+i].r.user = axi_resp_i.r.user;
       end
-      cluster_start_r_d = cluster_r_q + (AxiDataWidth/ClusterAxiDataWidth);
+      cluster_start_r_d = cluster_start_r_q + (AxiDataWidth/ClusterAxiDataWidth);
       // TODO: One thing to check: what if for the last round, only first few clusters need data, all the other clusters dont need?
       //       If so, would we mix data from two load instructions together? Also one question, for VLSE, we only need data from
       //       cluster 0, it seems like that we should not wait for all the clusters, similar for VLXE
-      if ((cluster_r_q == (NrClusters - (AxiDataWidth/ClusterAxiDataWidth))) || axi_resp_i.r.last) begin
+      if ((cluster_start_r_q == (NrClusters - (AxiDataWidth/ClusterAxiDataWidth))) || axi_resp_i.r.last) begin
         cluster_start_r_d = 0;
         for (int i=0; i<NrClusters; i++) begin
           cluster_axi_resp_data_d[i].r_valid = 1'b1;

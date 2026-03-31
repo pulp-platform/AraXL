@@ -291,7 +291,7 @@ always_comb begin
 
       // Use vl from tracker to check if this is the last data packet or not
       // Since using delayed data, using delayed pointer to the tracker
-      if (tracker_q[rd_resp_pnt_q_del[NumStages-1]].len <= axi_valid_el) begin
+      if ((tracker_q[rd_resp_pnt_q_del[NumStages-1]].len <= axi_valid_el) && valid_data) begin
         // Last packet
         axi_resp_o.r.last = 1'b1;
 
