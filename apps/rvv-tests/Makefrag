@@ -222,4 +222,5 @@ ara_tests = vadd \
                vfredmax \
                vfwredusum \
                vls \
-               vsuxei
+               vsuxei \
+               vss

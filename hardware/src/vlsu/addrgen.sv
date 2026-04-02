@@ -271,7 +271,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           };
           addrgen_req_valid = 1'b1;
 
-          if (pe_req_q.op == VLSE) begin
+          if (pe_req_q.op inside {VLSE, VSSE}) begin
             if (addrgen_req_ready) begin
               state_d           = ADDRGEN_OP_SYNC_END;
             end
@@ -393,7 +393,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               addrgen_error_o = 1'b1;
             end
           end
-        end else if (pe_req_q.op == VLSE) begin
+        end else if (pe_req_q.op inside {VLSE, VSSE}) begin
           addrgen_req_valid = '0;
           if (idx_completed_sync_i) begin
             addrgen_ack_o     = 1'b1;
@@ -698,7 +698,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // come from other clusters
               if (strided_lane_id_d == NrLanes) begin
                 strided_lane_id_d = '0;
-                strided_addr_d  = strided_addr_q + (axi_addrgen_q.stride << $clog2(NrLanes)) * (1'b1 << num_clusters_i - 1);
+                strided_addr_d  = strided_addr_q + axi_addrgen_q.stride + (axi_addrgen_q.stride << $clog2(NrLanes)) * (1'b1 << num_clusters_i - 1);
               end else begin
                 strided_addr_d  = strided_addr_q + axi_addrgen_q.stride;
               end
