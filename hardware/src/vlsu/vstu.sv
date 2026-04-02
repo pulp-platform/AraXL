@@ -220,14 +220,14 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       valid_bytes = issue_cnt_q < NrLanes * 8     ? vinsn_valid_bytes : vrf_valid_bytes;
       valid_bytes = valid_bytes < axi_valid_bytes ? valid_bytes       : axi_valid_bytes;
 
-      if (vinsn_issue_q.op inside {VSXE}) valid_bytes = 1 << vinsn_issue_q.vtype.vsew;
+      if (vinsn_issue_q.op inside {VSXE, VSSE}) valid_bytes = 1 << vinsn_issue_q.vtype.vsew;
 
       vrf_pnt_d = vrf_pnt_q + valid_bytes;
 
       // Copy data from the operands into the W channel
       for (int axi_byte = 0; axi_byte < AxiDataWidth/8; axi_byte++) begin
         // Is this byte a valid byte in the W beat?
-        if (axi_byte >= 0 && axi_byte <= valid_bytes) begin
+        if (axi_byte >= 0 && axi_byte < valid_bytes) begin
           // Map axy_byte to the corresponding byte in the VRF word (sequential)
           automatic int vrf_seq_byte = axi_byte + vrf_pnt_q;
           // And then shuffle it

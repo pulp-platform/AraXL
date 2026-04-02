@@ -422,7 +422,7 @@ always_comb begin
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op == VSXE) begin
+    if (wr_vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op inside {VSXE, VSSE}) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end
@@ -447,7 +447,7 @@ always_comb begin
     end
     
     // Set the strobe and data according to the address
-    if (wr_track_q[wr_commit_pnt_q].op == VSXE) begin
+    if (wr_track_q[wr_commit_pnt_q].op inside {VSXE, VSSE}) begin
       automatic axi_addr_t addr = wr_track_q[wr_commit_pnt_q].addr;
       automatic logic [$clog2(AxiDataWidth/8)-1:0] start_byte_pos = addr[$clog2(AxiDataWidth/8)-1:0];
       axi_req_o.w.strb = '0;

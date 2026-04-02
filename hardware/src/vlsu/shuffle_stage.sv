@@ -448,8 +448,8 @@ always_comb begin
       wr_accept_pnt_d = (wr_accept_pnt_q == NumTrackers-1) ? '0 : wr_accept_pnt_q + 1; 
       wr_cnt_d += 1;
 
-      // If indexed request, write to tracker only once
-      wr_idx_accepted_d = (cluster_metadata.op == VSXE);
+      // If indexed/strided request, write to tracker only once
+      wr_idx_accepted_d = (cluster_metadata.op inside {VSXE, VSSE});
 
       // To enable certain shuffle stages based on element width
       for (int s=0; s<NumStages; s++) begin
@@ -461,9 +461,9 @@ always_comb begin
       wr_tracker_d[wr_accept_pnt_q].op = cluster_metadata.op;
     end
 
-    // If it is a VSXE request, take from the desired cluster
+    // If it is a VSXE/VSSE request, take from the desired cluster
     // and switch clusters for every NrLanes requests
-    if (cluster_metadata.op == VSXE) begin
+    if (cluster_metadata.op inside {VSXE, VSSE}) begin
       lane_aw_d += 1;
       if (lane_aw_q == NrLanes - 1) begin
         cluster_aw_d += 1;
@@ -821,9 +821,12 @@ always_comb begin
         end
       end
     end
-  end else if (wr_op inside {VSXE}) begin
+    // For non-{VSXE, VSSE} operations, always use cluster 0
+    cluster_w_d = '0;
+    lane_w_d = '0;
+  end else if (wr_op inside {VSXE, VSSE}) begin
 
-    // Update cluster and lane pointers for write data when data is received for VSXE operations
+    // Update cluster and lane pointers for write data when data is received for VSXE/VSSE operations
     if (axi_req_i[cluster_w_q].w_valid && axi_resp_o[cluster_w_q].w_ready) begin
       automatic logic [NrClusters-1:0] cluster_completed;
       
@@ -852,10 +855,6 @@ always_comb begin
         cluster_w_d = '0;
         lane_w_d = '0;
       end
-    end else if (wr_op != VSXE) begin
-      // For non-VSXE operations, always use cluster 0
-      cluster_w_d = '0;
-      lane_w_d = '0;
     end
   end
 end
@@ -864,9 +863,9 @@ end
 // Handle Response path
 for (genvar c=0; c < NrClusters; c++) begin  
   // Bypass the registers for signals other than R channel
-  assign axi_resp_o[c].aw_ready = ((cluster_metadata_i[c].op inside {VSXE}) ? (c==cluster_aw_q) ? 1'b1 : 1'b0 : 1'b1) && axi_resp_i[c].aw_ready && !wr_full;
+  assign axi_resp_o[c].aw_ready = ((cluster_metadata_i[c].op inside {VSXE, VSSE}) ? (c==cluster_aw_q) ? 1'b1 : 1'b0 : 1'b1) && axi_resp_i[c].aw_ready && !wr_full;
 
-  // If indexed load send ready only to one of the clusters
+  // If indexed/strided load send ready only to one of the clusters
   assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? (c==cluster_ar_q) ? 1'b1 : 1'b0 : 1'b1) && axi_resp_i[c].ar_ready && !rd_full;
   
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
@@ -881,7 +880,7 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].r_valid = r_valid_o[c] ? ((rd_tracker_q[rd_issue_pnt_q[NumStages-1]].vl[c] == 0) ? 1'b0 : 1'b1) : axi_resp_buf_out[c].r_valid;
   
   // Writes
-  assign axi_resp_o[c].w_ready = (wr_op inside {VSXE}) ? ((c == cluster_w_q) ? axi_resp_i[c].w_ready : 1'b0) : (wr_datapath ? ~wrbuf_full_q[c] : w_ready_o[c]);          // Copy ready from stream join output to response
+  assign axi_resp_o[c].w_ready = (wr_op inside {VSXE, VSSE}) ? ((c == cluster_w_q) ? axi_resp_i[c].w_ready : 1'b0) : (wr_datapath ? ~wrbuf_full_q[c] : w_ready_o[c]);          // Copy ready from stream join output to response
 
 end
 
@@ -891,7 +890,7 @@ assign r_valid[0]   = (rd_datapath == BUFFER) ? 1'b0 : (rd_op inside {VLXE, VLSE
 // Handle Request path
 for (genvar c=0; c < NrClusters; c++) begin
   assign axi_req_o[c].aw = axi_req_i[c].aw;
-  assign axi_req_o[c].aw_valid = ((cluster_metadata_i[c].op inside {VSXE}) ? ((c==cluster_aw_q) ? 1'b1 : 1'b0) : 1'b1) && axi_req_i[c].aw_valid && !wr_full;
+  assign axi_req_o[c].aw_valid = ((cluster_metadata_i[c].op inside {VSXE, VSSE}) ? ((c==cluster_aw_q) ? 1'b1 : 1'b0) : 1'b1) && axi_req_i[c].aw_valid && !wr_full;
   assign axi_req_o[c].ar = axi_req_i[c].ar;
   assign axi_req_o[c].ar_valid = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? ((c==cluster_ar_q) ? 1'b1 : 1'b0) : 1'b1) && axi_req_i[c].ar_valid && !rd_full;
   assign axi_req_o[c].b_ready = axi_req_i[c].b_ready;
@@ -908,13 +907,13 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign wr_cluster_completed[c] = (wr_cnt_q > 0) && (wr_tracker_q[wr_issue_pnt_q[0]].vl[c] == '0);
   
   // wvalids for the shuffle datapath
-  // For VSXE, not using the shuffle datapath
-  assign w_valid_i[c]    = (wr_op == VSXE) ? 1'b0 : 
+  // For VSXE/VSSE, not using the shuffle datapath
+  assign w_valid_i[c]    = (wr_op inside {VSXE, VSSE}) ? 1'b0 : 
                            ((wr_cluster_completed[c] & axi_req_i[0].w_valid) ? 1'b1 : (wr_datapath == BUFFER)? 1'b0 : axi_req_i[c].w_valid);   // Copy valid signals to stream join
    
-  assign axi_req_o[c].w       = (wr_op == VSXE) ? axi_req_i[c].w :
+  assign axi_req_o[c].w       = (wr_op inside {VSXE, VSSE}) ? axi_req_i[c].w :
                                 (w_valid[NumStages-1] ? w_data_out[NumStages-1][c] : axi_req_buf_out[c].w);   // Copy last stage data to req output
-  assign axi_req_o[c].w_valid = (wr_op == VSXE) ? ((c == cluster_w_q) ? axi_req_i[c].w_valid : 1'b0) : 
+  assign axi_req_o[c].w_valid = (wr_op inside {VSXE, VSSE}) ? ((c == cluster_w_q) ? axi_req_i[c].w_valid : 1'b0) : 
                                 (w_valid[NumStages-1] ? 1'b1  : axi_req_buf_out[c].w_valid);   // valid signal is the output valid of stream join
 
 end
