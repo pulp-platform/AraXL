@@ -533,6 +533,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   logic use_latency_q, use_latency_d;
   vlen_t eff_stride_d, eff_stride_q;
 
+  // Logic to decide whether to stall receiving packets from the ring
+  logic ring_ready_to_receive;
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : proc_ring
     if(~rst_ni) begin
       ring_data_prev_q       <= '0;
@@ -705,7 +708,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // E.g. for slideup -> slidedown instr., ring direction changes
         // and so if all ring packets not handled properly, it stalls.
         automatic logic inSync = vinsn_issue_valid_q && 
-                                   (vinsn_queue_d.issue_pnt == vinsn_queue_d.ring_pnt); 
+                                   (vinsn_queue_q.issue_pnt == vinsn_queue_q.ring_pnt);
         // if (vinsn_issue_valid_q) begin
         if (inSync) begin
           state_d   = vinsn_issue_q.is_stride_np2 ? SLIDE_NP2_SETUP : SLIDE_RUN;
@@ -1315,9 +1318,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     
     
     if (vinsn_ring_valid && (vinsn_ring.vl > 0) && ((n_ring_in_q > 0) || is_ring_reduction)) begin
-      if  ((result_queue_cnt_d || issue_cnt_d==0) &&         // there is a result waiting for commit to the VRF
-          (((vinsn_queue_d.issue_pnt != vinsn_queue_d.ring_pnt) || ((issue_cnt_d < ring_cnt_d) && (vinsn_queue_d.issue_pnt == vinsn_queue_d.ring_pnt))) ||  // make sure we are not ahead of the local issue pointer
-          is_ring_reduction)) begin
+      // Either we have advanced to the next instruction in issue stage
+      // Or we are in the same stage and issue counter is never ahead of the ring to ensure ring packets don't get overwritten by next sldu operand from VRF
+      ring_ready_to_receive = (vinsn_queue_d.issue_pnt != vinsn_queue_d.ring_pnt) || 
+                         ((issue_cnt_d < ( is_ring_reduction ? inter_cluser_issue_limit_d : ring_cnt_d)) && (vinsn_queue_d.issue_pnt == vinsn_queue_d.ring_pnt) && (state_d != SLIDE_IDLE));
+
+      if  ((result_queue_cnt_d || issue_cnt_d==0) && ring_ready_to_receive) begin
 
         automatic elen_t scalar_op = vinsn_ring.scalar_op;
         automatic ara_op_e op = vinsn_ring.op;
