@@ -1,1 +1,4 @@
 bender
+build
+*log*
+gold_results.txt

@@ -16,13 +16,20 @@
 
 RIVEC_PATH := riscv-vectorized-benchmark-suite
 RIVEC_DIR := $(APPS_DIR)/$(RIVEC_PATH)
-RIVEC_APPS := _axpy _blackscholes _pathfinder _streamcluster _spmv
+RIVEC_APPS := _axpy _blackscholes _pathfinder _streamcluster _spmv _canneal _swaptions _lavaMD
 RIVEC_BINARIES := $(addprefix bin/, $(RIVEC_APPS))
 
 rivec_binaries: $(RIVEC_BINARIES)
 
 # RiVEC SpMV dataset path (used by riscv-vectorized-benchmark-suite/_spmv)
-def_args__spmv       ?= "input/football.mtx"
+def_args__axpy           ?= "1024"
+def_args__blackscholes   ?= "input/in_8.input"
+def_args__pathfinder     ?= "input/data_small.in"
+def_args__streamcluster  ?= "3 3 128 8 8 10"
+def_args__spmv           ?= "input/football.mtx"
+def_args__canneal        ?= "input/10.nets"
+def_args__swaptions      ?= "128 1"
+def_args__lavaMD         ?= "1 1 32"
 
 # Adding compile flags for RiVEC
 
