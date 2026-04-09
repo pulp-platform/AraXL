@@ -1,2 +1,5 @@
 bin
 common/link.ld
+*.S
+*.o
+*log*
