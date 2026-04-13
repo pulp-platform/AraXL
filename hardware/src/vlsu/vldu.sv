@@ -21,6 +21,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
   ) (
     input  logic                           clk_i,
     input  logic                           rst_ni,
+    input  id_cluster_t                    cluster_id_i,
     // Memory interface
     input  axi_r_t                         axi_r_i,
     input  logic                           axi_r_valid_i,
@@ -462,5 +463,74 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
       result_final_gnt_q <= result_final_gnt_d;
     end
   end
+
+  /****************************
+   *  Perfetto Trace Output   *
+   ****************************/
+
+`ifdef PERFETTO_TRACE
+`ifndef TARGET_SYNTHESIS
+`ifndef VERILATOR
+
+  int trace_fd;
+  string trace_fn;
+
+  logic [idx_width(VInsnQueueDepth)-1:0] trace_accept_pnt_prev;
+  logic trace_fd_opened;
+  logic trace_open_armed;
+
+  // verilog_lint: waive-start always-ff-non-blocking
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      trace_accept_pnt_prev <= '0;
+      trace_fd_opened <= 1'b0;
+      trace_open_armed <= 1'b0;
+      trace_fd <= 0;
+    end else begin
+      if (!trace_open_armed) begin
+        trace_open_armed <= 1'b1;
+      end else if (!trace_fd_opened) begin
+        $sformat(trace_fn, "trace_vldu_c%0d.csv", cluster_id_i);
+        trace_fd = $fopen(trace_fn, "w");
+        $fwrite(trace_fd, "phase,timestamp,cluster,insn_id,op,vl,vd,data,resp,last\n");
+        $display("[VLDU Tracer] Logging cluster %0d to %s", cluster_id_i, trace_fn);
+        trace_fd_opened <= 1'b1;
+      end
+
+      trace_accept_pnt_prev <= vinsn_queue_q.accept_pnt;
+
+      if (trace_fd_opened && (vinsn_queue_q.accept_pnt != trace_accept_pnt_prev)) begin
+        automatic pe_req_t accepted_vinsn = vinsn_queue_q.vinsn[trace_accept_pnt_prev];
+        $fwrite(trace_fd, "B,%0t,%0d,%0d,%s,%0d,%0d,,,\n",
+                $time, cluster_id_i,
+                accepted_vinsn.id, accepted_vinsn.op.name(),
+                accepted_vinsn.vl, accepted_vinsn.vd);
+      end
+
+      if (trace_fd_opened && axi_r_valid_i && axi_r_ready_o && vinsn_issue_valid) begin
+        $fwrite(trace_fd, "R,%0t,%0d,%0d,%s,%0d,%0d,%0h,%0h,%0b\n",
+                $time, cluster_id_i,
+                vinsn_issue_q.id, vinsn_issue_q.op.name(),
+                vinsn_issue_q.vl, vinsn_issue_q.vd,
+                axi_r_i.data, axi_r_i.resp, axi_r_i.last);
+      end
+
+      if (trace_fd_opened && load_complete_o && vinsn_commit_valid) begin
+        $fwrite(trace_fd, "E,%0t,%0d,%0d,%s,%0d,%0d,,,\n",
+                $time, cluster_id_i,
+                vinsn_commit.id, vinsn_commit.op.name(),
+                vinsn_commit.vl, vinsn_commit.vd);
+      end
+    end
+  end
+  // verilog_lint: waive-stop always-ff-non-blocking
+
+  final begin
+    $fclose(trace_fd);
+  end
+
+`endif
+`endif
+`endif
 
 endmodule : vldu

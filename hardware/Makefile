@@ -128,6 +128,9 @@ ifneq ($(ring_latency), 0)
 	bender_defs += --define ADD_RING_LATENCY=1 --define RING_LATENCY=$(ring_latency) 
 endif
 
+# By default tracing enabled
+bender_defs += --define PERFETTO_TRACE
+
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 
 # Targets

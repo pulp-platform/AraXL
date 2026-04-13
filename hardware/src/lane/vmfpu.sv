@@ -1015,6 +1015,30 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .busy_o        (/* Unused */   )
     );
 
+`ifndef TARGET_SYNTHESIS
+    logic [31:0] vfpu_cnt_d, vfpu_cnt_q;
+
+    always_comb begin
+      vfpu_cnt_d = vfpu_cnt_q;
+      // Add trace generator logic when data is writte to the VRF
+      if (vfpu_in_valid & vfpu_in_ready) begin 
+        if (!(fp_op inside {I2F, F2I, F2F})) begin 
+          if (!((fp_op == ADD) && (vinsn_issue_q.op inside {VFREDUSUM, VFWREDUSUM, VFREDOSUM, VFWREDOSUM}))) begin
+            vfpu_cnt_d = vfpu_cnt_q + 1;
+          end
+        end  
+      end      
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        vfpu_cnt_q <= '0;
+      end else begin
+        vfpu_cnt_q <= vfpu_cnt_d;
+      end
+    end
+`endif
+
     ////////////////////////
     // VFREC7 & VFRSQRT7 //
     ///////////////////////
@@ -2236,5 +2260,78 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       sldu_red_completed_q    <= sldu_red_completed_d;
     end
   end
+
+  /****************************
+   *  Perfetto Trace Output   *
+   ****************************/
+
+`ifdef PERFETTO_TRACE
+`ifndef TARGET_SYNTHESIS
+`ifndef VERILATOR
+
+  int trace_fd;
+  string trace_fn;
+
+  logic [idx_width(VInsnQueueDepth)-1:0] trace_accept_pnt_prev;
+  logic trace_fd_opened;
+  logic trace_open_armed;
+
+  // verilog_lint: waive-start always-ff-non-blocking
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      trace_accept_pnt_prev <= '0;
+      trace_fd_opened <= 1'b0;
+      trace_open_armed <= 1'b0;
+      trace_fd <= 0;
+    end else begin
+      if (!trace_open_armed) begin
+        trace_open_armed <= 1'b1;
+      end else if (!trace_fd_opened) begin
+        $sformat(trace_fn, "trace_mfpu_c%0d_l%0d.csv", cluster_id_i, lane_id_i);
+        trace_fd = $fopen(trace_fn, "w");
+        $fwrite(trace_fd, "phase,timestamp,cluster,lane,insn_id,op,vl,vd,vrf_addr,data,be\n");
+        $display("[MFPU Tracer] Logging cluster %0d lane %0d to %s", cluster_id_i, lane_id_i, trace_fn);
+        trace_fd_opened <= 1'b1;
+      end
+
+      // Track accept pointer for next cycle comparison
+      trace_accept_pnt_prev <= vinsn_queue_q.accept_pnt;
+
+      // --- Begin: detect actual instruction accept via registered accept_pnt ---
+      if (trace_fd_opened && (vinsn_queue_q.accept_pnt != trace_accept_pnt_prev)) begin
+        automatic vfu_operation_t accepted_vinsn = vinsn_queue_q.vinsn[trace_accept_pnt_prev];
+        $fwrite(trace_fd, "B,%0t,%0d,%0d,%0d,%s,%0d,%0d,,,\n",
+                $time, cluster_id_i, lane_id_i,
+                accepted_vinsn.id, accepted_vinsn.op.name(),
+                accepted_vinsn.vl, accepted_vinsn.vd);
+      end
+
+      // --- End: instruction commit ---
+      if (trace_fd_opened && mfpu_result_req_o && vinsn_commit_valid && (commit_cnt_q == 1) && !prevent_commit) begin
+        $fwrite(trace_fd, "E,%0t,%0d,%0d,%0d,%s,%0d,%0d,,,\n",
+                $time, cluster_id_i, lane_id_i,
+                vinsn_commit.id, vinsn_commit.op.name(),
+                vinsn_commit.vl, vinsn_commit.vd);
+      end
+
+      // --- Writeback: VRF write beat ---
+      if (trace_fd_opened && mfpu_result_req_o && mfpu_result_gnt_i) begin
+        $fwrite(trace_fd, "W,%0t,%0d,%0d,%0d,%s,%0d,%0d,%0h,%0h,%0b\n",
+                $time, cluster_id_i, lane_id_i,
+                mfpu_result_id_o, vinsn_commit.op.name(),
+                vinsn_commit.vl, vinsn_commit.vd,
+                mfpu_result_addr_o, mfpu_result_wdata_o, mfpu_result_be_o);
+      end
+    end
+  end
+  // verilog_lint: waive-stop always-ff-non-blocking
+
+  final begin
+    $fclose(trace_fd);
+  end
+
+`endif
+`endif
+`endif
 
 endmodule : vmfpu

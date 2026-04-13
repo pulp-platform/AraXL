@@ -183,6 +183,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   ) i_vldu (
     .clk_i                  (clk_i                     ),
     .rst_ni                 (rst_ni                    ),
+    .cluster_id_i           (cluster_id_i              ),
     // AXI Memory Interface
     .axi_r_i                (axi_resp.r                ),
     .axi_r_valid_i          (axi_resp.r_valid          ),
@@ -227,6 +228,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   ) i_vstu (
     .clk_i                  (clk_i                      ),
     .rst_ni                 (rst_ni                     ),
+    .cluster_id_i           (cluster_id_i               ),
     // AXI Memory Interface
     .axi_w_o                (axi_req.w                  ),
     .axi_w_valid_o          (axi_req.w_valid            ),
