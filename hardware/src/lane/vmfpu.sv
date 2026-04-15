@@ -351,8 +351,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     gate_ff_en, gate_ff_clr, '0, clk_i_gated, rst_ni);
 
   for (genvar i = 0; i < 4; i++) begin
-`ifdef GF22
-    power_gating_gf22 #(
+`ifdef TARGET_ASIC
+    power_gating_tech #(
 `else
     power_gating_generic #(
 `endif
@@ -363,8 +363,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .en_i (vmul_simd_in_valid_q[i]  ),
       .out_o(vmul_simd_op_a_q_gated[i])
     );
-`ifdef GF22
-    power_gating_gf22 #(
+`ifdef TARGET_ASIC
+    power_gating_tech #(
 `else
     power_gating_generic #(
 `endif
@@ -375,8 +375,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .en_i  (vmul_simd_in_valid_q[i]  ),
       .out_o (vmul_simd_op_b_q_gated[i])
     );
-`ifdef GF22
-    power_gating_gf22 #(
+`ifdef TARGET_ASIC
+    power_gating_tech #(
 `else
     power_gating_generic #(
 `endif
@@ -387,8 +387,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .en_i  (vmul_simd_in_valid_q[i]  ),
       .out_o (vmul_simd_op_c_q_gated[i])
     );
-`ifdef GF22
-    power_gating_gf22 #(
+`ifdef TARGET_ASIC
+    power_gating_tech #(
 `else
     power_gating_generic #(
 `endif
@@ -399,8 +399,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       .en_i  (vmul_simd_in_valid_q[i]  ),
       .out_o (vmul_simd_mask_q_gated[i])
     );
-`ifdef GF22
-    power_gating_gf22 #(
+`ifdef TARGET_ASIC
+    power_gating_tech #(
 `else
     power_gating_generic #(
 `endif
