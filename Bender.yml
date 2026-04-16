@@ -1,5 +1,5 @@
 package:
-  name: ara
+  name: araxl
   authors:
     - "Matheus Cavalcante <matheusd@iis.ee.ethz.ch>"
     - "Matteo Perotti <mperotti@iis.ee.ethz.ch>"
@@ -44,6 +44,7 @@ sources:
     - hardware/src/lane/simd_mul.sv
     - hardware/src/lane/vector_regfile.sv
     - hardware/src/lane/power_gating_generic.sv
+    - hardware/src/lane/power_gating_tech.sv
     - hardware/src/masku/masku.sv
     - hardware/src/sldu/p2_stride_gen.sv
     - hardware/src/sldu/ring_router.sv

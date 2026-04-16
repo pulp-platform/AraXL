@@ -912,8 +912,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
             // Assertion: update_inp_op_pnt should be 1 only with valid handshake or when done receiving
             `ifndef VERILATOR
+            `ifndef TARGET_SYNTHESIS
             assert(~update_inp_op_pnt | (n_ring_out_q ? (fifo_ring_valid_out & fifo_ring_ready_inp) : (n_ring_in_q == 0)))
               else $error("update_inp_op_pnt set without valid handshake on FIFO for SLIDE operations");
+            `endif
             `endif
 
           end else begin
@@ -963,7 +965,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                   update_inp_op_pnt = 1'b1;
                   cluster_red_cnt_d = cluster_red_cnt_q - 1;
                   `ifndef VERILATOR
+                  `ifndef TARGET_SYNTHESIS
                   assert (cluster_red_cnt_q == 1) else $error("cluster_red_cnt_q should not be 0 when sending data on the ring for reduction");
+                  `endif
                   `endif
                 end
               end else if (receive_data_ring) begin
@@ -974,7 +978,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
               end else begin
                 `ifndef VERILATOR
+                `ifndef TARGET_SYNTHESIS
                 assert (0) else $error("Should be either sending on receiving data on the ring for reduction");
+                `endif
                 `endif
               end
 
@@ -997,7 +1003,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             end else begin
               output_limit_d = 0;
               `ifndef VERILATOR
+              `ifndef TARGET_SYNTHESIS
               assert(output_limit_q != 0) else $error("output_limit_d should not be 0 here");
+              `endif
               `endif
             end
           end
@@ -1042,7 +1050,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             end else begin
               issue_cnt_d = '0;
               `ifndef VERILATOR
+              `ifndef TARGET_SYNTHESIS
               assert(issue_cnt_q != 0) else $error("issue_cnt_q should not be 0 here");
+              `endif
               `endif
             end
             
@@ -1063,8 +1073,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             if (issue_cnt_q <= 8*NrLanes) begin
                 // Assertion: issue_cnt_q should not be 0 at this point
                 `ifndef VERILATOR
+                `ifndef TARGET_SYNTHESIS
                 assert(issue_cnt_q != 0)
                   else $error("issue_cnt_q should not be 0 here");
+                `endif
                 `endif
                 
                 state_d = SLIDE_IDLE;
@@ -1251,10 +1263,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           end
 
           `ifndef VERILATOR
+          `ifndef TARGET_SYNTHESIS
           assert(commit_cnt_q != 0) 
             else $error("commit_cnt_q should not be 0 here");
           assert((vinsn_queue_q.commit_pnt == vinsn_queue_q.ring_pnt) ? (commit_cnt_q >= ring_cnt_q) : 1'b1)
             else $error("committing to VRF cannot be ahead of receiving packets on the ring for the same instruction");
+          `endif
           `endif
         end
       end
@@ -1398,7 +1412,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                 result_queue_d[result_queue_write_pnt_ring_q][lane_id].wdata = fifo_ring_inp;
                 cluster_red_cnt_d = cluster_red_cnt_q - 1;
                 `ifndef VERILATOR
+                `ifndef TARGET_SYNTHESIS
                 assert (cluster_red_cnt_q != 0) else $error("cluster_red_cnt_q should not be 0 when sending data on the ring for reduction");
+                `endif
                 `endif
               end
               slide_result_valid = 1'b1;
@@ -1505,8 +1521,10 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       end else begin
         ring_cnt_d = '0;
         `ifndef VERILATOR
+        `ifndef TARGET_SYNTHESIS
         assert(ring_cnt_q != 0)
           else $error("ring_cnt_q should not be 0 here");
+        `endif
         `endif
       end
 
