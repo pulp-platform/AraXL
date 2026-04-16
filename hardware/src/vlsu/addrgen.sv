@@ -698,7 +698,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
               // come from other clusters
               if (strided_lane_id_d == NrLanes) begin
                 strided_lane_id_d = '0;
-                strided_addr_d  = strided_addr_q + axi_addrgen_q.stride + (axi_addrgen_q.stride << $clog2(NrLanes)) * (1'b1 << num_clusters_i - 1);
+                strided_addr_d  = strided_addr_q + axi_addrgen_q.stride + (axi_addrgen_q.stride << $clog2(NrLanes)) * ((1'b1 << num_clusters_i) - 1);
               end else begin
                 strided_addr_d  = strided_addr_q + axi_addrgen_q.stride;
               end
