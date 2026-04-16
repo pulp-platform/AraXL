@@ -56,6 +56,11 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     output logic                    idx_completed_o,
     input  logic                    idx_completed_sync_i,
 
+    // Synchronization of reduction operations
+    output logic                    sldu_completed_o,
+    output logic                    sldu_pending_o,
+    input  logic                    sldu_completed_sync_i,
+
     // Interface with Ring Interconnect
     output remote_data_t ring_data_o,
     output logic ring_valid_o, 
@@ -448,6 +453,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_result_final_gnt_i (sldu_result_final_gnt            ),
     .sldu_red_pending_o      (sldu_red_pending                 ),
     .sldu_red_completed_o    (sldu_red_completed               ),
+    .sldu_completed_sync_i   (sldu_completed_sync_i            ),
     // Interface with the Mask unit
     .mask_i                  (mask                             ),
     .mask_valid_i            (mask_valid                       ),
@@ -461,6 +467,9 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_ring_valid_i       (ring_valid_i),
     .sldu_ring_ready_o       (ring_ready_o)
   );
+
+  assign sldu_completed_o = sldu_red_completed;
+  assign sldu_pending_o = sldu_red_pending;
 
   /////////////////
   //  Mask unit  //

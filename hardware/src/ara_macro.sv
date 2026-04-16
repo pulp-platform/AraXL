@@ -60,6 +60,11 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     output logic                 idx_completed_o,
     input  logic                 idx_completed_sync_i,
 
+    // Synchronization of reduction operations
+    output logic                 sldu_completed_o,
+    output logic                 sldu_pending_o,
+    input  logic                 sldu_completed_sync_i,
+
     // Ring
     input remote_data_t  ring_data_r_i,
     input logic          ring_data_r_valid_i,
@@ -259,8 +264,14 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
 
     // To GLSU
     .cluster_metadata_o  (cluster_metadata   ),
+
+    // Synchronization for indexed operations and reductions
     .idx_completed_o     (idx_completed_o    ),
     .idx_completed_sync_i(idx_completed_sync_i),
+
+    .sldu_completed_o     (sldu_completed_o      ),
+    .sldu_pending_o       (sldu_pending_o        ),
+    .sldu_completed_sync_i(sldu_completed_sync_i ),
     
     // To Ring Routers
     .ring_data_o         (sldu_o             ), 

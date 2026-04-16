@@ -46,6 +46,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     output logic     [NrLanes-1:0] sldu_red_valid_o,
     output logic                   sldu_red_pending_o,
     output logic                   sldu_red_completed_o,
+    input  logic                   sldu_completed_sync_i,
     // Interface with the Mask Unit
     input  strb_t    [NrLanes-1:0] mask_i,
     input  logic     [NrLanes-1:0] mask_valid_i,
@@ -536,6 +537,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   // Logic to decide whether to stall receiving packets from the ring
   logic ring_ready_to_receive;
 
+  // Logic to ensure reductions for clusters wait for the ring to complete previous reductions
+  logic sldu_wait_d, sldu_wait_q;
+
   always_ff @(posedge clk_i or negedge rst_ni) begin : proc_ring
     if(~rst_ni) begin
       ring_data_prev_q       <= '0;
@@ -555,6 +559,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       slide_data_accepted_q  <= '0;
       cluster_red_limit_q    <= '0;
       inter_cluser_issue_limit_q <= '0;
+      sldu_wait_q            <= 1'b0;
     end else begin
       ring_data_prev_q       <= ring_data_prev_d;
       ring_data_prev_valid_q <= ring_data_prev_valid_d;
@@ -573,6 +578,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       slide_data_accepted_q  <= slide_data_accepted_d;
       cluster_red_limit_q    <= cluster_red_limit_d;
       inter_cluser_issue_limit_q <= inter_cluser_issue_limit_d;
+      sldu_wait_q            <= sldu_wait_d;
     end
   end
   
@@ -679,6 +685,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     receive_data_ring = 1'b0;
 
     sldu_red_completed_o = 1'b0;
+    sldu_wait_d = sldu_wait_q ? ~sldu_completed_sync_i : 1'b0;
 
     // Some helper signals to handle sliding logic
     vl_tot = vinsn_ring.vl_cluster;
@@ -708,7 +715,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         // E.g. for slideup -> slidedown instr., ring direction changes
         // and so if all ring packets not handled properly, it stalls.
         automatic logic inSync = vinsn_issue_valid_q && 
-                                   (vinsn_queue_q.issue_pnt == vinsn_queue_q.ring_pnt);
+                                   (vinsn_queue_q.issue_pnt == vinsn_queue_q.ring_pnt) && !sldu_wait_q;
         // if (vinsn_issue_valid_q) begin
         if (inSync) begin
           state_d   = vinsn_issue_q.is_stride_np2 ? SLIDE_NP2_SETUP : SLIDE_RUN;
@@ -1260,6 +1267,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           // Signal functional units that reduction has completed
           if (vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}) begin
             sldu_red_completed_o = 1'b1;
+            sldu_wait_d = 1'b1;
           end
 
           `ifndef VERILATOR
