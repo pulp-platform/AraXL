@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## 0.2.0 - 23-04-2026
+
+- Added mask load-store support and masked arithmetic
+- Added support for indexed and strided loads and stores
+- Fixed unordered reductions and corresponding FSM in ALU and VMFPU
+- Added barrier to synchronize reductions across clusters
+- Fixed whole vector load/stores
+- Added RiVEC benchmarks to run on araxl baremetal and add to CI testing
+
 ## 0.1.1 - 30-01-2026
 
 - Removed the dispatcher from Global VLSU and pass metadata from VLSU of Cluster 0
