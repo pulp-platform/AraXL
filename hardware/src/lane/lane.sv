@@ -11,6 +11,7 @@
 
 module lane import ara_pkg::*; import rvv_pkg::*; #(
     parameter  int           unsigned NrLanes         = 1, // Number of lanes
+    parameter  int           unsigned NrClusters      = 0, // Number of clusters
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport      = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -139,7 +140,10 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic                                       mfpu_ready;
   logic                 [NrVInsn-1:0]         mfpu_vinsn_done;
 
-  lane_sequencer #(.NrLanes(NrLanes)) i_lane_sequencer (
+  lane_sequencer #(
+    .NrLanes    (NrLanes),
+    .NrClusters (NrClusters)
+    ) i_lane_sequencer (
     .clk_i                  (clk_i                ),
     .rst_ni                 (rst_ni               ),
     .lane_id_i              (lane_id_i            ),

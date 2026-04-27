@@ -298,6 +298,8 @@ package ara_pkg;
     // slides
     elen_t stride;
     logic is_stride_np2;
+    logic start_generic_slide;      // indicates that the current slide instruction is the start of a generic slide
+    logic is_non_mul_cl;            // indicates that the vl_cluster is a multiple of cluster x lanes
 
     // Destination vector register
     logic [4:0] vd;
@@ -403,6 +405,8 @@ package ara_pkg;
     // 2nd scalar operand: stride for constant-strided vector load/stores
     elen_t stride;
     logic is_stride_np2;
+    logic start_generic_slide;      // indicates that the current slide instruction is the start of a generic slide
+    logic is_non_mul_cl;            // indicates that the vl_cluster is a multiple of cluster x lanes 
 
     // Destination vector register
     logic [4:0] vd;

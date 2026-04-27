@@ -10,6 +10,7 @@
 
 module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     parameter int           unsigned NrLanes      = 0,
+    parameter int           unsigned NrClusters   = 0,   // Number of Ara instances
     // Support for floating-point data types
     parameter fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -108,6 +109,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     endcase
   endfunction : prev_prev_ew
 
+  /////////////////////
+  //  Generic Slide  //
+  /////////////////////
+
+  // Counts the number of slide-by-1 operations to be issued when using generic slide
+  elen_t slide1_cnt_d;
+  elen_t slide1_cnt_q;
+
+  // Save the generic slide request
+  ara_req_t ara_slide_req_d;
+  ara_req_t ara_slide_req_q;
+
+  // Save previous ara_req_ready_i for edge detection
+  logic ara_req_valid_q;
+
   /////////////////////////
   //  Backend interface  //
   /////////////////////////
@@ -117,12 +133,25 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
-      ara_req_o       <= '0;
-      ara_req_valid_o <= 1'b0;
+      ara_req_o         <= '0;
+      ara_req_valid_o   <= 1'b0;
+      ara_slide_req_q   <= '0;
+      ara_req_valid_q   <= 1'b0;
+      slide1_cnt_q      <= 0;
     end else begin
-      if (ara_req_ready_i) begin
-        ara_req_o       <= ara_req_d;
-        ara_req_valid_o <= ara_req_valid_d;
+
+      ara_slide_req_q <= ara_slide_req_d;
+      slide1_cnt_q    <= slide1_cnt_d;
+
+      // Generic slide: issue several slide-by-1 requests
+      if (ara_req_ready_i && slide1_cnt_d > 0) begin
+        ara_req_o         <= ara_slide_req_d;
+        ara_req_valid_o   <= ara_req_valid_d;
+        ara_req_valid_q   <= ara_req_valid_d;
+      end else if (ara_req_ready_i) begin             // Issue next request
+        ara_req_o         <= ara_req_d;
+        ara_req_valid_o   <= ara_req_valid_d;
+        ara_req_valid_q   <= ara_req_valid_d;
       end
     end
   end
@@ -243,6 +272,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   logic illegal_insn;
   elen_t vfmvfs_result;
 
+  // Is a rising-edge at ara_req_ready_i?
+  logic req_ready_rise;
+
   always_comb begin: p_decoder
     // Default values
     vstart_d     = vstart_q;
@@ -291,6 +323,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       fflags_valid  : |fflags_ex_valid_i,
       default       : '0
     };
+
+    slide1_cnt_d     = slide1_cnt_q;
+    ara_slide_req_d  = ara_slide_req_q;
+
+    // Decrease counter of slide-by-1 instructions to be issued to achieve generic slide
+    if (slide1_cnt_q != 0 && ara_req_valid_q && ara_req_ready_i) begin
+      slide1_cnt_d           = slide1_cnt_q - 1;
+      ara_slide_req_d.vstart = 0;
+      ara_slide_req_d.start_generic_slide = 1'b0;
+    end
+
+    // After first slide-by-1 instruction, src register has to be the same as the dst register
+    if (ara_req_ready_i && slide1_cnt_q > 0 && ara_req_valid_o) begin
+      ara_slide_req_d.vs2 = ara_req_o.vd;      
+    end
 
     // fflags
     for (int lane = 0; lane < NrLanes; lane++) acc_resp_o.fflags |= fflags_ex_i[lane];
@@ -354,6 +401,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         ara_req_d.op            = ara_pkg::VSLIDEDOWN;
         ara_req_d.stride        = '0;
         ara_req_d.use_scalar_op = 1'b0;
+        ara_req_d.start_generic_slide = 1'b0;
         // Unmasked: reshuffle everything
         ara_req_d.vm            = 1'b1;
         // Shuffle the whole reg (vl refers to current vsew)
@@ -795,6 +843,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 // These generate a request to Ara's backend
                 ara_req_d.scalar_op     = acc_req_i.rs1;
                 ara_req_d.use_scalar_op = 1'b1;
+                ara_req_d.start_generic_slide = 1'b0;
                 ara_req_d.vs2           = insn.varith_type.rs2;
                 ara_req_d.use_vs2       = 1'b1;
                 ara_req_d.vd            = insn.varith_type.rd;
@@ -821,6 +870,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     ara_req_d.eew_vs2       = vtype_q.vsew;
                     // Encode vslideup/vslide1up on the use_scalar_op field
                     ara_req_d.use_scalar_op = 1'b0;
+                    ara_req_d.start_generic_slide = 1'b0;
                     // Vl refers to current system vsew, but operand requesters
                     // will fetch bytes from a vreg with a different eew
                     // i.e., request will need reshuffling
@@ -830,13 +880,28 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       (vlen_t'(ara_req_d.stride) >= vl_cluster_q)) null_vslideup = 1'b1;
                   end
                   6'b001111: begin
-                    ara_req_d.op            = ara_pkg::VSLIDEDOWN;
-                    ara_req_d.stride        = acc_req_i.rs1;
-                    ara_req_d.eew_vs2       = vtype_q.vsew;
-                    // Encode vslidedown/vslide1down on the use_scalar_op field
+                    ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
+                    ara_req_d.op            = ara_pkg::VSLIDEDOWN;
+                    if (!(acc_req_i.rs1 % (NrLanes * NrClusters)) || acc_req_i.rs1 == 0) begin
+                      ara_req_d.stride      = 0;
+                    end else begin
+                      ara_req_d.stride      = 1;
+                    end
+                    ara_req_d.eew_vs2       = vtype_q.vsew;
                     // Request will need reshuffling
                     ara_req_d.scale_vl      = 1'b1;
+                    // Number of slide-by-1 instructions to achieve generic slide
+                    if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin
+                      slide1_cnt_d          = acc_req_i.rs1 % (NrLanes * NrClusters);
+                    end else begin
+                      slide1_cnt_d          = 1;
+                    end
+                    // Copy the request to reuse for sliding
+                    ara_slide_req_d         = ara_req_d;
+                    ara_slide_req_d.start_generic_slide = 1'b1;
+                    ara_slide_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
+                    ara_slide_req_d.vstart  = acc_req_i.rs1 / (NrLanes * NrClusters);
                   end
                   6'b010000: begin
                     ara_req_d.op = ara_pkg::VADC;
@@ -1008,6 +1073,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 // (vrgather, shifts, clips, slides) should do overwrite this.
                 ara_req_d.scalar_op     = {{ELEN{insn.varith_type.rs1[19]}}, insn.varith_type.rs1};
                 ara_req_d.use_scalar_op = 1'b1;
+                ara_req_d.start_generic_slide = 1'b0;
                 ara_req_d.vs2           = insn.varith_type.rs2;
                 ara_req_d.use_vs2       = 1'b1;
                 ara_req_d.vd            = insn.varith_type.rd;
@@ -1036,13 +1102,27 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       (vlen_t'(ara_req_d.stride) >= vl_cluster_q)) null_vslideup = 1'b1;
                   end
                   6'b001111: begin
+                    ara_req_d.scalar_op     = 0;
                     ara_req_d.op            = ara_pkg::VSLIDEDOWN;
-                    ara_req_d.stride        = {{ELEN{insn.varith_type.rs1[19]}}, insn.varith_type.rs1};
+                    if (!(insn.varith_type.rs1 % (NrLanes * NrClusters)) || insn.varith_type.rs1 == 0) begin
+                      ara_req_d.stride      = 0;
+                    end else begin
+                      ara_req_d.stride      = 1;
+                    end
                     ara_req_d.eew_vs2       = vtype_q.vsew;
-                    // Encode vslidedown/vslide1down on the use_scalar_op field
-                    ara_req_d.use_scalar_op = 1'b0;
                     // Request will need reshuffling
                     ara_req_d.scale_vl      = 1'b1;
+                    // Number of slide-by-1 instructions to achieve generic slide
+                    if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
+                      slide1_cnt_d          = insn.varith_type.rs1 % (NrLanes * NrClusters);
+                    end else begin
+                      slide1_cnt_d          = 1;
+                    end
+                    // Copy the request to reuse for sliding
+                    ara_slide_req_d         = ara_req_d;
+                    ara_slide_req_d.start_generic_slide = 1'b1;
+                    ara_slide_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
+                    ara_slide_req_d.vstart  = insn.varith_type.rs1 / (NrLanes * NrClusters);
                   end
                   6'b010000: begin
                     ara_req_d.op = ara_pkg::VADC;
@@ -1663,6 +1743,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 // These generate a request to Ara's backend
                 ara_req_d.scalar_op     = acc_req_i.rs1;
                 ara_req_d.use_scalar_op = 1'b1;
+                ara_req_d.start_generic_slide = 1'b0;
                 ara_req_d.vs2           = insn.varith_type.rs2;
                 ara_req_d.use_vs2       = 1'b1;
                 ara_req_d.vd            = insn.varith_type.rd;
@@ -2324,6 +2405,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   // These generate a request to Ara's backend
                   ara_req_d.scalar_op     = acc_req_i.rs1;
                   ara_req_d.use_scalar_op = 1'b1;
+                  ara_req_d.start_generic_slide = 1'b0;
                   ara_req_d.vs2           = insn.varith_type.rs2;
                   ara_req_d.use_vs2       = 1'b1;
                   ara_req_d.vd            = insn.varith_type.rd;
@@ -3295,6 +3377,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // The token must change at every new instruction
     ara_req_d.token = (ara_req_valid_o && ara_req_ready_i) ? ~ara_req_o.token : ara_req_o.token;
+    ara_slide_req_d.token = (ara_req_valid_o && ara_req_ready_i) ? ~ara_req_o.token : ara_req_o.token;
   end: p_decoder
 
 endmodule : ara_dispatcher

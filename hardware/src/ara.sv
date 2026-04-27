@@ -9,6 +9,7 @@
 module ara import ara_pkg::*; import rvv_pkg::*; #(
     // RVV Parameters
     parameter  int           unsigned NrLanes      = 0,  // Number of parallel vector lanes.
+    parameter  int           unsigned NrClusters   = 0,   // Number of Ara instances
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -112,7 +113,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   vxrm_t     [NrLanes-1:0]      alu_vxrm;
 
   ara_dispatcher #(
-    .NrLanes     (NrLanes    )
+    .NrLanes     (NrLanes    ),
+    .NrClusters  (NrClusters )
   ) i_dispatcher (
     .clk_i             (clk_i           ),
     .rst_ni            (rst_ni          ),
@@ -264,6 +266,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   for (genvar lane = 0; lane < NrLanes; lane++) begin: gen_lanes
     lane #(
       .NrLanes     (NrLanes     ),
+      .NrClusters  (NrClusters  ),
       .FPUSupport  (FPUSupport  ),
       .FPExtSupport(FPExtSupport),
       .FixPtSupport(FixPtSupport)
@@ -422,6 +425,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
 
   sldu #(
     .NrLanes(NrLanes),
+    .NrClusters(NrClusters),
     .vaddr_t(vaddr_t)
   ) i_sldu (
     .clk_i                   (clk_i                            ),

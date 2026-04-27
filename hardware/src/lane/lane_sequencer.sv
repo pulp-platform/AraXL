@@ -9,7 +9,8 @@
 // and with the main sequencer.
 
 module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width; #(
-    parameter int unsigned NrLanes = 0
+    parameter int unsigned NrLanes         = 0,
+    parameter int unsigned NrClusters      = 0  // Number of clusters
   ) (
     input  logic                                          clk_i,
     input  logic                                          rst_ni,
@@ -564,7 +565,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
               // We need to trim full words from the start of the vector that are not used
               // as operands by the slide unit.
-              operand_request_i[SlideAddrGenA].vstart = 0; // pe_req.stride / NrLanes;
+              operand_request_i[SlideAddrGenA].vstart = pe_req.vstart;
 
               // The stride move the initial address in boundaries of 8*NrLanes Byte.
               // If the stride is not multiple of a full VRF word (8*NrLanes Byte),
@@ -582,13 +583,21 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
 
               // Find the total number of elements to be asked
               vl_tot = pe_req.vl;
-              if (!pe_req.use_scalar_op)
+              if (!pe_req.use_scalar_op) begin
                 vl_tot += extra_stride;
-
+                if (pe_req.vl % (NrLanes * NrClusters) == 0) begin
+                  vl_tot += 1;
+                end
+              end
+              
               // Ask the elements, and ask one more if we do not perfectly divide NrLanes
               operand_request_i[SlideAddrGenA].vl = vl_tot / NrLanes;
               if (operand_request_i[SlideAddrGenA].vl * NrLanes != vl_tot)
                 operand_request_i[SlideAddrGenA].vl += 1;
+              //if (pe_req.vl_cluster % (NrLanes * NrClusters) && !pe_req.use_scalar_op)
+              if ((pe_req_i.vl_cluster % (NrLanes * NrClusters) < (cluster_id_i+1) * NrLanes) && pe_req.is_non_mul_cl && !pe_req.use_scalar_op)
+              //if ((pe_req.vl % NrLanes) && !pe_req.use_scalar_op)
+                operand_request_i[SlideAddrGenA].vl += 1;                
             end
             default:;
           endcase

@@ -11,7 +11,6 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     // RVV Parameters
     parameter  int           unsigned NrLanes      = 0,   // Number of parallel vector lanes per Ara instance
     parameter  int           unsigned NrClusters   = 0,   // Number of Ara instances
-
     // Support for floating-point data types
     parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
@@ -177,6 +176,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster
       ara_macro #(
         .NrLanes           (NrLanes             ),
+        .NrClusters        (NrClusters          ),
         .FPUSupport        (FPUSupport          ),
         .FPExtSupport      (FPExtSupport        ),
         .FixPtSupport      (FixPtSupport        ),
