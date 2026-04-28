@@ -99,7 +99,11 @@ int main() {
   }
 
   v_sw_runtime = get_timer();
-  printf("[sw-cycles]: %ld\n", v_sw_runtime);
+
+  float performance = 2.0 * vsize / v_sw_runtime;
+  float utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);
+
+  printf("N=%d [sw-cycles]: %ld util:%f%%\n", vsize, v_sw_runtime, utilization);
 
   return 0;
 }
