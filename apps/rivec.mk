@@ -24,7 +24,7 @@ rivec_binaries: $(RIVEC_BINARIES)
 # RiVEC SpMV dataset path (used by riscv-vectorized-benchmark-suite/_spmv)
 def_args__axpy           ?= "1024"
 def_args__blackscholes   ?= "input/in_8.input"
-def_args__pathfinder     ?= "input/data_small.in"
+def_args__pathfinder     ?= "input/data_small.in 256"
 def_args__streamcluster  ?= "3 3 128 8 8 10"
 def_args__spmv           ?= "input/football.mtx"
 def_args__canneal        ?= "input/10.nets"
