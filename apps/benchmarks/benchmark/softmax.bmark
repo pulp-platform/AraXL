@@ -60,8 +60,8 @@ int main() {
 
   runtime = get_timer();
   
-  float performance = 35.0 * innerSize * channels / runtime;
-  printf("[sw-cycles]: %ld performance:%f\n", runtime, performance);
+  float utilization = 100.0 * (22 * innerSize * channels) / (NR_LANES * NR_CLUSTERS * runtime);
+  printf("[sw-cycles]: %ld util:%f%%\n", runtime, utilization);
 
   return 0;
 }
