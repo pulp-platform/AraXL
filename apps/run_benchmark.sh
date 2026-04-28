@@ -8,20 +8,19 @@ path=$4 # mem / cva6 / ring
 
 logdir=logs
 
-make clean
 mkdir -p ${logdir}/$app
 
-for nr_clusters in 16 #2 4 8
+for nr_clusters in 8
 do
 for nr_lanes in 4
 do
 
 #Build hw
 cd ../hardware/
-make clean && make compile nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency
+make compile nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
 cd ../apps/
 
-for bytes_lane in 128 64 32 16 8
+for bytes_lane in 512 256 128 64 32 16 8
 do
 
 len=$((bytes_lane * nr_lanes * nr_clusters/ 8))
@@ -31,12 +30,12 @@ echo "C=$nr_clusters L=$nr_lanes LEN=$len"
 if [[ $app == "fmatmul" ]]
 then
   #args_app="256 256 $len"
-  args_app="16 16 $len"
+  args_app="32 32 $len"
   str_app=FMATMUL
 elif [[ $app == "fconv2d" ]]
 then
   #args_app="256 $len 7"
-  args_app="16 $len 7"
+  args_app="32 $len 7"
   str_app=FCONV2D
 elif [[ $app == "fdotproduct" ]]
 then
@@ -63,9 +62,9 @@ fi
 
 # Build app
 echo "$app"
-make $app/data.S def_args_$app="$args_app" nr_clusters=$nr_clusters config=${nr_lanes}_lanes
+make $app/data.S def_args_$app="$args_app" nr_clusters=$nr_clusters config=${nr_lanes}_lanes -B
 cp $app/data.S benchmarks/
-make bin/benchmarks ENV_DEFINES="-D$str_app -Ddtype=$dtype" nr_clusters=$nr_clusters config=${nr_lanes}_lanes old_data=1
+make bin/benchmarks ENV_DEFINES="-D$str_app -Ddtype=$dtype" nr_clusters=$nr_clusters config=${nr_lanes}_lanes old_data=1 -B
 
 # Simulate
 appname=${app}_${nr_clusters}_${nr_lanes}_${bytes_lane}

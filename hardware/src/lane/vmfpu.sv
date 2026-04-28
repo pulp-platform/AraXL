@@ -1023,7 +1023,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
       // Add trace generator logic when data is writte to the VRF
       if (vfpu_in_valid & vfpu_in_ready) begin 
         if (!(fp_op inside {I2F, F2I, F2F})) begin 
-          if (!((fp_op == ADD) && (vinsn_issue_q.op inside {VFREDUSUM, VFWREDUSUM, VFREDOSUM, VFWREDOSUM}))) begin
+          if (!((fp_op inside {ADD, MINMAX}) && (vinsn_issue_q.op inside {VFREDUSUM, VFWREDUSUM, VFREDOSUM, VFWREDOSUM, VFREDMIN, VFREDMAX}))) begin
             vfpu_cnt_d = vfpu_cnt_q + 1;
           end
         end  
