@@ -24,8 +24,11 @@
 #include "util.h"
 
 #ifndef WARM_CACHES_ITER
-#define WARM_CACHES_ITER 1
+// Softmax kernel does inplace updates, do not warm up if results need to be right
+#define WARM_CACHES_ITER 0
 #endif
+
+#define THRESHOLD 0.0001
 
 #ifndef SPIKE
 #include "printf.h"
@@ -39,29 +42,62 @@ extern dtype i[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern dtype buf[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern dtype o_s[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern dtype o_v[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
+extern dtype o_g[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
-void warm_caches(uint64_t heat) {
+void warm_caches(uint64_t heat, int hart_id) {
+
+  uint64_t channels_hart = channels / NR_CORES;
+  dtype *i_hart = i + hart_id * innerSize * channels_hart;
+  dtype *o_v_hart = o_v + hart_id * innerSize * channels_hart;
+  
   for (uint64_t k = 0; k < heat; ++k)
-    softmax_vec_reduction(i, o_v, channels, innerSize);
+    softmax_vec_reduction(i_hart, o_v_hart, channels_hart, innerSize);
 }
 
-int main() {
+int main(int hart_id) {
   int64_t runtime;
 
 #ifndef SPIKE
   // Warm-up caches
-  warm_caches(WARM_CACHES_ITER);
+  warm_caches(WARM_CACHES_ITER, hart_id);
 #endif
 
-  HW_CNT_READY;
-  start_timer();
-  softmax_vec_reduction(i, o_v, channels, innerSize);
-  stop_timer();
-
-  runtime = get_timer();
+#if NR_CORES > 1
+  sync_barrier();
+#endif
   
-  float utilization = 100.0 * (22 * innerSize * channels) / (NR_LANES * NR_CLUSTERS * runtime);
-  printf("[sw-cycles]: %ld util:%f%%\n", runtime, utilization);
+  uint64_t channels_hart = channels / NR_CORES;
+  dtype *i_hart = i + hart_id * innerSize * channels_hart;
+  dtype *o_v_hart = o_v + hart_id * innerSize * channels_hart;
+
+  if (hart_id == 0) 
+    start_timer();
+  
+  softmax_vec_reduction(i_hart, o_v_hart, channels_hart, innerSize);
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+
+  if (hart_id == 0) {
+    stop_timer();
+
+    runtime = get_timer();
+  
+    float utilization = 100.0 * (22 * innerSize * channels) / (NR_LANES * NR_CLUSTERS * NR_CORES * runtime);
+    printf("[sw-cycles]: %ld util:%f%%\n", runtime, utilization);
+
+    for (uint64_t k = 0; k < channels * innerSize; ++k) {
+      if (!similarity_check(o_g[k], o_v[k], THRESHOLD)) {
+        printf("Error at index %d. %lf != %lf\n", k, o_v[k], o_g[k]);
+        return -1;
+      }
+    }
+  }
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   return 0;
 }
