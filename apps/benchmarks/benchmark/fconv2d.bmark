@@ -40,48 +40,78 @@ extern uint64_t F;
 
 dtype r;
 
-void warm_caches(uint64_t heat) {
+void warm_caches(uint64_t heat, int hart_id) {
+  uint64_t row_start = (M * hart_id) / NR_CORES;
+  uint64_t row_end = (M * (hart_id + 1)) / NR_CORES;
+  uint64_t M_hart = row_end - row_start;
+  double *i_hart = i + row_start * (N + F - 1);
+  double *o_hart = o + row_start * N;
+
   for (uint64_t k = 0; k < heat; ++k) {
   if (sizeof(r) == 8)
-    fconv2d_7x7(o, i, f, M, N, F);
+    fconv2d_7x7(o_hart, i_hart, f, M_hart, N, F);
   else 
-    fconv2d32_7x7(o, i, f, M, N, F);
+    fconv2d32_7x7(o_hart, i_hart, f, M_hart, N, F);
   }
 }
 
-int main() {
+int main(int hart_id) {
 
 #ifndef SPIKE
   // Warm-up caches
-  warm_caches(WARM_CACHES_ITER);
+  warm_caches(WARM_CACHES_ITER, hart_id);
 #endif
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+
+  uint64_t row_start = (M * hart_id) / NR_CORES;
+  uint64_t row_end = (M * (hart_id + 1)) / NR_CORES;
+  uint64_t M_hart = row_end - row_start;
+  double *i_hart = i + row_start * (N + F - 1);
+  double *o_hart = o + row_start * N;
 
   // Measure runtime with a hot cache
   HW_CNT_READY;
-  start_timer();
+  if (hart_id == 0)
+    start_timer();
   if (F == 3)
-    fconv2d_3x3(o, i, f, M, N, F);
+    fconv2d_3x3(o_hart, i_hart, f, M_hart, N, F);
   else if (F == 7) {
     if (sizeof(r) == 8)
-      fconv2d_7x7(o, i, f, M, N, F);
+      fconv2d_7x7(o_hart, i_hart, f, M_hart, N, F);
     else 
-      fconv2d32_7x7(o, i, f, M, N, F);
+      fconv2d32_7x7(o_hart, i_hart, f, M_hart, N, F);
   } else {
-    printf("Error: the filter size is different from 3 or 7.\n");
+    if (hart_id == 0)
+      printf("Error: the filter size is different from 3 or 7.\n");
     return -1;
   }
-  stop_timer();
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+  if (hart_id == 0)
+    stop_timer();
 
-  int64_t runtime = get_timer();
+  if (hart_id == 0) {
+    int64_t runtime = get_timer();
 
-  float performance = 2.0 * F * F * M * N / runtime;
-  float utilization;
-  if (sizeof(r) == 8) {
-    utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);
-  } else {
-    utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * 2.0);
+    float performance = 2.0 * F * F * M * N / runtime;
+    float utilization;
+    if (sizeof(r) == 8) {
+      utilization =
+          100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES);
+    } else {
+      utilization =
+          100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES * 2.0);
+    }
+    printf("M:%d N:%d F:%d [sw-cycles]: %ld perf:%f util:%f%%\n", M, N, F, runtime, performance, utilization);
   }
-  printf("M:%d N:%d F:%d [sw-cycles]: %ld perf:%f util:%f%%\n", M, N, F, runtime, performance, utilization);
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   return 0;
 }

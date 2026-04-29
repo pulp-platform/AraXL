@@ -220,7 +220,7 @@ module ara_tb;
       for (genvar gl = 0; gl < NrLanes; gl++) begin : gen_fpu_disp_lane
         always @(posedge clk) begin
           if (exit[0] && !(exit >> 1)) begin
-            $display("cluster-%0d-lane-%0d [fpu-cycles] : %d", gc, gl, int'(dut.i_ara_soc.gen_ara_system[core].i_system.i_ara_cluster.p_cluster[gc].i_ara_macro.i_ara.gen_lanes[gl].i_lane.i_vfus.i_vmfpu.fpu_gen.vfpu_cnt_q));
+            $display("core-%0d-cluster-%0d-lane-%0d [fpu-cycles] : %d", core, gc, gl, int'(dut.i_ara_soc.gen_ara_system[core].i_system.i_ara_cluster.p_cluster[gc].i_ara_macro.i_ara.gen_lanes[gl].i_lane.i_vfus.i_vmfpu.fpu_gen.vfpu_cnt_q));
           end
         end
       end : gen_fpu_disp_lane

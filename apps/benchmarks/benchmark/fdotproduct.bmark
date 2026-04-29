@@ -39,6 +39,8 @@
 #error "Define a dtype to benchmark fdotproduct! [double|float|_Float16]"
 #endif
 
+#define THRESHOLD_64b 0.0000000001
+
 // Vector size in bytes
 extern uint64_t vsize;
 // Input vectors
@@ -55,47 +57,83 @@ extern _Float16 res16_v;
 // Dummy scalar to check the datatype
 dtype r;
 
-void warm_caches(uint64_t heat) {
+extern double gold64;
+
+double res64_v_core[NR_CORES];
+
+void warm_caches(uint64_t heat, int hart_id) {
+
+  size_t avl_hart = vsize / NR_CORES;
+  double *v64a_hart = v64a + avl_hart * hart_id;
+  double *v64b_hart = v64b + avl_hart * hart_id;
+
   for (uint64_t k = 0; k < heat; ++k)
-    fdotp_v64b(v64a, v64b, vsize);
+    fdotp_v64b(v64a_hart, v64b_hart, avl_hart);
 }
 
-int main() {
+int main(int hart_id) {
 
 #ifndef SPIKE
   // Warm-up caches
-  warm_caches(WARM_CACHES_ITER);
+  warm_caches(WARM_CACHES_ITER, hart_id);
+#endif
+
+#if NR_CORES > 1
+  sync_barrier();
 #endif
 
   uint64_t v_sw_runtime;
   size_t avl = vsize;
 
-  HW_CNT_READY;
+  size_t avl_hart = avl / NR_CORES;
+  double *v64a_hart = v64a + avl_hart * hart_id;
+  double *v64b_hart = v64b + avl_hart * hart_id;
+
+  if (hart_id == 0)
+    start_timer();
+
   // This benchmark is executed for one dtype only to ensure the same initial conditions.
   // If not, Ara would reshuffle some registers because of different EEWs and this would
   // lead to artificial slow-down
   if (sizeof(r) == 8) {
-    start_timer();
-    res64_v = fdotp_v64b(v64a, v64b, avl);
-    stop_timer();
+    res64_v_core[hart_id] = fdotp_v64b(v64a_hart, v64b_hart, avl_hart);
   } else
   if (sizeof(r) == 4) {
-    start_timer();
-    res32_v = fdotp_v32b(v32a, v32b, avl);
-    stop_timer();
+    res32_v = fdotp_v32b(v32a, v32b, avl_hart);
   } else
   if (sizeof(r) == 2) {
-    start_timer();
-    res16_v = fdotp_v16b(v16a, v16b, avl);
-    stop_timer();
+    res16_v = fdotp_v16b(v16a, v16b, avl_hart);
   }
 
-  v_sw_runtime = get_timer();
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
-  float performance = 2.0 * vsize / v_sw_runtime;
-  float utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);
+  if (hart_id == 0) {
+    res64_v = 0.0;
+    
+    for (int c=0; c < NR_CORES; c++) {
+      res64_v += res64_v_core[c];
+    }
 
-  printf("N=%d [sw-cycles]: %ld util:%f%%\n", vsize, v_sw_runtime, utilization);
+    stop_timer();
+
+    v_sw_runtime = get_timer();
+
+    float performance = 2.0 * vsize / v_sw_runtime;
+    float utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES);
+
+    printf("N=%d [sw-cycles]: %ld util:%f%%\n", vsize, v_sw_runtime, utilization);
+    
+    printf("Checking results: v = %f, golden = %f\n", res64_v, gold64);
+    if (!similarity_check(res64_v, gold64, THRESHOLD_64b)) {
+      printf("Error %f != %f\n", i, res64_v, gold64);
+    }
+  }
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   return 0;
 }
