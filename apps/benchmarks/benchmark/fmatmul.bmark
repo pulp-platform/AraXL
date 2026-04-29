@@ -22,10 +22,13 @@
 
 #include "../kernel/fmatmul.h"
 #include "../kernel/fmatmul32.h"
+#include "util.h"
 
 #ifndef WARM_CACHES_ITER
 #define WARM_CACHES_ITER 1
 #endif
+
+#define THRESHOLD64 0.000001
 
 // Define Matrix dimensions:
 // C = AB with A=[MxN], B=[NxP], C=[MxP]
@@ -33,21 +36,44 @@ extern uint64_t M;
 extern uint64_t N;
 extern uint64_t P;
 
-extern double a[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
-extern double b[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
-extern double c[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double a[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double b[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern double c[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+// Gold results
+extern double g[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
 
 dtype r;
 
-void warm_caches(uint64_t heat) {
+// Verify the matrix
+int verify_matrix(double *result, double *gold, size_t R, size_t C,
+                  double threshold) {
+  for (uint64_t i = 0; i < R; ++i) {
+    for (uint64_t j = 0; j < C; ++j) {
+      uint64_t idx = i * C + j;
+      if (!similarity_check(result[idx], gold[idx], threshold)) {
+        printf("Error at index %d. %f != %f\n", idx, result[idx], gold[idx]);
+        return (i + j) == 0 ? -1 : idx;
+      }
+    }
+  }
+  return 0;
+}
+
+void warm_caches(uint64_t heat, int hart_id) {
   volatile double *a_ = a;
   volatile double buf;
 
+  uint64_t row_start = (M * hart_id) / NR_CORES;
+  uint64_t row_end = (M * (hart_id + 1)) / NR_CORES;
+  uint64_t M_hart = row_end - row_start;
+  double *a_hart = a + row_start * N;
+  double *c_hart = c + row_start * P;
+
   for (uint64_t k = 0; k < heat; ++k)
   if (sizeof(r) == 8)
-    fmatmul(c, a, b, M, N, P);
+    fmatmul(c_hart, a_hart, b, M_hart, N, P);
   else 
-    fmatmul32(c, a, b, M, N, P);
+    fmatmul32(c_hart, a_hart, b, M_hart, N, P);
 #ifdef AD_HOC_WARMING
     // Vector stores have invalidated the A mtx cache lines!
     // Fetch them again
@@ -58,37 +84,57 @@ void warm_caches(uint64_t heat) {
 #endif
 }
 
-int main() {
+int main(int hart_id) {
 
 #ifndef SPIKE
   // Warm-up caches
-  warm_caches(WARM_CACHES_ITER);
+  warm_caches(WARM_CACHES_ITER, hart_id);
 #endif
 
-  // Measure runtime with a hot cache
-  HW_CNT_READY;
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+
+  uint64_t row_start = (M * hart_id) / NR_CORES;
+  uint64_t row_end = (M * (hart_id + 1)) / NR_CORES;
+  uint64_t M_hart = row_end - row_start;
+  double *a_hart = a + row_start * N;
+  double *c_hart = c + row_start * P;
+
+  if (hart_id == 0)
+    start_timer();
 
   if (sizeof(r) == 8) {
-    start_timer();
-    fmatmul(c, a, b, M, N, P);
-    stop_timer();
+    fmatmul(c_hart, a_hart, b, M_hart, N, P);
   } else {
-    start_timer();
-    fmatmul32(c, a, b, M, N, P);
-    stop_timer();
+    fmatmul32(c_hart, a_hart, b, M_hart, N, P);
   }
 
-  int64_t runtime = get_timer();
-  float performance = 2.0 * M * N * P / runtime;
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
-  float utilization;
-  if (sizeof(r) == 8) {
-    utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);  
-  } else {
-  utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * 2.0);// 2 FP32-ops/lane/cycle
+  if (hart_id == 0) {
+    stop_timer();
+
+    int64_t runtime = get_timer();
+    float performance = 2.0 * M * N * P / runtime;
+
+    float utilization;
+    if (sizeof(r) == 8) {
+      utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES);  
+    } else {
+      utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS * NR_CORES * 2.0);// 2 FP32-ops/lane/cycle
+    }
+
+    printf("M:%d N:%d P=%d [sw-cycles]: %ld performance:%f util:%f%%\n", M, N, P, runtime, performance, utilization);
+
+    int error = verify_matrix(c, g, M, P, THRESHOLD64);
   }
 
-  printf("M:%d N:%d P=%d [sw-cycles]: %ld performance:%f util:%f%%\n", M, N, P, runtime, performance, utilization);
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   return 0;
 }
