@@ -98,30 +98,38 @@ int main(int hart_id) {
     printf("\n");
   }
 
-  uint64_t P_hart = P / NR_CORES;
-  double *c_start = c + hart_id * P_hart;
-  double *b_start = b + hart_id * P_hart;
-
-  sync_barrier();
-
-  if (hart_id == 0) {
-    printf("From Hart:%d a:%x b:%x c:%x\n", hart_id, a, b_start, c_start);
-  }
-
-  sync_barrier();
-
-  if (hart_id == 1) {
-    printf("From Hart:%d a:%x b:%x c:%x\n", hart_id, a, b_start, c_start);
-  }
-
-  sync_barrier();
-
 #ifdef VCD_DUMP
   // Measure only the full-size matmul
   for (uint64_t s = M; s <= M; s *= 2) {
 #else
   for (uint64_t s = M; s <= M; s *= 2) {
 #endif
+    uint64_t row_start = (s * hart_id) / NR_CORES;
+    uint64_t row_end = (s * (hart_id + 1)) / NR_CORES;
+    uint64_t M_hart = row_end - row_start;
+#ifdef FP32
+    float *a_start = a + row_start * N;
+    float *c_start = c + row_start * P;
+#else
+    double *a_start = a + row_start * N;
+    double *c_start = c + row_start * P;
+#endif
+
+    sync_barrier();
+
+    if (hart_id == 0) {
+      printf("From Hart:%d a:%x b:%x c:%x rows:%d-%d\n", hart_id, a_start, b,
+             c_start, row_start, row_start + M_hart);
+    }
+
+    sync_barrier();
+
+    if (hart_id == 1) {
+      printf("From Hart:%d a:%x b:%x c:%x rows:%d-%d\n", hart_id, a_start, b,
+             c_start, row_start, row_start + M_hart);
+    }
+
+    sync_barrier();
 
     if (hart_id == 0) {
       printf("\n");
@@ -138,7 +146,7 @@ int main(int hart_id) {
       start_timer();
     }
     
-    fmatmul32(c_start, a, b_start, s, N, P_hart);
+    fmatmul32(c_start, a_start, b, M_hart, N, P);
     if (hart_id == 0) {
       stop_timer();
     }
@@ -149,7 +157,7 @@ int main(int hart_id) {
     }
     // Synchronize cores
     sync_barrier();
-    fmatmul(c_start, a, b_start, s, N, P_hart);
+    fmatmul(c_start, a_start, b, M_hart, N, P);
     if (hart_id == 0) {
       stop_timer();
     }

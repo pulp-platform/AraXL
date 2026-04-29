@@ -31,6 +31,8 @@
 #define WARM_CACHES_ITER 1
 #endif
 
+#define THRESHOLD 1
+
 extern size_t N_f64;
 extern double exponents_f64[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern double results_f64[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
@@ -41,30 +43,62 @@ extern float exponents_f32[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS))
 extern float results_f32[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 extern float gold_results_f32[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));
 
-void warm_caches(uint64_t heat) {
+void warm_caches(uint64_t heat, int hart_id) {
+
+  uint64_t N_f64_hart = N_f64 / NR_CORES;
+  double *exponents_f64_hart = exponents_f64 + hart_id * N_f64_hart;
+  double *results_f64_hart = results_f64 + hart_id * N_f64_hart;
+
   for (uint64_t k = 0; k < heat; ++k)
-    exp_1xf64_asm_bmark(exponents_f64, results_f64, N_f64);
+    exp_1xf64_bmark(exponents_f64_hart, results_f64_hart, N_f64_hart);
 }
 
-int main() {
+int main(int hart_id) {
 
   int64_t runtime;
 
 #ifndef SPIKE
   // Warm-up caches
-  warm_caches(WARM_CACHES_ITER);
+  warm_caches(WARM_CACHES_ITER, hart_id);
 #endif
 
-  HW_CNT_READY;
-  start_timer();
-  exp_1xf64_asm_bmark(exponents_f64, results_f64, N_f64);
-  stop_timer();
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
-  runtime = get_timer();
+  uint64_t N_f64_hart = N_f64 / NR_CORES;
+  double *exponents_f64_hart = exponents_f64 + hart_id * N_f64_hart;
+  double *results_f64_hart = results_f64 + hart_id * N_f64_hart;
 
-  float utilization = 100.0 * (20 * N_f64) / (NR_LANES * NR_CLUSTERS * runtime);
+  if (hart_id == 0)
+    start_timer();
+  
+  exp_1xf64_bmark(exponents_f64_hart, results_f64_hart, N_f64_hart);
 
-  printf("[sw-cycles]: %ld util:%f%%\n", runtime, utilization);
+#if NR_CORES > 1
+  sync_barrier();
+#endif
+  
+  if (hart_id == 0) {
+    stop_timer();
+
+    runtime = get_timer();
+
+    float utilization = 100.0 * (18 * N_f64) / (NR_LANES * NR_CLUSTERS * NR_CORES * runtime);
+
+    printf("[sw-cycles]: %ld util:%f%%\n", runtime, utilization);
+
+    for (uint64_t i = 0; i < N_f64; ++i) {
+      if (!similarity_check(results_f64[i], gold_results_f64[i], THRESHOLD)) {
+        int error = 1;
+        printf("Error at index %d. %f != %f\n", i, results_f64[i], gold_results_f64[i]);
+      }
+    }
+  }
+
+#if NR_CORES > 1
+  sync_barrier();
+#endif
 
   return 0;
 }

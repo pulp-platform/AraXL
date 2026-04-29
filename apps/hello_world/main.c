@@ -28,14 +28,24 @@
 #endif
 
 int main(int hart_id) {
+  
+  static int k=0;
 
   if (hart_id == 0) {
-    printf("Hello World from core %d!\n", hart_id);
+    mutex_lock_acquire();
+    k+=3;
+    mutex_lock_release();
+  }
+
+  if (hart_id == 1) {
+    mutex_lock_acquire();
+    k+=2;
+    mutex_lock_release();
   }
   sync_barrier();
 
-  if (hart_id == 1) {
-    printf("Hello World from core %d!\n", hart_id);
+  if (hart_id == 0) {
+    printf_("Hello World from core %d k=%d!\n", hart_id, k);
   }
   sync_barrier();
 
