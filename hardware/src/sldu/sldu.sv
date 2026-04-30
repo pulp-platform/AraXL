@@ -304,59 +304,99 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
     for (int l = 0; l < NrLanes; l++) begin
 
-      //if (vinsn_issue_q.vl - (vinsn_issue_q.is_non_mul_cl + 1) * NrLanes == vlmax && sldu_operand_cnt_q >= (((vinsn_issue_q.vl - NrLanes) / NrLanes) - vinsn_issue_q.vstart)) begin
-      if (vinsn_issue_q.vl >= vlmax && sldu_operand_cnt_q >= (((vinsn_issue_q.vl - NrLanes) / NrLanes) - vinsn_issue_q.vstart) && !vinsn_issue_q.use_scalar_op) begin
-        sldu_operand_d[l] = 0;    // Has readed invalid data
-      end else if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - NrLanes) / NrLanes) && !vinsn_issue_q.start_generic_slide && !vinsn_issue_q.use_scalar_op) begin
-        sldu_operand_d[l] = sldu_operand_buf_q[1][l];
-      end else if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - 2*NrLanes) / NrLanes) && vinsn_issue_q.is_non_mul_cl && !vinsn_issue_q.start_generic_slide && !vinsn_issue_q.use_scalar_op) begin
-        sldu_operand_d[l] = sldu_operand_buf_q[0][l];
-      end else begin
-        sldu_operand_d[l] = sldu_operand_i[l];
-      end
+      unique case (vinsn_commit.op) 
+        VSLIDEDOWN: begin
+          if (vinsn_issue_q.vl > vlmax && sldu_operand_cnt_q >= (((vinsn_issue_q.vl - NrLanes) / NrLanes) - vinsn_issue_q.vstart) && !vinsn_issue_q.use_scalar_op) begin
+            sldu_operand_d[l] = 0;    // Has readed invalid data
+          end else if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - NrLanes) / NrLanes) && !vinsn_issue_q.start_generic_slide && !vinsn_issue_q.use_scalar_op) begin
+            sldu_operand_d[l] = sldu_operand_buf_q[1][l];
+          end else if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - 2*NrLanes) / NrLanes) && vinsn_issue_q.is_non_mul_cl && !vinsn_issue_q.start_generic_slide && !vinsn_issue_q.use_scalar_op) begin
+            sldu_operand_d[l] = sldu_operand_buf_q[0][l];
+          end else begin
+            sldu_operand_d[l] = sldu_operand_i[l];
+          end
 
-      // For a generic slide, only the first slide-by-1 instruction different src and dst registers, every other slide-by-1 instruction has identical src and dst register
-      if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - NrLanes) / NrLanes) && vinsn_issue_q.start_generic_slide && vinsn_issue_valid_q) begin
-        if (vinsn_issue_q.vl >= vlmax) begin
-          sldu_operand_buf_d[1][l] = '0;
-        end else begin
-          sldu_operand_buf_d[1][l] = sldu_operand_i[l];
-        end
-      end else if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - 2*NrLanes) / NrLanes) && vinsn_issue_q.is_non_mul_cl && vinsn_issue_q.start_generic_slide && vinsn_issue_valid_q) begin
-        if (vinsn_issue_q.vl - 2 * NrLanes >= vlmax) begin
-          sldu_operand_buf_d[0][l] = '0;
-        end else begin
-          sldu_operand_buf_d[0][l] = sldu_operand_i[l];
-        end
-      end
+          // For a generic slide, only the first slide-by-1 instruction different src and dst registers, every other slide-by-1 instruction has identical src and dst register
+          if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - NrLanes) / NrLanes) && vinsn_issue_q.start_generic_slide && vinsn_issue_valid_q) begin
+            if (vinsn_issue_q.vl > vlmax) begin
+              sldu_operand_buf_d[1][l] = '0;
+            end else begin
+              sldu_operand_buf_d[1][l] = sldu_operand_i[l];
+            end
+          end else if (sldu_operand_cnt_q == ((vinsn_issue_q.vl - 2*NrLanes) / NrLanes) && vinsn_issue_q.is_non_mul_cl && vinsn_issue_q.start_generic_slide && vinsn_issue_valid_q) begin
+            if (vinsn_issue_q.vl - 2*NrLanes >= vlmax) begin
+              sldu_operand_buf_d[0][l] = '0;
+            end else begin
+              sldu_operand_buf_d[0][l] = sldu_operand_i[l];
+            end
+          end
 
-      if (result_queue_valid_q[result_queue_read_pnt_q][l] & (~(vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}))) begin
-        if (sldu_result_cnt_q == 2) begin
-          sldu_operand_buf_d[1][l] = result_queue_q[result_queue_read_pnt_q][l].wdata;
-        end
-        if (sldu_result_cnt_q == 3 && vinsn_commit.is_non_mul_cl) begin
-          sldu_operand_buf_d[0][l] = result_queue_q[result_queue_read_pnt_q][l].wdata;
-        end
-        sldu_result_cnt_d = sldu_result_cnt_q - 1;
-      end
+          if (result_queue_valid_q[result_queue_read_pnt_q][l] & (~(vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}))) begin
+            if (sldu_result_cnt_q == 2) begin
+              sldu_operand_buf_d[1][l] = result_queue_q[result_queue_read_pnt_q][l].wdata;
+            end
+            if (sldu_result_cnt_q == 3 && vinsn_commit.is_non_mul_cl) begin
+              sldu_operand_buf_d[0][l] = result_queue_q[result_queue_read_pnt_q][l].wdata;
+            end
+            sldu_result_cnt_d = sldu_result_cnt_q - 1;
+          end
 
-      sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} && sldu_red_operand_valid_i[l]);
+          sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} && sldu_red_operand_valid_i[l]);
 
-      if (sldu_operand_ready_q[l] & sldu_operand_valid_d[l]) begin
-        sldu_operand_cnt_d = sldu_operand_cnt_q + 1;
-        sldu_operand_ready_o[l] = 1;
-      end else begin
-        sldu_operand_ready_o[l] = 0;
-      end 
+          if (sldu_operand_ready_q[l] & sldu_operand_valid_d[l]) begin
+            sldu_operand_cnt_d = sldu_operand_cnt_q + 1;
+            sldu_operand_ready_o[l] = 1;
+          end else begin
+            sldu_operand_ready_o[l] = 0;
+          end 
+
+          // Initialize result counter
+          if (vinsn_issue_valid_q && sldu_result_cnt_q == 0) begin
+            sldu_result_cnt_d = (vinsn_issue_q.vl / NrLanes) + 1;
+          end
+        end
+        VSLIDEUP: begin
+          if (sldu_operand_cnt_q == 0 && !vinsn_issue_q.start_generic_slide && !vinsn_issue_q.use_scalar_op) begin
+            sldu_operand_d[l] = sldu_operand_buf_q[0][l];
+          end else begin
+            sldu_operand_d[l] = sldu_operand_i[l];
+          end
+
+          if (sldu_operand_cnt_q == 0 && vinsn_issue_q.start_generic_slide && vinsn_issue_valid_q) begin
+            sldu_operand_buf_d[0][l] = sldu_operand_i[l];
+          end 
+
+          if (result_queue_valid_q[result_queue_read_pnt_q][l] & (~(vinsn_commit.vfu inside {VFU_Alu, VFU_MFpu}))) begin
+            if (sldu_result_cnt_q == (vinsn_commit.vl / NrLanes) + 1) begin
+              sldu_operand_buf_d[0][l] = result_queue_q[result_queue_read_pnt_q][l].wdata;
+            end
+            sldu_result_cnt_d = sldu_result_cnt_q - 1;
+          end
+          
+          sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} && sldu_red_operand_valid_i[l]);
+
+          if (sldu_operand_ready_q[l] & sldu_operand_valid_d[l]) begin
+            sldu_operand_cnt_d = sldu_operand_cnt_q + 1;
+            sldu_operand_ready_o[l] = 1;
+          end else begin
+            sldu_operand_ready_o[l] = 0;
+          end 
+
+          // Initialize result counter
+          if (vinsn_issue_valid_q && sldu_result_cnt_q == 0) begin
+            sldu_result_cnt_d = (vinsn_issue_q.vl / NrLanes) + 1;
+          end
+        end
+        default: begin
+          sldu_operand_d[l] = sldu_operand_i[l];
+          sldu_operand_valid_d[l] = (sldu_operand_queue_valid_i[l] && (sldu_operand_target_fu_i[l] == ALU_SLDU)) || (vinsn_issue_q.vfu inside {VFU_Alu, VFU_MFpu} && sldu_red_operand_valid_i[l]);
+          sldu_operand_ready_o[l] = sldu_operand_ready_q[l] & sldu_operand_valid_d[l];
+        end
+      endcase
 
       if (!vinsn_commit_valid) begin
         sldu_operand_cnt_d <= '0;
         sldu_result_cnt_d  <= '0;      
-      end
-
-      // Initialize result counter
-      if (vinsn_issue_valid_q && sldu_result_cnt_q == 0) begin
-        sldu_result_cnt_d = (vinsn_issue_q.vl / NrLanes) + 1;
       end
     end
   end
@@ -803,11 +843,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       last_lane_id = (vl_rem-1) & (NrLanes-1);
     end
 
-    if (pe_req_i.op == VSLIDEDOWN && pe_req_valid_i) begin
+    if (pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN} && pe_req_valid_i) begin
       remainder = NrLanes - pe_req_i.vl % NrLanes;
       if (remainder == 0)
         remainder = NrLanes;
-      if (pe_req_i.use_scalar_op) // || pe_req_i.stride == 0)
+      if (pe_req_i.use_scalar_op)
         remainder = 0;
     end
 
@@ -975,8 +1015,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           // Initialize id and addr fields of the result queue requests
           for (int lane = 0; lane < NrLanes; lane++) begin
             result_queue_d[result_queue_write_pnt_q][lane].id   = vinsn_issue_q.id;
-            result_queue_d[result_queue_write_pnt_q][lane].addr =
-              vaddr(vinsn_issue_q.vd, NrLanes) + vrf_pnt_q;
+            if (vinsn_issue_q.op == VSLIDEUP) begin
+              result_queue_d[result_queue_write_pnt_q][lane].addr =
+                vaddr(vinsn_issue_q.vd, NrLanes) + vrf_pnt_q + vinsn_issue_q.tot_slide / (NrLanes * NrClusters);
+            end else begin
+              result_queue_d[result_queue_write_pnt_q][lane].addr =
+                vaddr(vinsn_issue_q.vd, NrLanes) + vrf_pnt_q;
+            end
           end
 
           // Depending on the operation being performed, decide whether to update pointers
@@ -1153,7 +1198,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             if (vinsn_issue_q.op inside {VSLIDEUP, VSLIDEDOWN})
               mask_ready_d = !vinsn_issue_q.vm;
 
-            // Increment VRF address
+            // Increment VRF 
             vrf_pnt_d = vrf_pnt_q + 1;
 
             init_queue_d = 1'b1;
@@ -1331,30 +1376,96 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       sldu_result_id_o[lane]    = result_queue_q[result_queue_read_pnt_q][lane].id;
       sldu_result_wdata_o[lane] = result_queue_q[result_queue_read_pnt_q][lane].wdata;
 
-      if (!vinsn_commit.use_scalar_op) begin
-        if ((sldu_result_cnt_q == 3 && vinsn_commit.is_non_mul_cl) || (sldu_result_cnt_q == 2 && !vinsn_commit.is_non_mul_cl)) begin 
-          if ((vl_org_q % NrLanes) != 0 || sldu_result_cnt_q == 2) begin
-            for (int unsigned b = 0; b < 8; b++)
-              if (lane < (NrLanes - remainder_q)) begin
-                sldu_result_be_o[lane][b] = (1 << vinsn_commit.vtype.vsew) ? 1'b1 : 1'b0;
+      unique case (vinsn_commit.op) 
+        VSLIDEDOWN: begin
+          if (!vinsn_commit.use_scalar_op) begin
+            if ((sldu_result_cnt_q == 3 && vinsn_commit.is_non_mul_cl) || (sldu_result_cnt_q == 2 && !vinsn_commit.is_non_mul_cl)) begin 
+              if ((vl_org_q % NrLanes) != 0 || sldu_result_cnt_q == 2) begin
+                for (int unsigned b = 0; b < 8; b++)
+                  if (lane < (NrLanes - remainder_q)) begin
+                    sldu_result_be_o[lane][b] = (1 << vinsn_commit.vtype.vsew) ? 1'b1 : 1'b0;
+                  end else begin
+                    sldu_result_be_o[lane][b] = 1'b0;
+                  end
+              end else if (vl_org_q < vinsn_commit.vl - NrLanes) begin
+                for (int unsigned b = 0; b < 8; b++)
+                  sldu_result_be_o[lane][b] = 1'b0;  
               end else begin
-                sldu_result_be_o[lane][b] = 1'b0;
+                sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;        
               end
-          end else if (vl_org_q < vinsn_commit.vl - NrLanes) begin
-            for (int unsigned b = 0; b < 8; b++)
-              sldu_result_be_o[lane][b] = 1'b0;  
+            end else if (sldu_result_cnt_q == 2 && vinsn_commit.is_non_mul_cl ) begin
+              for (int unsigned b = 0; b < 8; b++)
+                sldu_result_be_o[lane][b] = 1'b0;
+            end else begin
+              sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
+            end
           end else begin
-            sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;        
+            sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
           end
-        end else if (sldu_result_cnt_q == 2 && vinsn_commit.is_non_mul_cl ) begin
-          for (int unsigned b = 0; b < 8; b++)
-            sldu_result_be_o[lane][b] = 1'b0;
-        end else begin
+        end
+        VSLIDEUP: begin
+          if (!vinsn_commit.use_scalar_op) begin
+            // if ((sldu_result_cnt_q == ((vinsn_commit.vl / NrLanes) + 1 - vinsn_commit.tot_slide / (NrLanes * NrClusters)) &&
+            //   vinsn_commit.tot_slide % (NrLanes * NrClusters) > (cluster_id_i+1) * NrLanes)) begin
+            if (sldu_result_cnt_q == ((vinsn_commit.vl / NrLanes) + 1) &&
+              vinsn_commit.tot_slide % (NrLanes * NrClusters) != 0 &&
+              vinsn_commit.tot_slide % (NrLanes * NrClusters) > (cluster_id_i+1) * NrLanes) begin
+
+              for (int unsigned b = 0; b < 8; b++)
+                sldu_result_be_o[lane][b] = 1'b0;
+
+            end else if (sldu_result_cnt_q == ((vinsn_commit.vl / NrLanes) + 1) && vinsn_commit.tot_slide % (NrLanes * NrClusters) != 0) begin
+              if ((cluster_id_i * NrLanes) < (vinsn_commit.tot_slide % (NrLanes * NrClusters)) && (vinsn_commit.tot_slide % (NrLanes * NrClusters)) < ((cluster_id_i+1) * NrLanes)) begin
+                if (lane < vinsn_commit.tot_slide % (NrLanes * NrClusters) - (cluster_id_i * NrLanes)) begin
+                  for (int unsigned b = 0; b < 8; b++)
+                    sldu_result_be_o[lane][b] = 1'b0;
+                end else begin
+                  // Necessary to cover vl < lanes x cluster
+                  if (lane >= vinsn_commit.vl_cluster % (NrLanes * NrClusters) - (cluster_id_i * NrLanes) && vinsn_commit.vl_cluster < (NrLanes * NrClusters)) begin
+                    for (int unsigned b = 0; b < 8; b++)
+                      sldu_result_be_o[lane][b] = 1'b0;
+                  end else begin
+                    for (int unsigned b = 0; b < 8; b++)
+                      sldu_result_be_o[lane][b] = 1'b1;
+                  end
+                end
+              end else begin
+                if (lane < vinsn_commit.vl_cluster % (NrLanes * NrClusters) - (cluster_id_i * NrLanes) || ((vinsn_commit.vl_cluster - vinsn_commit.tot_slide) > (NrLanes * NrClusters))) begin
+                  for (int unsigned b = 0; b < 8; b++)
+                    sldu_result_be_o[lane][b] = 1'b1;
+                end else begin
+                  for (int unsigned b = 0; b < 8; b++)
+                    sldu_result_be_o[lane][b] = 1'b0;
+                end
+              end 
+            // Since slide was larger than NrLanes * NrClusters, this is the last result to be written
+            // Depending on the vl it has to be decided which elements are written
+            end else if (sldu_result_cnt_q == (vinsn_commit.vl / NrLanes) + 1 - vinsn_commit.vl_cluster / (NrLanes * NrClusters) + vinsn_commit.tot_slide / (NrLanes * NrClusters)) begin
+              if (lane < (NrLanes - remainder_q) || (vinsn_commit.vl > (vinsn_commit.vl_cluster / NrClusters) && vinsn_commit.vl % NrLanes == 0)) begin
+                for (int unsigned b = 0; b < 8; b++)
+                  sldu_result_be_o[lane][b] = 1'b1;                
+              end else begin
+                for (int unsigned b = 0; b < 8; b++)
+                  sldu_result_be_o[lane][b] = 1'b0;  
+              end
+            // Since slide was larger than NrLanes * NrClusters, not all results are needed to be written
+            end else if (sldu_result_cnt_q < (vinsn_commit.vl / NrLanes) + 1 - vinsn_commit.vl_cluster / (NrLanes * NrClusters) + vinsn_commit.tot_slide / (NrLanes * NrClusters) && 
+              vinsn_commit.tot_slide >= (NrLanes * NrClusters)) begin        
+              for (int unsigned b = 0; b < 8; b++)
+                sldu_result_be_o[lane][b] = 1'b0;    
+            end else begin
+              sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
+            end
+
+
+          end else begin
+            sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
+          end
+        end
+        default: begin
           sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
         end
-      end else begin
-        sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
-      end
+      endcase
 
  
       // sldu_result_buf[lane]     = result_queue_q[result_queue_read_pnt_q][lane].wdata;
@@ -1733,7 +1844,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       automatic logic add_extra_elem = pe_req_i.is_non_mul_cl ? ((pe_req_i.vl_cluster % (NrLanes * NrClusters) >= (cluster_id_i+1) * NrLanes) ? 0 : 1) : 0;
 
       vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt] = pe_req_i;
-      if (!pe_req_i.use_scalar_op) begin
+      if (!pe_req_i.use_scalar_op && pe_req_i.op == VSLIDEDOWN) begin
         vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt].vl_cluster = 2 * (pe_req_i.vl + remainder + add_extra_elem * NrLanes);      
         vinsn_queue_d.vinsn[vinsn_queue_q.accept_pnt].vl = pe_req_i.vl + remainder + add_extra_elem * NrLanes;
       end
@@ -1755,9 +1866,15 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         //automatic logic add_extra_elem = (pe_req_i.is_non_mul_cl && remainder != NrLanes) ? 1 : 0;
         automatic logic add_extra_elem = pe_req_i.is_non_mul_cl ? ((pe_req_i.vl_cluster % (NrLanes * NrClusters) >= (cluster_id_i+1) * NrLanes) ? 0 : 1) : 0;
 
-        commit_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
-                     ? (pe_req_i.vl + !pe_req_i.use_scalar_op * (add_extra_elem * NrLanes + remainder)) << int'(pe_req_i.vtype.vsew)
-                     : (NrLanes * ($clog2(NrLanes))) << EW64;
+        if (pe_req_i.op == VSLIDEDOWN) begin 
+          commit_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
+                      ? (pe_req_i.vl + !pe_req_i.use_scalar_op * (add_extra_elem * NrLanes + remainder)) << int'(pe_req_i.vtype.vsew)
+                      : (NrLanes * ($clog2(NrLanes))) << EW64;
+        end else begin
+          commit_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
+                      ? pe_req_i.vl << int'(pe_req_i.vtype.vsew)
+                      : (NrLanes * ($clog2(NrLanes))) << EW64;       
+        end
 
         // Add packets for inter cluster reduction
         if (pe_req_i.vfu inside {VFU_Alu, VFU_MFpu}) begin
@@ -1780,9 +1897,15 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         //automatic logic add_extra_elem = (pe_req_i.is_non_mul_cl && remainder != NrLanes) ? 1 : 0;
         automatic logic add_extra_elem = pe_req_i.is_non_mul_cl ? ((pe_req_i.vl_cluster % (NrLanes * NrClusters) >= (cluster_id_i+1) * NrLanes) ? 0 : 1) : 0;
 
-        ring_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
-                     ? (pe_req_i.vl + !pe_req_i.use_scalar_op * (add_extra_elem * NrLanes + remainder)) << int'(pe_req_i.vtype.vsew)
-                     : (NrLanes * ($clog2(NrLanes))) << EW64;
+        if (pe_req_i.op == VSLIDEDOWN) begin 
+          ring_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
+                      ? (pe_req_i.vl + !pe_req_i.use_scalar_op * (add_extra_elem * NrLanes + remainder)) << int'(pe_req_i.vtype.vsew)
+                      : (NrLanes * ($clog2(NrLanes))) << EW64;
+        end else begin
+          ring_cnt_d = pe_req_i.op inside {VSLIDEUP, VSLIDEDOWN}
+                      ? pe_req_i.vl << int'(pe_req_i.vtype.vsew)
+                      : (NrLanes * ($clog2(NrLanes))) << EW64;
+        end
 
         // Add packets for inter cluster reduction
         if (pe_req_i.vfu inside {VFU_Alu, VFU_MFpu}) begin

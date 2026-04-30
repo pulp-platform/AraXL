@@ -352,6 +352,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               use_scalar_op : ara_req_i.use_scalar_op,
               swap_vs2_vd_op: ara_req_i.swap_vs2_vd_op,
               stride        : ara_req_i.stride,
+              tot_slide     : ara_req_i.tot_slide,
               is_stride_np2 : ara_req_i.is_stride_np2,
               start_generic_slide : ara_req_i.start_generic_slide,
               is_non_mul_cl : ara_req_i.is_non_mul_cl,
