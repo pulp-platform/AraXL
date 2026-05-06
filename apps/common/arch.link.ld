@@ -53,6 +53,15 @@ SECTIONS {
 
   /* In non-cacheable region of main memory */
   sync_flag              = 0xBFFFF800;
+  sync_generation        = 0xBFFFF804;
+  /* to later use l2 alloc base within applications to allocate the following atomic pointers */
+  canneal_keep_going_global_flag        = 0xBFFFF808;
+  canneal_atomic_ptr_pool               = 0xBFFFF810;
+  streamcluster_pspeedy_cond_generation = 0xBFFFF810;
+  streamcluster_pspeedy_i               = 0xBFFFF814;
+  printf_lock                           = 0xBFFFF818;
+  mutex_lock                            = 0xBFFFF840;
+  l2_atomic_alloc_base                  = 0xBFFFF848;
 
   eoc_address_reg        = 0xD0000000;
   dram_start_address_reg = 0xD0000008;

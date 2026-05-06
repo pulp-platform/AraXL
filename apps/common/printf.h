@@ -47,7 +47,8 @@ extern "C" {
 void _putchar(char character);
 
 /**
- * Tiny printf implementation
+ * Tiny printf implementation. Calls are serialized across harts so that the
+ * characters from concurrent calls are not interleaved.
  * You have to implement _putchar if you use printf()
  * To avoid conflicts with the regular printf() API it is overridden by macro
  * defines and internal underscore-appended functions like printf_() are used
