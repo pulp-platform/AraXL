@@ -1030,8 +1030,8 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           if (!((fp_op inside {ADD, MINMAX}) && (vinsn_issue_q.op inside {VFREDUSUM, VFWREDUSUM, VFREDOSUM, VFWREDOSUM, VFREDMIN, VFREDMAX}))) begin
             vfpu_cnt_d = vfpu_cnt_q + 1;
           end
-        end  
-      end      
+        end
+      end
     end
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
