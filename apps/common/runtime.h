@@ -24,9 +24,8 @@
 
 #include <stdint.h>
 
-// Use compiler __atomic builtins directly — works in both C and C++ with
-// bare-metal clang/GCC without needing <atomic> or <stdatomic.h>.
-typedef int atomic_int_t;
+#include "malloc.h"
+#include "atomics.h"
 
 #define ENABLE_VEC                                                             \
   asm volatile(                                                                \
@@ -37,9 +36,6 @@ extern int64_t timer;
 // SoC-level CSR
 extern uint64_t hw_cnt_en_reg;
 
-// Barrier implementation using atomic operations for multi-core configurations
-extern atomic_int_t sync_flag;
-
 // Return the current value of the cycle counter
 inline int64_t get_cycle_count() {
   int64_t cycle_count;
@@ -49,17 +45,6 @@ inline int64_t get_cycle_count() {
                : [cycle_count] "=r"(cycle_count));
   return cycle_count;
 };
-
-inline void sync_barrier() {
-  // Last core to arrive resets the counter
-  if (__atomic_fetch_add(&sync_flag, 1, __ATOMIC_SEQ_CST) == NR_CORES - 1) {
-    __atomic_store_n(&sync_flag, 0, __ATOMIC_SEQ_CST);
-  } else {
-    // Wait for all cores to reach the barrier
-    while (__atomic_load_n(&sync_flag, __ATOMIC_SEQ_CST) != 0)
-      ;
-  }
-}
 
 #ifndef SPIKE
 // Enable and disable the hw-counter
