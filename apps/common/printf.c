@@ -751,12 +751,31 @@ static int _vsnprintf(out_fct_type out, char *buffer, const size_t maxlen,
 
 ///////////////////////////////////////////////////////////////////////////////
 
+// Linker-backed lock in non-cacheable memory. Keeping the lock in the runtime
+// makes each printf call atomic with respect to the other harts.
+extern int printf_lock;
+
+static inline void _printf_lock_acquire(void) {
+  while (__atomic_exchange_n(&printf_lock, 1, __ATOMIC_ACQUIRE) != 0) {
+    while (__atomic_load_n(&printf_lock, __ATOMIC_RELAXED) != 0) {
+    }
+  }
+}
+
+static inline void _printf_lock_release(void) {
+  __atomic_store_n(&printf_lock, 0, __ATOMIC_RELEASE);
+}
+
 int printf_(const char *format, ...) {
+  _printf_lock_acquire();
+
   va_list va;
   va_start(va, format);
   char buffer[1];
   const int ret = _vsnprintf(_out_char, buffer, (size_t)-1, format, va);
   va_end(va);
+
+  _printf_lock_release();
   return ret;
 }
 
