@@ -261,7 +261,9 @@ always_comb begin
     // Buffer data in this cycle
     data_d = axi_resp_i_cut[NumStages].r.data;
     data_valid_d     = 1'b1;
-    last_d = axi_resp_i_cut[NumStages].r.last;
+    // Only propagate last from AXI when this is the final split request
+    // tracked at the last align stage.
+    last_d = axi_resp_i_cut[NumStages].r.last && (tracker_q[rd_resp_pnt_q[NumStages-1]].num_requests[NumStages-1] == 1);
   end
 
   if (!(tracker_q[rd_resp_pnt_q[NumStages-1]].op inside {VLXE, VLSE})) begin
@@ -287,18 +289,18 @@ always_comb begin
 
         // If aligned request, set data valid only if available valid beat
         data_valid_d = be_final_d[AxiDataWidth/8-1] ? axi_resp_i_cut[NumStages].r_valid : 1'b1;
-      end
+      
+        // Use vl from tracker to check if this is the last data packet or not
+        // Since using delayed data, using delayed pointer to the tracker
+        if (tracker_q[rd_resp_pnt_q_del[NumStages-1]].len <= axi_valid_el) begin
+          // Last packet
+          axi_resp_o.r.last = 1'b1;
 
-      // Use vl from tracker to check if this is the last data packet or not
-      // Since using delayed data, using delayed pointer to the tracker
-      if (tracker_q[rd_resp_pnt_q_del[NumStages-1]].len <= axi_valid_el) begin
-        // Last packet
-        axi_resp_o.r.last = 1'b1;
-
-        // If the current data is not misaligned and we have a valid data
-        // Set valid data for the next subsequent load to avoid bubble
-        data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
-        last_d = 1'b0;
+          // If the current data is not misaligned and we have a valid data
+          // Set valid data for the next subsequent load to avoid bubble
+          data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
+          last_d = 1'b0;
+        end
       end
     end
   end else begin
