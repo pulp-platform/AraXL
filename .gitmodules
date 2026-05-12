@@ -24,3 +24,7 @@
 	path = apps/riscv-vectorized-benchmark-suite
 	url = https://github.com/Navaneeth-KunhiPurayil/riscv-vectorized-benchmark-suite.git
 	branch = araxl/baremetal
+[submodule "apps/TSVC_2"]
+	path = apps/TSVC_2
+	url = https://https://github.com/Navaneeth-KunhiPurayil/TSVC_2.git
+	branch = socdaml/setup
