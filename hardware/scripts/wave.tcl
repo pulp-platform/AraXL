@@ -7,15 +7,18 @@
 onerror {resume}
 quietly WaveActivateNextPane {} 0
 
-# Add Ariane's waveforms
-do ../scripts/wave_core.tcl
-
 # Add Ara's waveforms
+for {set core 0}  {$core < [examine -radix dec ara_tb.NrCores]} {incr core} {
+# Add Ariane's waveforms
+do ../scripts/wave_core.tcl $core
+
 for {set cluster 0}  {$cluster < [examine -radix dec ara_tb.NrClusters]} {incr cluster} {
-    do ../scripts/wave_ara.tcl $cluster
+    do ../scripts/wave_ara.tcl $core $cluster
 }
 
-add wave -noupdate -group Global -group ShuffleStage /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/i_shuffle_stage/*
-add wave -noupdate -group Global -group LdSt /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/i_global_ldst/*
-add wave -noupdate -group Global -group AlignStage /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/i_align_stage/*
+
+add wave -noupdate -group Core[$core] -group Global -group ShuffleStage /ara_tb/dut/i_ara_soc/gen_ara_system[$core]/i_system/i_ara_cluster/i_shuffle_stage/*
+add wave -noupdate -group Core[$core] -group Global -group LdSt /ara_tb/dut/i_ara_soc/gen_ara_system[$core]/i_system/i_ara_cluster/i_global_ldst/*
+add wave -noupdate -group Core[$core] -group Global -group AlignStage /ara_tb/dut/i_ara_soc/gen_ara_system[$core]/i_system/i_ara_cluster/i_align_stage/*
+}
 
