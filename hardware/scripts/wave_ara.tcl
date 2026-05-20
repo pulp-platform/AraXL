@@ -4,22 +4,22 @@
 #
 # Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
 
-add wave -noupdate -group Ara[$1] -group core /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group core /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/*
 
-add wave -noupdate -group Ara[$1] -group dispatcher /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_dispatcher/*
-add wave -noupdate -group Ara[$1] -group sequencer /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_sequencer/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group dispatcher /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_dispatcher/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group sequencer /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_sequencer/*
 
 # Add waves from all the lanes
 for {set lane 0}  {$lane < [examine -radix dec ara_tb.NrLanes]} {incr lane} {
-    do ../scripts/wave_lane.tcl $1 $lane
+    do ../scripts/wave_lane.tcl $1 $2 $lane
 }
 
-add wave -noupdate -group Ara[$1] -group masku /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_masku/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group masku /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_masku/*
 
-add wave -noupdate -group Ara[$1] -group sldu /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_sldu/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group sldu /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_sldu/*
 
-add wave -noupdate -group Ara[$1] -group vlsu -group addrgen /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_vlsu/i_addrgen/*
-add wave -noupdate -group Ara[$1] -group vlsu -group vldu /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_vlsu/i_vldu/*
-add wave -noupdate -group Ara[$1] -group vlsu -group vstu /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_vlsu/i_vstu/*
-add wave -noupdate -group Ara[$1] -group vlsu /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ara/i_vlsu/*
-add wave -noupdate -group Ara[$1] -group ring_router /ara_tb/dut/i_ara_soc/i_system/i_ara_cluster/p_cluster[$1]/i_ara_macro/i_ring_router/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group vlsu -group addrgen /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_vlsu/i_addrgen/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group vlsu -group vldu /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_vlsu/i_vldu/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group vlsu -group vstu /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_vlsu/i_vstu/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group vlsu /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ara/i_vlsu/*
+add wave -noupdate -group Core[$1] -group Ara[$2] -group ring_router /ara_tb/dut/i_ara_soc/gen_ara_system[$1]/i_system/i_ara_cluster/p_cluster[$2]/i_ara_macro/i_ring_router/*
