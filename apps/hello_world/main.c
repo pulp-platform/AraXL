@@ -33,6 +33,8 @@ uint8_t res_8[20][256] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), secti
 uint16_t res_16[20][256] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
 uint32_t res_32[20][256] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
 uint64_t res[20][256] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+uint64_t res1[20][256] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
+uint64_t res2[20][256] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS), section(".l2")));
 
 static volatile uint64_t DATASET[1024] __attribute__((aligned(AXI_DWIDTH))) = {
   0, 1, 2, 3, 4, 5, 6, 7,
@@ -296,62 +298,61 @@ static volatile uint64_t DATASET_v8[1024] __attribute__((aligned(AXI_DWIDTH))) =
   2040, 2041, 2042, 2043, 2044, 2045, 2046, 2047
 };
 
+static volatile uint64_t Mask[192] __attribute__((aligned(AXI_DWIDTH))) = {
+  0xffffffffffffffd3, 1, 2, 3, 0xa, 5, 6, 7,
+  8, 9, 10, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  8, 9, 10, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  8, 9, 10, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0,
+};
+
 
 int main() {
-
 
   int num_failed = 0;
 
   printf("Ariane says Hello!\n");
   int avl, vl;
 
-  // SEW = 16
-  // uint16_t a = 0xDEAD;
-
-  // int vl_list[1] = {32};
-  
-  // for (int i=0; i<1; i++) {
-  //   vl = vl_list[i];
-
-  //   printf ("Testing with vl=%d\n", vl);
-
-  //   asm volatile("vsetvli %0, %1, e16, m2, ta, ma" : "=r"(avl) : "r"(vl));
-  //   asm volatile ("vle16.v v2, (%0)"::"r"(LONG_I16));
-  //   asm volatile ("vslide1down.vx v8, v2, %0"::"r"(a));
-  //   asm volatile ("vse16.v v8, (%0)"::"r"(res_16[i]));
-
-  //   // check results
-  //   for (int idx = 0; idx < vl; idx++) {
-  //     if (idx == vl - 1) {
-  //       if (res_16[i][idx] != a) {
-  //         printf("Error at index %d: expected %x, got %x\n", idx, a, res_16[i][idx]);
-  //         num_failed++;
-  //         return -1;
-  //       }
-  //     } else {
-  //       if (res_16[i][idx] != LONG_I16[idx+1]) {
-  //         printf("Error at index %d: expected %x, got %x\n", idx, LONG_I16[idx+1], res_16[i][idx]);
-  //         num_failed++;
-  //         return -1;
-  //       }
-  //     }
-  //   }
-  // }
-
   // SEW = 64
   printf("Running vl regression tests for generic slidedown SEW=64\n");
 
-  uint64_t a = 0xDEADBEEFDEADBEEF;
-  int slide = 4;
+  // Configuration
+  uint64_t a = 0xDEADBEEFDEADBEEF;                  // scalar value
 
-  int vl_max = 256;     // VLEN * LMUL / SEW
+  int slide = 2;                                    // Slide amount
 
-  int vl_list[6]    = { 1,  3,  6, 22, 254, 256};
-  int vl_ld_list[6] = {64, 64, 64, 64, 256, 256};
+  int nr_clusters = 2;                              // Number of clusters
+  int vl_max = nr_clusters * 128;                   // nr_clusters * VLEN * LMUL / SEW
 
-  int slide_down = 1;   // 1: slidedown 0: slideup
+  int slide1 = 0;                                   // 1: slide-by-1  0: generic slide
+  int slide_down = 1;                               // 1: slidedown   0: slideup
+  int slide1_down = 1;                              // 1: slidedown   0: slideup
+
+  int vl_list[6]    = {6, 8, 9, 46, 255, 256};          // vector length to work on
+
+  int vl_ld_list[6] = {64, 64, 64, vl_max, vl_max, vl_max};   // vector length to preload into destination for verification
+
+
   
-  for (int i=4; i<5; i++) {
+  for (int i=0; i<6; i++) {
     vl = vl_ld_list[i];
 
     printf ("Testing with vl=%d and slide=%d\n", vl_list[i], slide);
@@ -359,110 +360,151 @@ int main() {
     asm volatile("vsetvli %0, %1, e64, m2, ta, ma" : "=r"(avl) : "r"(vl));
     asm volatile ("vle64.v v2, (%0)"::"r"(&DATASET[0]));
     asm volatile ("vle64.v v8, (%0)"::"r"(&DATASET_v8[0]));
+    asm volatile ("vle64.v v12, (%0)"::"r"(&DATASET_v8[0]));
+    asm volatile ("vle64.v v14, (%0)"::"r"(&DATASET_v8[0]));
 
-    // Work on 16 elements to see actual behaviour
+    // Mask
+    //asm volatile ("vle64.v v0, (%0)"::"r"(&Mask[0]));  // vlm.v
+
+    // Set vector length according to working vector
     vl = vl_list[i];
     asm volatile("vsetvli %0, %1, e64, m2, ta, ma" : "=r"(avl) : "r"(vl));
 
-    if (slide_down) {
-      // *** GENERIC SLIDEDOWN ***
-      asm volatile("li x5, 4");
-      asm volatile("vslidedown.vx v8, v2, x5");
-      //asm volatile ("vslide1down.vx v8, v2, %0"::"r"(a));
+    if (slide1) {
+      if (slide1_down) {
+        // *** SLIDE 1 DOWN ***
+        asm volatile ("vslide1down.vx v8, v2, %0"::"r"(a));
+        asm volatile ("vslide1down.vx v12, v2, %0, v0.t"::"r"(a));
+        asm volatile ("vslide1down.vx v14, v2, %0, v0.t"::"r"(a));
+      } else {
+        // *** SLIDE 1 UP ***
+        asm volatile ("vslide1up.vx v8, v2, %0"::"r"(a));
+      }
     } else {
-      // *** GENERIC SLIDEUP ***
-      asm volatile("li x5, 3");
-      asm volatile("vslideup.vx v8, v2, x5");
-      //asm volatile ("vslide1up.vx v8, v2, %0"::"r"(a));
+      if (slide_down) {
+        // *** GENERIC SLIDEDOWN ***
+        asm volatile("li x5, 2");
+        asm volatile("vslidedown.vx v8, v2, x5");
+        asm volatile("vslidedown.vx v12, v2, x5");
+        //asm volatile("vslidedown.vx v14, v2, x5");
+      } else {
+        // *** GENERIC SLIDEUP ***
+        asm volatile("li x5, 2");
+        asm volatile("vslideup.vx v8, v2, x5");
+        asm volatile("vslideup.vx v12, v2, x5");
+        //asm volatile("vslideup.vx v14, v2, x5");
+      }
     }
 
     // Need to store whole vector previously loaded to check correct behaviour
-    //vl = vl_ld_list[i];
-    asm volatile("vsetvli %0, %1, e64, m2, ta, ma" : "=r"(avl) : "r"(256));
+    vl = vl_ld_list[i];
+    asm volatile("vsetvli %0, %1, e64, m2, ta, ma" : "=r"(avl) : "r"(vl));
     asm volatile ("vse64.v v8, (%0)"::"r"(res[i]));
+    //asm volatile ("vse64.v v12, (%0)"::"r"(res1[i]));
+    //asm volatile ("vse64.v v14, (%0)"::"r"(res2[i]));
 
-    // check results
+    // *** CHECK RESULTS ***
     vl = vl_list[i];
 
-    if (slide_down) {
-      // *** TEST GENERIC SLIDEDOWN ***
-      // for (int idx = 255; idx < vl_ld_list[i]; idx++) {
-      //   printf("Got %lx at index %d\n", res[i][idx], idx);
-      // }
-
-      for (int idx = 0; idx < vl_ld_list[i]; idx++) {
-        if (idx >= (vl_max - slide) && vl_list[i] == vl_max) {
-          if (res[i][idx] != 0) {
-            printf("Error at index %d: expected %lx, got %lx (vl = vlmax)\n", idx, 0, res[i][idx]);
-            num_failed++;
-            return -1;
-          }         
-        }
-        else if (vl - (vl + slide - vl_max) <= idx && idx < vl) {
-            if (res[i][idx] != 0) {
-            printf("Error at index %d: expected %lx, got %lx (vl + slide > vlmax)\n", idx, 0, res[i][idx]);
-            num_failed++;
-            return -1;   
+    if (slide1) {
+      if (slide1_down) {
+        for (int idx = 0; idx < vl_ld_list[i]; idx++) {
+          if (idx == vl - 1) {
+            if (res[i][idx] != a) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, a, res[i][idx]);
+              num_failed++;
+              return -1;
+            }
+          } else if (idx < vl){
+            if (res[i][idx] != DATASET[idx+1]) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET[idx+1], res[i][idx]);
+              num_failed++;
+              return -1;
+            }
+          } else {
+            if (res[i][idx] != DATASET_v8[idx]) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET_v8[idx-1], res[i][idx]);
+              num_failed++;
+              return -1;
+            }
           }
         }
-        else if (idx >= vl) {
-          if (res[i][idx] != DATASET_v8[idx]) {
-            printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET_v8[idx], res[i][idx]);
-            num_failed++;
-            return -1;
-          }        
-        }
-        else {
-          if (res[i][idx] != DATASET[idx+slide]) {
-            printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET[idx+slide], res[i][idx]);
-            num_failed++;
-            return -1;
+      } else {
+        for (int idx = 0; idx < vl_ld_list[i]; idx++) {
+          if (idx == 0) {
+            if (res[i][idx] != a) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, a, res[i][idx]);
+              num_failed++;
+              return -1;
+            }
+          } else if (idx < vl){
+            if (res[i][idx] != DATASET[idx-1]) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET[idx-1], res[i][idx]);
+              num_failed++;
+              return -1;
+            }
+          } else {
+            if (res[i][idx] != DATASET_v8[idx]) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET_v8[idx], res[i][idx]);
+              num_failed++;
+              return -1;
+            }
           }
-        } 
+        }
       }
     } else {
-      //*** TEST GENERIC SLIDEUP ***
-      for (int idx = 0; idx < vl_list[i]; idx++) {
-        printf("Got %lx at index %d\n", res[i][idx], idx);
-      }
-
-      for (int idx = 0; idx < vl_ld_list[i]; idx++) {
-        if (idx >= vl || idx < slide) {
-          if (res[i][idx] != DATASET_v8[idx]) {
-            printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET_v8[idx], res[i][idx]);
-            num_failed++;
-            return -1;
-          }        
-        }
-        else {
-          if (res[i][idx] != DATASET[idx-slide]) {
-            printf("Else Error at index %d: expected %lx, got %lx\n", idx, DATASET[idx-slide], res[i][idx]);
-            num_failed++;
-            return -1;
+      if (slide_down) {
+        // *** GENERIC SLIDEDOWN ***
+        for (int idx = 0; idx < vl_ld_list[i]; idx++) {
+          if (idx >= (vl_max - slide) && (vl_list[i] == vl_max || (idx < vl))) {
+            if (res[i][idx] != 0) {
+              printf("Error 1 at index %d: expected %lx, got %lx \n", idx, 0, res[i][idx]);
+              num_failed++;
+              return -1;
+            }         
           }
-        } 
+          // else if ((vl_max - slide) <= idx && (idx < vl)) {//(vl - (vl + slide - vl_max) <= idx && idx < vl) {
+          //     if (res[i][idx] != 0) {
+          //     printf("Error 2  at index %d: expected %lx, got %lx \n", idx, 0, res[i][idx]);
+          //     num_failed++;
+          //     return -1;   
+          //   }
+          // }
+          else if (idx >= vl) {
+            if (res[i][idx] != DATASET_v8[idx]) {
+              printf("Error 3 at index %d: expected %lx, got %lx\n", idx, DATASET_v8[idx], res[i][idx]);
+              num_failed++;
+              return -1;
+            }        
+          }
+          else {
+            if (res[i][idx] != DATASET[idx+slide]) {
+              printf("Error 4 at index %d: expected %lx, got %lx\n", idx, DATASET[idx+slide], res[i][idx]);
+              num_failed++;
+              return -1;
+            }
+          } 
+        }
+      } else {
+        //*** GENERIC SLIDEUP ***
+        for (int idx = 0; idx < vl_ld_list[i]; idx++) {
+          if (idx >= vl || idx < slide) {
+            if (res[i][idx] != DATASET_v8[idx]) {
+              printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET_v8[idx], res[i][idx]);
+              num_failed++;
+              return -1;
+            }        
+          }
+          else {
+            if (res[i][idx] != DATASET[idx-slide]) {
+              printf("Else Error at index %d: expected %lx, got %lx\n", idx, DATASET[idx-slide], res[i][idx]);
+              num_failed++;
+              return -1;
+            }
+          } 
+        }
       }
     }
-
-    // for (int idx = 0; idx < 32; idx++) {
-    //   printf("Got %lx at index %d\n", res[i][idx], idx);
-    // }
-
-    // for (int idx = 0; idx < vl; idx++) {
-    //   if (idx == 0) {
-    //     if (res[i][idx] != a) {
-    //       printf("Error at index %d: expected %lx, got %lx\n", idx, a, res[i][idx]);
-    //       num_failed++;
-    //       return -1;
-    //     }
-    //   } else {
-    //     if (res[i][idx] != DATASET[idx-1]) {
-    //       printf("Error at index %d: expected %lx, got %lx\n", idx, DATASET[idx-1], res[i][idx]);
-    //       num_failed++;
-    //       return -1;
-    //     }
-    //   }
-    // }
   }
 
   return 0;
