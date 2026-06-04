@@ -9,7 +9,8 @@
 // and coherence with Ariane's own load/store unit.
 
 module vlsu import ara_pkg::*; import rvv_pkg::*; #(
-    parameter  int  unsigned NrLanes = 0,
+    parameter  int  unsigned NrLanes      = 0,
+    parameter  int  unsigned NrClusters   = 0, // Number of Ara instances
     parameter  type          vaddr_t = logic,  // Type used to address vector register file elements
     // AXI Interface parameters
     parameter  int  unsigned AxiDataWidth = 0,
@@ -129,6 +130,7 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
 
   addrgen #(
     .NrLanes     (NrLanes     ),
+    .NrClusters  (NrClusters  ),
     .AxiDataWidth(AxiDataWidth),
     .AxiAddrWidth(AxiAddrWidth),
     .axi_ar_t    (axi_ar_t    ),

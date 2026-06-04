@@ -114,12 +114,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   /////////////////////
 
   // Counts the number of slide-by-1 operations to be issued when using generic slide
-  elen_t slide1_cnt_d;
+  elen_t slide1_cnt_d;  
   elen_t slide1_cnt_q;
-
-  // Save the generic slide request
-  ara_req_t ara_slide_req_d;
-  ara_req_t ara_slide_req_q;
 
   // Save previous ara_req_ready_i for edge detection
   logic ara_req_valid_q;
@@ -135,21 +131,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     if (!rst_ni) begin
       ara_req_o         <= '0;
       ara_req_valid_o   <= 1'b0;
-      ara_slide_req_q   <= '0;
       ara_req_valid_q   <= 1'b0;
       slide1_cnt_q      <= 0;
     end else begin
 
-      ara_slide_req_q <= ara_slide_req_d;
       slide1_cnt_q    <= slide1_cnt_d;
 
-      // Generic slide: issue several slide-by-1 requests
-      // Multiple slide by 1 requests are issued in the dispatcher and hence they are valid
-      if (ara_req_ready_i && slide1_cnt_d > 0) begin
-        ara_req_o         <= ara_slide_req_d;
-        ara_req_valid_o   <= 1;//ara_req_valid_d;
-        ara_req_valid_q   <= 1;//ara_req_valid_d;
-      end else if (ara_req_ready_i) begin             // Issue next request
+      if (ara_req_ready_i) begin             // Issue next request
         ara_req_o         <= ara_req_d;
         ara_req_valid_o   <= ara_req_valid_d;
         ara_req_valid_q   <= ara_req_valid_d;
@@ -242,6 +230,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   logic in_lane_op;
   // If the vslideup offset is greater than vl_q, the vslideup has no effects
   logic null_vslideup;
+  // In case of a generic slidedown all clusters need to participate
+  logic all_participate;
 
   // Pipeline the VLSU's load and store complete signals, for timing reasons
   logic load_complete_q;
@@ -272,9 +262,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
   logic illegal_insn;
   elen_t vfmvfs_result;
-
-  // Is a rising-edge at ara_req_ready_i?
-  logic req_ready_rise;
 
   always_comb begin: p_decoder
     // Default values
@@ -310,6 +297,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     skip_vs1_lmul_checks = 1'b0;
 
     null_vslideup = 1'b0;
+    all_participate = 1'b0;
 
     is_decoding = 1'b0;
     in_lane_op  = 1'b0;
@@ -326,22 +314,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     };
 
     slide1_cnt_d     = slide1_cnt_q;
-    ara_slide_req_d  = ara_slide_req_q;
 
     // Decrease counter of slide-by-1 instructions to be issued to achieve generic slide
     if (slide1_cnt_q != 0 && ara_req_valid_q && ara_req_ready_i) begin
-      slide1_cnt_d           = slide1_cnt_q - 1;
-      if (ara_slide_req_q.op == VSLIDEDOWN) begin
-        ara_slide_req_d.vstart = 0;
-      end else if (ara_slide_req_q.op == VSLIDEUP) begin
-        ara_slide_req_d.vstart = NrLanes * (ara_slide_req_q.tot_slide / (NrLanes * NrClusters));
-      end
-      ara_slide_req_d.start_generic_slide = 1'b0;
-    end
-
-    // After first slide-by-1 instruction, src register has to be the same as the dst register
-    if (ara_req_ready_i && slide1_cnt_q > 0 && ara_req_valid_o) begin
-      ara_slide_req_d.vs2 = ara_req_o.vd;      
+      slide1_cnt_d           = slide1_cnt_q - 1; 
     end
 
     // fflags
@@ -870,24 +846,20 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   6'b001010: ara_req_d.op = ara_pkg::VOR;
                   6'b001011: ara_req_d.op = ara_pkg::VXOR;
                   6'b001110: begin
-                    // ara_req_d.op            = ara_pkg::VSLIDEUP;
-                    // ara_req_d.stride        = acc_req_i.rs1;
-                    // ara_req_d.eew_vs2       = vtype_q.vsew;
-                    // // Encode vslideup/vslide1up on the use_scalar_op field
-                    // ara_req_d.use_scalar_op = 1'b0;
-                    // ara_req_d.start_generic_slide = 1'b0;
-                    // // Vl refers to current system vsew, but operand requesters
-                    // // will fetch bytes from a vreg with a different eew
-                    // // i.e., request will need reshuffling
-                    // ara_req_d.scale_vl      = 1'b1;
-                    // // If stride > vl, the vslideup has no effects
-                    // if (|ara_req_d.stride[$bits(ara_req_d.stride)-1:$bits(vl_cluster_q)] ||
-                    //   (vlen_t'(ara_req_d.stride) >= vl_cluster_q)) null_vslideup = 1'b1;
+
+                    if (slide1_cnt_q == 1) begin
+                      ara_req_valid_d         = 1'b0;
+                    end else begin
+                      if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin 
+                        acc_resp_o.req_ready  = 1'b0;
+                        acc_resp_o.resp_valid = 1'b0; 
+                      end 
+                    end
 
                     ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
                     ara_req_d.op      = ara_pkg::VSLIDEUP;
-                    ara_req_d.stride  = 1;
+                    //ara_req_d.stride  = 1;
                     ara_req_d.eew_vs2 = vtype_q.vsew;
                     // Request will need reshuffling
                     ara_req_d.scale_vl = 1'b1;
@@ -900,22 +872,46 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     end else begin
                       ara_req_d.stride      = 1;
                     end
+
                     // Number of slide-by-1 instructions to achieve generic slide
-                    if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin
-                      slide1_cnt_d          = acc_req_i.rs1 % (NrLanes * NrClusters);
-                    end else begin
-                      slide1_cnt_d          = 1;
+                    if (slide1_cnt_q == 0) begin
+                      if (ara_req_d.vl == 0) begin
+                        slide1_cnt_d          = 0;
+                      end else if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin
+                        slide1_cnt_d          = acc_req_i.rs1 % (NrLanes * NrClusters);
+                      end else begin
+                        slide1_cnt_d          = 0; 
+                      end
+                      ara_req_d.start_generic_slide = 1'b1;  
                     end
-                    ara_slide_req_d         = ara_req_d;
-                    ara_slide_req_d.start_generic_slide = 1'b1;  
-                    ara_slide_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
-                    ara_slide_req_d.tot_slide = acc_req_i.rs1;            
+
+                    // Indicates if the total slide amount is a multiple of cluster x lanes or not
+                    ara_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
+                    ara_req_d.tot_slide = acc_req_i.rs1; 
+
+                    if (slide1_cnt_q != 0) begin
+                      ara_req_d.vstart = NrLanes * (ara_req_d.tot_slide / (NrLanes * NrClusters));
+                      ara_req_d.vs2    = ara_req_d.vd; 
+                    end           
                   end
                   6'b001111: begin
+
+                    if (slide1_cnt_q == 1) begin
+                      ara_req_valid_d         = 1'b0;
+                    end else begin
+                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin 
+                        acc_resp_o.req_ready  = 1'b0;
+                        acc_resp_o.resp_valid = 1'b0; 
+                      end 
+                    end
+
+                    // All clusters need to participate in a generic slidedown
+                    all_participate = 1'b1;
+
                     ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
                     ara_req_d.op            = ara_pkg::VSLIDEDOWN;
-                    if (!(acc_req_i.rs1 % (NrLanes * NrClusters)) || acc_req_i.rs1 == 0) begin
+                    if (!(insn.varith_type.rs1 % (NrLanes * NrClusters)) || insn.varith_type.rs1 == 0) begin
                       ara_req_d.stride      = 0;
                     end else begin
                       ara_req_d.stride      = 1;
@@ -923,17 +919,22 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     ara_req_d.eew_vs2       = vtype_q.vsew;
                     // Request will need reshuffling
                     ara_req_d.scale_vl      = 1'b1;
+                
                     // Number of slide-by-1 instructions to achieve generic slide
-                    if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin
-                      slide1_cnt_d          = acc_req_i.rs1 % (NrLanes * NrClusters);
+                    if (slide1_cnt_q == 0) begin
+                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
+                        slide1_cnt_d          = acc_req_i.rs1  % (NrLanes * NrClusters);
+                      end else begin
+                        slide1_cnt_d          = 0;
+                      end
+                      ara_req_d.start_generic_slide = 1'b1;
+                      ara_req_d.vstart  = acc_req_i.rs1 / (NrLanes * NrClusters);
                     end else begin
-                      slide1_cnt_d          = 1;
+                      ara_req_d.vstart = 0;
+                      ara_req_d.vs2    = ara_req_d.vd; 
                     end
-                    // Copy the request to reuse for sliding
-                    ara_slide_req_d         = ara_req_d;
-                    ara_slide_req_d.start_generic_slide = 1'b1;
-                    ara_slide_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
-                    ara_slide_req_d.vstart  = acc_req_i.rs1 / (NrLanes * NrClusters);
+                    // Indicates if the total slide amount is a multiple of cluster x lanes or not
+                    ara_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
                   end
                   6'b010000: begin
                     ara_req_d.op = ara_pkg::VADC;
@@ -1122,19 +1123,71 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   6'b001010: ara_req_d.op = ara_pkg::VOR;
                   6'b001011: ara_req_d.op = ara_pkg::VXOR;
                   6'b001110: begin
-                    ara_req_d.op            = ara_pkg::VSLIDEUP;
-                    ara_req_d.stride        = {{ELEN{insn.varith_type.rs1[19]}}, insn.varith_type.rs1};
-                    ara_req_d.eew_vs2       = vtype_q.vsew;
-                    // Encode vslideup/vslide1up on the use_scalar_op field
+
+                    if (slide1_cnt_q == 1) begin
+                      ara_req_valid_d         = 1'b0;
+                    end else begin
+                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin 
+                        acc_resp_o.req_ready  = 1'b0;
+                        acc_resp_o.resp_valid = 1'b0; 
+                      end 
+                    end
+
+                    ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
+                    ara_req_d.op      = ara_pkg::VSLIDEUP;
+                    //ara_req_d.stride  = 1;
+                    ara_req_d.eew_vs2 = vtype_q.vsew;
                     // Request will need reshuffling
-                    ara_req_d.scale_vl      = 1'b1;
+                    ara_req_d.scale_vl = 1'b1;
                     // If stride > vl, the vslideup has no effects
                     if (|ara_req_d.stride[$bits(ara_req_d.stride)-1:$bits(vl_cluster_q)] ||
-                      (vlen_t'(ara_req_d.stride) >= vl_cluster_q)) null_vslideup = 1'b1;
+                      (vlen_t'(ara_req_d.stride) >= vl_cluster_q)) null_vslideup = 1'b1; 
+
+                    if (!(insn.varith_type.rs1 % (NrLanes * NrClusters)) || insn.varith_type.rs1 == 0) begin
+                      ara_req_d.stride      = 0;
+                    end else begin
+                      ara_req_d.stride      = 1;
+                    end
+
+                    // Number of slide-by-1 instructions to achieve generic slide
+                    if (slide1_cnt_q == 0) begin
+                      if (ara_req_d.vl == 0) begin
+                        slide1_cnt_d          = 0;
+                      end else if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
+                        slide1_cnt_d          = insn.varith_type.rs1 % (NrLanes * NrClusters);
+                      end else begin
+                        slide1_cnt_d          = 0; 
+                      end
+                      ara_req_d.start_generic_slide = 1'b1;  
+                    end
+
+                    // Indicates if the total slide amount is a multiple of cluster x lanes or not
+                    ara_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
+                    ara_req_d.tot_slide = insn.varith_type.rs1; 
+
+                    if (slide1_cnt_q != 0) begin
+                      ara_req_d.vstart = NrLanes * (ara_req_d.tot_slide / (NrLanes * NrClusters));
+                      ara_req_d.vs2    = ara_req_d.vd; 
+                    end 
+
                   end
-                  6'b001111: begin
+                  6'b001111: begin    
+
+                    if (slide1_cnt_q == 1) begin
+                      ara_req_valid_d         = 1'b0;
+                    end else begin
+                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin 
+                        acc_resp_o.req_ready  = 1'b0;
+                        acc_resp_o.resp_valid = 1'b0; 
+                      end 
+                    end
+
+                    // All clusters need to participate in a generic slidedown
+                    all_participate = 1'b1;
+
                     ara_req_d.scalar_op     = 0;
+                    ara_req_d.use_scalar_op = 1'b0;
                     ara_req_d.op            = ara_pkg::VSLIDEDOWN;
                     if (!(insn.varith_type.rs1 % (NrLanes * NrClusters)) || insn.varith_type.rs1 == 0) begin
                       ara_req_d.stride      = 0;
@@ -1144,17 +1197,23 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     ara_req_d.eew_vs2       = vtype_q.vsew;
                     // Request will need reshuffling
                     ara_req_d.scale_vl      = 1'b1;
+                
                     // Number of slide-by-1 instructions to achieve generic slide
-                    if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
-                      slide1_cnt_d          = insn.varith_type.rs1 % (NrLanes * NrClusters);
+                    if (slide1_cnt_q == 0) begin
+                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
+                        slide1_cnt_d          = insn.varith_type.rs1 % (NrLanes * NrClusters);
+                      end else begin
+                        slide1_cnt_d          = 0;
+                      end
+                      ara_req_d.start_generic_slide = 1'b1;
+                      ara_req_d.vstart  = insn.varith_type.rs1 / (NrLanes * NrClusters);
                     end else begin
-                      slide1_cnt_d          = 1;
+                      ara_req_d.vstart = 0;
+                      ara_req_d.vs2    = ara_req_d.vd; 
                     end
-                    // Copy the request to reuse for sliding
-                    ara_slide_req_d         = ara_req_d;
-                    ara_slide_req_d.start_generic_slide = 1'b1;
-                    ara_slide_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
-                    ara_slide_req_d.vstart  = insn.varith_type.rs1 / (NrLanes * NrClusters);
+                    // Indicates if the total slide amount is a multiple of cluster x lanes or not
+                    ara_req_d.is_non_mul_cl = ara_req_d.vl_cluster % (NrLanes * NrClusters) ? 1 : 0;
+
                   end
                   6'b010000: begin
                     ara_req_d.op = ara_pkg::VADC;
@@ -3391,7 +3450,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
-    if (is_decoding && (vl_q == '0 || null_vslideup) && !is_config &&
+    if (is_decoding && ((vl_q == '0 && !all_participate) || null_vslideup) && !is_config &&
       !ignore_zero_vl_check && !acc_resp_o.error) begin
       // If we are acknowledging a memory operation, we must tell Ariane that the memory
       // operation was resolved (to decrement its pending load/store counter)
@@ -3409,7 +3468,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // The token must change at every new instruction
     ara_req_d.token = (ara_req_valid_o && ara_req_ready_i) ? ~ara_req_o.token : ara_req_o.token;
-    ara_slide_req_d.token = (ara_req_valid_o && ara_req_ready_i) ? ~ara_req_o.token : ara_req_o.token;
   end: p_decoder
 
 endmodule : ara_dispatcher

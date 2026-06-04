@@ -9,6 +9,7 @@
 
 module addrgen import ara_pkg::*; import rvv_pkg::*; #(
     parameter int  unsigned NrLanes      = 0,
+    parameter int  unsigned NrClusters   = 0,
     // AXI Interface parameters
     parameter int  unsigned AxiDataWidth = 0,
     parameter int  unsigned AxiAddrWidth = 0,
@@ -808,5 +809,11 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
       strided_lane_id_q         <= strided_lane_id_d;
     end
   end
+
+`ifndef VERILATOR
+    assert property (
+        @(posedge clk_i) (axi_aw_valid_o) |-> (axi_aw_o.addr % (4 * NrLanes * NrClusters) == 0))
+        else $fatal (1, "Store address must be aligned to 4 * NrLanes * NrClusters!");
+`endif
 
 endmodule : addrgen

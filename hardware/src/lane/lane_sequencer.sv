@@ -586,6 +586,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
               if (!pe_req.use_scalar_op) begin
                 vl_tot += extra_stride;
                 if (pe_req.vl % (NrLanes * NrClusters) == 0) begin
+                //if (pe_req.vl % NrLanes == 0) begin
                   vl_tot += 1;
                 end
               end
@@ -596,7 +597,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
                 operand_request_i[SlideAddrGenA].vl += 1;
               //if (pe_req.vl_cluster % (NrLanes * NrClusters) && !pe_req.use_scalar_op)
               if ((pe_req_i.vl_cluster % (NrLanes * NrClusters) < (cluster_id_i+1) * NrLanes) && pe_req.is_non_mul_cl && !pe_req.use_scalar_op)
-              //if ((pe_req.vl % NrLanes) && !pe_req.use_scalar_op)
+                //if ((pe_req.vl % NrLanes) && !pe_req.use_scalar_op)
                 operand_request_i[SlideAddrGenA].vl += 1;                
             end
             default:;
