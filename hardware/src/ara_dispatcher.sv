@@ -858,8 +858,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                     ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
-                    ara_req_d.op      = ara_pkg::VSLIDEUP;
-                    //ara_req_d.stride  = 1;
+                    ara_req_d.op            = ara_pkg::VSLIDEUP;
+                    ara_req_d.stride        = acc_req_i.rs1;
                     ara_req_d.eew_vs2 = vtype_q.vsew;
                     // Request will need reshuffling
                     ara_req_d.scale_vl = 1'b1;
@@ -874,7 +874,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     end
 
                     // Number of slide-by-1 instructions to achieve generic slide
-                    if (slide1_cnt_q == 0) begin
+                    if (slide1_cnt_q == 0 && null_vslideup == 0) begin
                       if (ara_req_d.vl == 0) begin
                         slide1_cnt_d          = 0;
                       end else if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin
@@ -1135,8 +1135,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                     ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
-                    ara_req_d.op      = ara_pkg::VSLIDEUP;
-                    //ara_req_d.stride  = 1;
+                    ara_req_d.op            = ara_pkg::VSLIDEUP;
+                    ara_req_d.stride        = {{ELEN{0}}, insn.varith_type.rs1};
                     ara_req_d.eew_vs2 = vtype_q.vsew;
                     // Request will need reshuffling
                     ara_req_d.scale_vl = 1'b1;
@@ -1151,7 +1151,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     end
 
                     // Number of slide-by-1 instructions to achieve generic slide
-                    if (slide1_cnt_q == 0) begin
+                    if (slide1_cnt_q == 0 && null_vslideup == 0) begin
                       if (ara_req_d.vl == 0) begin
                         slide1_cnt_d          = 0;
                       end else if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
