@@ -899,7 +899,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     if (slide1_cnt_q == 1) begin
                       ara_req_valid_d         = 1'b0;
                     end else begin
-                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin 
+                      if (acc_req_i.rs1 % (NrLanes * NrClusters) >= 2) begin 
                         acc_resp_o.req_ready  = 1'b0;
                         acc_resp_o.resp_valid = 1'b0; 
                       end 
@@ -911,7 +911,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     ara_req_d.scalar_op     = 0;
                     ara_req_d.use_scalar_op = 1'b0;
                     ara_req_d.op            = ara_pkg::VSLIDEDOWN;
-                    if (!(insn.varith_type.rs1 % (NrLanes * NrClusters)) || insn.varith_type.rs1 == 0) begin
+                    if (!(acc_req_i.rs1  % (NrLanes * NrClusters)) || acc_req_i.rs1 == 0) begin
                       ara_req_d.stride      = 0;
                     end else begin
                       ara_req_d.stride      = 1;
@@ -922,7 +922,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 
                     // Number of slide-by-1 instructions to achieve generic slide
                     if (slide1_cnt_q == 0) begin
-                      if (insn.varith_type.rs1 % (NrLanes * NrClusters) >= 2) begin
+                      if (acc_req_i.rs1  % (NrLanes * NrClusters) >= 2) begin
                         slide1_cnt_d          = acc_req_i.rs1  % (NrLanes * NrClusters);
                       end else begin
                         slide1_cnt_d          = 0;
