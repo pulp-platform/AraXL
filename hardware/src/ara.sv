@@ -174,8 +174,19 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   logic      [NrLanes-1:0]                     lane_mask_ready;
 
   // Mask unit scalar result variables
-  elen_t     result_scalar;
+  elen_t     result_scalar, result_scalar_d, result_scalar_q;
   logic      result_scalar_valid;
+
+  // Slide Unit results
+  logic      [NrLanes-1:0]                     sldu_result_req;
+  vid_t      [NrLanes-1:0]                     sldu_result_id;
+  vaddr_t    [NrLanes-1:0]                     sldu_result_addr;
+  elen_t     [NrLanes-1:0]                     sldu_result_wdata;
+  strb_t     [NrLanes-1:0]                     sldu_result_be;
+  logic      [NrLanes-1:0]                     sldu_result_gnt;
+  logic      [NrLanes-1:0]                     sldu_result_final_gnt;
+  logic                                        sldu_red_pending;
+  logic                                        sldu_red_completed;
 
   ara_sequencer #(.NrLanes(NrLanes)) i_sequencer (
     .clk_i                 (clk_i                    ),
@@ -198,8 +209,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the operand requesters
     .global_hazard_table_o (global_hazard_table      ),
     // Interface with the lane 0
-    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST]} ? result_scalar : masku_operand[0][1]), // MaskB OpQueue
-    .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST]} ? result_scalar_valid : masku_operand_valid[0][1]), // MaskB OpQueue Valid
+    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM} ? sldu_result_wdata[0] | result_scalar : masku_operand[0][1]), // MaskB OpQueue
+    .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST], VREDSUM} ? sldu_red_completed | result_scalar_valid : masku_operand_valid[0][1]), // MaskB OpQueue Valid
     .pe_scalar_resp_ready_o(pe_scalar_resp_ready     ),
     // Interface with the address generator
     .addrgen_ack_i         (addrgen_ack              ),
@@ -212,6 +223,19 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     masku_operand_ready_lane = masku_operand_ready_masku;
     // The scalar move fetches the data from lane 0 - MaskB OpQueue (idx == 1)
     masku_operand_ready_lane[0][1] = masku_operand_ready_masku[0][1] | pe_scalar_resp_ready;
+
+    result_scalar_d = result_scalar_q;
+    if (result_scalar_valid) begin
+      result_scalar_d = result_scalar;
+    end 
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      result_scalar_q = '0;
+    end else begin
+      result_scalar_q = result_scalar_d;
+    end
   end
 
   /////////////
@@ -244,16 +268,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   strb_t     [NrLanes-1:0]                     ldu_result_be;
   logic      [NrLanes-1:0]                     ldu_result_gnt;
   logic      [NrLanes-1:0]                     ldu_result_final_gnt;
-  // Slide Unit
-  logic      [NrLanes-1:0]                     sldu_result_req;
-  vid_t      [NrLanes-1:0]                     sldu_result_id;
-  vaddr_t    [NrLanes-1:0]                     sldu_result_addr;
-  elen_t     [NrLanes-1:0]                     sldu_result_wdata;
-  strb_t     [NrLanes-1:0]                     sldu_result_be;
-  logic      [NrLanes-1:0]                     sldu_result_gnt;
-  logic      [NrLanes-1:0]                     sldu_result_final_gnt;
-  logic                                        sldu_red_pending;
-  logic                                        sldu_red_completed;
+
   // Mask Unit
   logic      [NrLanes-1:0]                     masku_result_req;
   vid_t      [NrLanes-1:0]                     masku_result_id;
@@ -340,7 +355,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .masku_result_final_gnt_o        (masku_result_final_gnt[lane]        ),
       .mask_i                          (mask[lane]                          ),
       .mask_valid_i                    (mask_valid[lane] & mask_valid_lane  ),
-      .mask_ready_o                    (lane_mask_ready[lane]               )
+      .mask_ready_o                    (lane_mask_ready[lane]               ),
+      .mask_result_scalar_i            ((lane == 0) ? result_scalar_q : '0  )
     );
   end: gen_lanes
 

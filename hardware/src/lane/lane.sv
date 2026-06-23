@@ -97,6 +97,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     input  strb_t                                          masku_result_be_i,
     output logic                                           masku_result_gnt_o,
     output logic                                           masku_result_final_gnt_o,
+    input  elen_t                                          mask_result_scalar_i,
     // Interface between the Mask unit and the VFUs
     input  strb_t                                          mask_i,
     input  logic                                           mask_valid_i,
@@ -367,6 +368,25 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic sldu_alu_req_valid_o, sldu_mfpu_req_valid_o;
   logic sldu_alu_ready, sldu_mfpu_ready;
 
+  logic prev_vcpop_d, prev_vcpop_q;
+
+  // Need to know if previous instruction was vcpop
+  always_comb begin
+    prev_vcpop_d = prev_vcpop_q;
+    if (pe_req_i.op == VCPOP && pe_req_valid_i) 
+      prev_vcpop_d = 1;
+    if (prev_vcpop_q == 1 && sldu_red_completed_i)
+      prev_vcpop_d = 0;
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      prev_vcpop_q = '0;
+    end else begin
+      prev_vcpop_q = prev_vcpop_d;
+    end
+  end
+
   vector_fus_stage #(
     .NrLanes     (NrLanes     ),
     .FPUSupport  (FPUSupport  ),
@@ -421,7 +441,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_red_completed_i (sldu_red_completed_i                   ),
     // Interface with the operand queues
     // ALU
-    .alu_operand_i        (alu_operand                            ),
+    .alu_operand_i        (((sldu_issue_mux_sel_i == ALU_RED) && prev_vcpop_q)? mask_result_scalar_i : alu_operand),    //TODO: condition that only when previous instr was vcpop
     .alu_operand_valid_i  (alu_operand_valid                      ),
     .alu_operand_ready_o  (alu_operand_ready                      ),
     // Multiplier/FPU

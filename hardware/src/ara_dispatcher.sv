@@ -117,6 +117,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   elen_t slide1_cnt_d;  
   elen_t slide1_cnt_q;
 
+  // Indicates that vcpop instruction is dispatched and can now be followed by reduction
+  logic vcpop_disp_d, vcpop_disp_q;
+
   // Save previous ara_req_ready_i for edge detection
   logic ara_req_valid_q;
 
@@ -133,9 +136,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       ara_req_valid_o   <= 1'b0;
       ara_req_valid_q   <= 1'b0;
       slide1_cnt_q      <= 0;
+      vcpop_disp_q      <= 0;
     end else begin
 
       slide1_cnt_q    <= slide1_cnt_d;
+      vcpop_disp_q    <= vcpop_disp_d;
 
       if (ara_req_ready_i) begin             // Issue next request
         ara_req_o         <= ara_req_d;
@@ -314,6 +319,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
     };
 
     slide1_cnt_d     = slide1_cnt_q;
+    vcpop_disp_d     = vcpop_disp_q;
 
     // Decrease counter of slide-by-1 instructions to be issued to achieve generic slide
     if (slide1_cnt_q != 0 && ara_req_valid_q && ara_req_ready_i) begin
@@ -1453,8 +1459,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         ara_req_d.vl      = 1;
                       end
                       5'b10000: begin
-                        ara_req_d.op      = ara_pkg::VCPOP;
-                        ara_req_d.use_vs1 = 1'b0;
+                        // The VCPOP calculates the population locally in each cluster
+                        // and must be followed by a redsum instruction to accumulate results from all clusters
+                        if (!vcpop_disp_q) begin
+                          ara_req_d.op      = ara_pkg::VCPOP;
+                          ara_req_d.use_vs1 = 1'b0;
+                          vcpop_disp_d = 1;
+                        end else begin
+                          ara_req_d.op             = ara_pkg::VREDSUM;
+                          ara_req_d.conversion_vs1 = OpQueueReductionZExt;
+                          ara_req_d.cvt_resize     = resize_e'(2'b00);
+                          ara_req_d.vl             = NrLanes;
+                          ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          ara_req_d.token          = ~ara_req_o.token;
+                          vcpop_disp_d = 0;
+                        end
                       end
                       5'b10001: begin
                         ara_req_d.op      = ara_pkg::VFIRST;
@@ -1484,11 +1503,14 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                     // Wait until the back-end answers to acknowledge those instructions
                     if (ara_resp_valid_i) begin
-                      acc_resp_o.req_ready   = 1'b1;
-                      acc_resp_o.result = ara_resp_i.resp;
-                      acc_resp_o.error  = ara_resp_i.error;
-                      acc_resp_o.resp_valid  = 1'b1;
-                      ara_req_valid_d   = 1'b0;
+                      if (vcpop_disp_q == 0) begin
+                        acc_resp_o.req_ready   = 1'b1;
+                        acc_resp_o.resp_valid  = 1'b1;
+                        ara_req_valid_d   = 1'b0;
+                        acc_resp_o.result = ara_resp_i.resp;
+                        acc_resp_o.error  = ara_resp_i.error;
+                      end
+
                     end
                   end
                   6'b010100: begin

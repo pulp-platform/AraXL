@@ -1666,7 +1666,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         automatic ara_op_e op = vinsn_ring.op;
         automatic vew_e sew = vinsn_ring.vtype.vsew;
         
-        if (fifo_ring_valid_inp && (ring_packets_send_q < ring_packets_need_q)) begin
+        if (fifo_ring_valid_inp && ((ring_packets_send_q < ring_packets_need_q) || vinsn_ring.op inside {[VREDSUM:VWREDSUM], [VFREDUSUM:VFWREDOSUM]})) begin
 
           ///// HANDLE RING PACKET /////
 
