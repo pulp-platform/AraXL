@@ -1465,11 +1465,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.op      = ara_pkg::VCPOP;
                           ara_req_d.use_vs1 = 1'b0;
                           vcpop_disp_d = 1;
-                          // We operate ceil(vl/8) bytes
+
+                          // We operate on ceil(vl/8) bytes
                           ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
                           ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
-                          //ara_req_d.vl = (vl_q + 7) / 8;
-                          //ara_req_d.vl_cluster =  (vl_cluster_q + 7) / 8;
+
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDSUM;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
@@ -1486,6 +1486,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.op      = ara_pkg::VFIRST;
                           ara_req_d.use_vs1 = 1'b0;
                           vcpop_disp_d = 1;
+
+                          // We operate on ceil(vl/8) bytes
+                          ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                          ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDMIN;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
@@ -1493,6 +1498,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.vl             = NrLanes;
                           ara_req_d.vl_cluster     = NrLanes * NrClusters;
                           ara_req_d.token          = ~ara_req_o.token;
+                          ara_req_d.is_mask_instr  = 1'b1;
                           vcpop_disp_d = 0;
                         end
                       end

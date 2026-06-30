@@ -209,7 +209,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the operand requesters
     .global_hazard_table_o (global_hazard_table      ),
     // Interface with the lane 0
-    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_result_wdata[0] | result_scalar_q : masku_operand[0][1]), // MaskB OpQueue
+    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_result_wdata[0] : masku_operand[0][1]), // MaskB OpQueue
     .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_red_completed | result_scalar_valid : masku_operand_valid[0][1]), // MaskB OpQueue Valid
     .pe_scalar_resp_ready_o(pe_scalar_resp_ready     ),
     // Interface with the address generator
@@ -356,7 +356,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .mask_i                          (mask[lane]                          ),
       .mask_valid_i                    (mask_valid[lane] & mask_valid_lane  ),
       .mask_ready_o                    (lane_mask_ready[lane]               ),
-      .mask_result_scalar_i            ((lane == 0) ? result_scalar_q : '0  )
+      .mask_result_scalar_i            ((lane == 0 || pe_req.op == VREDMIN) ? result_scalar_q : '0  )
     );
   end: gen_lanes
 
@@ -458,7 +458,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .pe_resp_o               (pe_resp[NrLanes+OffsetSlide]     ),
     // Interface with the lanes
     .sldu_operand_queue_valid_i  (sldu_addrgen_operand_valid   ),
-    .sldu_red_operand_valid_i    (sldu_red_operand_valid_i     ),
+    .sldu_red_operand_valid_i    (sldu_red_operand_valid       ),
     .sldu_operand_i          (sldu_operand                     ),
     .sldu_operand_target_fu_i(sldu_addrgen_operand_target_fu   ),
     .sldu_operand_ready_o    (sldu_operand_ready               ),
@@ -498,10 +498,12 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
 
   masku #(
     .NrLanes(NrLanes),
+    .NrClusters(NrClusters),
     .vaddr_t(vaddr_t)
   ) i_masku (
     .clk_i                   (clk_i                           ),
     .rst_ni                  (rst_ni                          ),
+    .cluster_id_i            (cluster_id_i                    ),
     // Interface with the main sequencer
     .pe_req_i                (pe_req                          ),
     .pe_req_valid_i          (pe_req_valid                    ),

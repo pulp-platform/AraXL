@@ -318,14 +318,12 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic sldu_operand_opqueues_ready;
   logic sldu_addrgen_operand_opqueues_valid;
 
-  logic [63:0] valid_mask;
-
-  logic [$clog2(64)-1:0] idx;
+  elen_t [1:0] mask_result_broadcast;
 
   always_comb begin
     vrf_operand = '0;
     
-    if (pe_req_i.op == VCPOP) begin
+    if (pe_req_i.op inside {[VCPOP:VFIRST]}) begin
       for (int i = 0; i < NrOperandQueues; i++) begin
         if (vrf_operand_valid[i]) begin
           for (int b = 0; b < 8; b++) begin
@@ -338,6 +336,15 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     end else begin
       vrf_operand = vrf_operand_out;
     end
+
+    if (pe_req_i.op == VCPOP) begin
+      mask_result_broadcast[0] = '0;
+    end else if (pe_req_i.op == VFIRST) begin
+      mask_result_broadcast[0] = {1'b0, {($bits(mask_result_broadcast[0])-1){1'b1}}};
+    end
+    mask_result_broadcast[1] = mask_result_scalar_i;
+
+
   end
 
   operand_queues_stage #(
@@ -390,25 +397,6 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic sldu_alu_valid, sldu_mfpu_valid;
   logic sldu_alu_req_valid_o, sldu_mfpu_req_valid_o;
   logic sldu_alu_ready, sldu_mfpu_ready;
-
-  logic prev_vcpop_d, prev_vcpop_q;
-
-  // Need to know if previous instruction was vcpop
-  always_comb begin
-    prev_vcpop_d = prev_vcpop_q;
-    if ((pe_req_i.op == VCPOP) || (pe_req_i.op == VFIRST) && pe_req_valid_i) 
-      prev_vcpop_d = 1;
-    if (prev_vcpop_q == 1 && sldu_red_completed_i)
-      prev_vcpop_d = 0;
-  end
-
-  always_ff @(posedge clk_i or negedge rst_ni) begin
-    if (!rst_ni) begin
-      prev_vcpop_q = '0;
-    end else begin
-      prev_vcpop_q = prev_vcpop_d;
-    end
-  end
 
   vector_fus_stage #(
     .NrLanes     (NrLanes     ),
@@ -464,7 +452,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_red_completed_i (sldu_red_completed_i                   ),
     // Interface with the operand queues
     // ALU
-    .alu_operand_i        (((sldu_issue_mux_sel_i == ALU_RED) && prev_vcpop_q)? mask_result_scalar_i : alu_operand),    //TODO: condition that only when previous instr was vcpop
+    .alu_operand_i        (pe_req_i.is_mask_instr ? mask_result_broadcast : alu_operand), 
     .alu_operand_valid_i  (alu_operand_valid                      ),
     .alu_operand_ready_o  (alu_operand_ready                      ),
     // Multiplier/FPU
