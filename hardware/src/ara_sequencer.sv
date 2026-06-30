@@ -366,6 +366,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               scale_vl      : ara_req_i.scale_vl,
               vl            : ara_req_i.vl,
               vl_cluster    : ara_req_i.vl_cluster,
+              vl_org        : ara_req_i.vl_org,
+              vl_cluster_org : ara_req_i.vl_cluster_org,
               use_eew1      : ara_req_i.use_eew1,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,

@@ -115,7 +115,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
     assign masku_operand_m_i[lane]        = masku_operand_i[lane][0];
     assign masku_operand_m_valid_i[lane]  = masku_operand_valid_i[lane][0];
-    assign masku_operand_ready_o[lane][0] = masku_operand_m_ready_o[lane];
+    assign masku_operand_ready_o[lane][0] = masku_operand_m_ready_o[lane] && masku_operand_ready;
   end: gen_unpack_masku_operands
 
   // counter to keep track of how many slices of the vcpop_operand have been processed
@@ -435,7 +435,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         if (vinsn_issue.vl >= ELEN*NrLanes)
           bit_enable = '1;
         else begin
-          bit_enable[vinsn_issue.vl] = 1'b1;
+          bit_enable[vinsn_issue.vl_org] = 1'b1;
           bit_enable                 = bit_enable - 1;
         end
 
@@ -484,7 +484,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       // Only ready when all slices are computed
       if (|masku_operand_a_valid_i) begin
         in_ready_cnt_en = 1'b1;
-        if (iteration_count_q == (((vinsn_commit.vl << 3) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
+        if (iteration_count_q == (((vinsn_commit.vl_org) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
           masku_operand_ready = 1'b1;
         end
       end
@@ -750,10 +750,9 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           end
         end
         [VCPOP:VFIRST] : begin
-          in_ready_threshold_d   = NrLanes*DataWidth/VcpopParallelism-1;
           vcpop_operand = (!vinsn_issue.vm) ? alu_operand_b_seq & bit_enable_mask : alu_operand_b_seq;
 
-          for (int i = 0; i < vinsn_issue.vl << 3; i++) begin
+          for (int i = 0; i < vinsn_issue.vl_org; i++) begin
             vl_mask[i] = 1'b1;
           end
           vcpop_operand &= vl_mask;
@@ -959,7 +958,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
         if (vinsn_issue.op inside{[VCPOP:VFIRST]}) begin
           issue_cnt_d = issue_cnt_q - VcpopParallelism;
-          if (iteration_count_d >= ((vinsn_issue.vl << 3) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0])
+          if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0])
             issue_cnt_d = '0;
         end else begin
           issue_cnt_d = issue_cnt_q - ((NrLanes*DataWidth)/(8 << vinsn_issue.vtype.vsew));
@@ -984,8 +983,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         end
 
         // if this is the last beat, commit the result to the scalar_result queue
-        if (iteration_count_d >= ((vinsn_issue.vl << 3) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0]) begin
-          result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (vfirst_empty) ? -1 : vfirst_count_d;
+        if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0]) begin
+          result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (popcount_d) ? vfirst_count_d : (cluster_id_i != 0) ? {1'b0, {($bits(vfirst_count_d)-1){1'b1}}} : -1;
           result_scalar_valid_d = '1;
           
           // Decrement the commit counter by the entire number of elements,
@@ -1275,8 +1274,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       // Initialize counters
       if (vinsn_queue_d.issue_cnt == '0) begin
         if (pe_req_i.op inside{[VCPOP:VFIRST]}) begin
-          issue_cnt_d = pe_req_i.vl << 3;
-          read_cnt_d  = pe_req_i.vl << 3;
+          issue_cnt_d = pe_req_i.vl_org;
+          read_cnt_d  = pe_req_i.vl_org;
         end
 
         // Trim skipped words

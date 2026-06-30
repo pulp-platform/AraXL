@@ -299,8 +299,10 @@ package ara_pkg;
     elen_t stride;
     elen_t tot_slide;
     logic is_stride_np2;
+    
     logic start_generic_slide;      // indicates that the current slide instruction is the start of a generic slide
     logic is_non_mul_cl;            // indicates that the vl_cluster is a multiple of cluster x lanes
+    logic is_mask_instr;            // indicates if a reduction instruction is part of a mask instruction
 
     // Destination vector register
     logic [4:0] vd;
@@ -320,8 +322,11 @@ package ara_pkg;
     resize_e cvt_resize;
 
     // Vector machine metadata
-    vlen_t vl;
-    vlen_cluster_t vl_cluster;
+    vlen_t vl;                        // potentially internally modified vector length
+    vlen_cluster_t vl_cluster;        // used for operand requesting etc.
+    vlen_t vl_org;                    // original vector length
+    vlen_cluster_t vl_cluster_org;
+
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
 
@@ -407,8 +412,10 @@ package ara_pkg;
     elen_t stride;
     elen_t tot_slide;
     logic is_stride_np2;
+
     logic start_generic_slide;      // indicates that the current slide instruction is the start of a generic slide
     logic is_non_mul_cl;            // indicates that the vl_cluster is a multiple of cluster x lanes 
+    logic is_mask_instr;            // indicates if a reduction instruction is part of a mask instruction
 
     // Destination vector register
     logic [4:0] vd;
@@ -425,8 +432,11 @@ package ara_pkg;
     resize_e cvt_resize;
 
     // Vector machine metadata
-    vlen_t vl;
-    vlen_cluster_t vl_cluster;
+    vlen_t vl;                        // potentially internally modified vector length
+    vlen_cluster_t vl_cluster;        // used for operand requesting etc.
+    vlen_t vl_org;                    // original vector length
+    vlen_cluster_t vl_cluster_org;
+
     vlen_t vstart;
     rvv_pkg::vtype_t vtype;
   

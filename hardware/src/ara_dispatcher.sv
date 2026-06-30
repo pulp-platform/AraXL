@@ -1469,16 +1469,23 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
                           ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          ara_req_d.vl_org     = vl_q;
+                          ara_req_d.vl_cluster_org = vl_cluster_q;
 
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDSUM;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
                           ara_req_d.cvt_resize     = resize_e'(2'b00);
-                          ara_req_d.vl             = NrLanes;
-                          ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
+                          if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
+                            ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          end else begin
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + NrLanes) / NrLanes) * NrLanes;
+                          end
                           ara_req_d.token          = ~ara_req_o.token;
                           ara_req_d.is_mask_instr  = 1'b1;
                           vcpop_disp_d = 0;
+                          ara_req_d.vm = 1;
                         end
                       end
                       5'b10001: begin
@@ -1490,15 +1497,22 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
                           ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
-                          
+                          ara_req_d.vl_org     = vl_q;
+                          ara_req_d.vl_cluster_org = vl_cluster_q;
+
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDMIN;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
                           ara_req_d.cvt_resize     = resize_e'(2'b00);
-                          ara_req_d.vl             = NrLanes;
-                          ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
+                          if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
+                            ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          end else begin
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + NrLanes) / NrLanes) * NrLanes;
+                          end
                           ara_req_d.token          = ~ara_req_o.token;
                           ara_req_d.is_mask_instr  = 1'b1;
+                          ara_req_d.vm = 1;
                           vcpop_disp_d = 0;
                         end
                       end
