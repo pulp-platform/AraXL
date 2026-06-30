@@ -209,8 +209,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the operand requesters
     .global_hazard_table_o (global_hazard_table      ),
     // Interface with the lane 0
-    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM} ? sldu_result_wdata[0] | result_scalar : masku_operand[0][1]), // MaskB OpQueue
-    .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST], VREDSUM} ? sldu_red_completed | result_scalar_valid : masku_operand_valid[0][1]), // MaskB OpQueue Valid
+    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_result_wdata[0] | result_scalar_q : masku_operand[0][1]), // MaskB OpQueue
+    .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_red_completed | result_scalar_valid : masku_operand_valid[0][1]), // MaskB OpQueue Valid
     .pe_scalar_resp_ready_o(pe_scalar_resp_ready     ),
     // Interface with the address generator
     .addrgen_ack_i         (addrgen_ack              ),
@@ -458,7 +458,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     .pe_resp_o               (pe_resp[NrLanes+OffsetSlide]     ),
     // Interface with the lanes
     .sldu_operand_queue_valid_i  (sldu_addrgen_operand_valid   ),
-    .sldu_red_operand_valid_i    (sldu_red_operand_valid       ),
+    .sldu_red_operand_valid_i    (sldu_red_operand_valid_i     ),
     .sldu_operand_i          (sldu_operand                     ),
     .sldu_operand_target_fu_i(sldu_addrgen_operand_target_fu   ),
     .sldu_operand_ready_o    (sldu_operand_ready               ),

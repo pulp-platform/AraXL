@@ -50,6 +50,29 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
   import cf_math_pkg::idx_width;
 
+  // Local Parameter VcpopParallelism and VfirstParallelism
+  //
+  // Description: Parameters VcpopParallelism and VfirstParallelism enable time multiplexing of vcpop.m and vfirst.m instruction.
+  //
+  // Legal range VcpopParallelism:   {16, 32, 64, 128, ... , DataWidth*NrLanes} // DataWidth = 64
+  // Legal range VfirstParallelism: {16, 32, 64, 128, ... , DataWidth*NrLanes} // DataWidth = 64
+  //
+  // Execution time example for vcpop.m (similar for vfirst.m):
+  // VcpopParallelism = 64; VLEN = 1024; vl = 1024
+  // t_vcpop.m = VLEN/VcpopParallelism = 8 [Cycles]
+  localparam int VcpopParallelism   = 16;
+  localparam int VfirstParallelism = 16;
+  // derived parameters
+  localparam int MAX_VcpopParallelism_VFIRST = (VcpopParallelism > VfirstParallelism) ? VcpopParallelism : VfirstParallelism;
+  localparam int N_SLICES_CPOP   = NrLanes * DataWidth / VcpopParallelism;
+  localparam int N_SLICES_VFIRST = NrLanes * DataWidth / VfirstParallelism;
+  // Check if parameters are within range
+  if (((VcpopParallelism & (VcpopParallelism - 1)) != 0) || (VcpopParallelism < 8)) begin
+    $fatal(1, "Parameter VcpopParallelism must be power of 2.");
+  end else if (((VfirstParallelism & (VfirstParallelism - 1)) != 0) || (VfirstParallelism < 8)) begin
+    $fatal(1, "Parameter VfirstParallelism must be power of 2.");
+  end
+
   ////////////////
   //  Operands  //
   ////////////////
@@ -72,6 +95,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   logic  [NrLanes-1:0] masku_operand_m_valid_i;
   logic  [NrLanes-1:0] masku_operand_m_ready_o;
 
+  logic masku_operand_ready;
+
   // Insn-queue related signal
   pe_req_t vinsn_issue;
 
@@ -79,7 +104,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     assign masku_operand_a_i[lane]       = masku_operand_i[lane][2 + masku_operand_fu];
     assign masku_operand_a_valid_i[lane] = masku_operand_valid_i[lane][2 + masku_operand_fu];
     for (genvar operand_fu = 0; operand_fu < NrMaskFUnits; operand_fu++) begin: gen_masku_operand_ready
-      assign masku_operand_ready_o[lane][2 + operand_fu] = (masku_fu_e'(operand_fu) == masku_operand_fu) && masku_operand_a_ready_o[lane];
+      assign masku_operand_ready_o[lane][2 + operand_fu] = (masku_fu_e'(operand_fu) == masku_operand_fu) && masku_operand_a_ready_o[lane] && masku_operand_ready;
     end: gen_masku_operand_ready
 
     assign masku_operand_b_i[lane]        = masku_operand_i[lane][1];
@@ -90,6 +115,10 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     assign masku_operand_m_valid_i[lane]  = masku_operand_valid_i[lane][0];
     assign masku_operand_ready_o[lane][0] = masku_operand_m_ready_o[lane];
   end: gen_unpack_masku_operands
+
+  // counter to keep track of how many slices of the vcpop_operand have been processed
+  logic [VcpopParallelism-1:0]       vcpop_slice;
+  logic [VfirstParallelism-1:0]      vfirst_slice;
 
   ////////////////////////////////
   //  Vector instruction queue  //
@@ -297,6 +326,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   rvv_pkg::vew_e                         bit_enable_shuffle_eew;
   logic  [NrLanes*ELEN-1:0]              mask;
   logic  [NrLanes*ELEN-1:0]              vcpop_operand;
+  logic  [NrLanes*ELEN-1:0]              vl_mask;
   logic  [$clog2(DataWidth*NrLanes):0]   popcount;
   logic  [$clog2(VLEN):0]                popcount_d, popcount_q;
   logic  [$clog2(DataWidth*NrLanes)-1:0] vfirst_count;
@@ -317,23 +347,57 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   // Remaining elements of the current instruction in the commit phase
   vlen_t commit_cnt_d, commit_cnt_q;
 
+  localparam int unsigned MIN_MASKU_ALU_WIDTH = 1; // VrgatherParallelism
+
+  localparam int unsigned IN_READY_CNT_WIDTH = idx_width(NrLanes * DataWidth / MIN_MASKU_ALU_WIDTH);
+  typedef logic [IN_READY_CNT_WIDTH-1:0] in_ready_cnt_t;
+  logic in_ready_cnt_en, in_ready_cnt_clr;
+  in_ready_cnt_t in_ready_cnt_delta_q, in_ready_cnt_q;
+  in_ready_cnt_t in_ready_threshold_d, in_ready_threshold_q;
+
+  // assign operand slices to be processed by popcount and lzc
+  assign vcpop_slice  = vcpop_operand[(iteration_count_q[idx_width(N_SLICES_CPOP)-1:0] * VcpopParallelism) +: VcpopParallelism];
+  assign vfirst_slice = vcpop_operand[(in_ready_cnt_q[idx_width(N_SLICES_VFIRST)-1:0] * VfirstParallelism) +: VfirstParallelism];
+
+  assign in_ready_cnt_delta_q = 1;
+
+  // Counter to trigger the input ready.
+  // Ready triggered when all the slices of the VRF word have been consumed.
+  delta_counter #(
+    .WIDTH(IN_READY_CNT_WIDTH)
+  ) i_in_ready_cnt (
+    .clk_i,
+    .rst_ni,
+    .clear_i(in_ready_cnt_clr    ),
+    .en_i   (in_ready_cnt_en     ),
+    .load_i (1'b0                ),
+    .down_i (1'b0                ),
+    .delta_i(in_ready_cnt_delta_q),
+    .d_i    ('0                  ),
+    .q_o    (in_ready_cnt_q      ),
+    .overflow_o(/* Unused */)
+  );
+
   // Population count for vcpop.m instruction
   popcount #(
-    .INPUT_WIDTH (DataWidth*NrLanes)
+    .INPUT_WIDTH (VcpopParallelism)
   ) i_popcount (
-    .data_i    (vcpop_operand),
+    .data_i    (vcpop_slice  ),
     .popcount_o(popcount     )
   );
 
   // Trailing zero counter
   lzc #(
-    .WIDTH(DataWidth*NrLanes),
+    .WIDTH(VfirstParallelism),
     .MODE (0)
   ) i_clz (
     .in_i    (vcpop_operand),
     .cnt_o   (vfirst_count ),
     .empty_o (vfirst_empty )
   );
+
+  logic [NrLanes-1:0] masku_operand_valid;
+
 
   always_comb begin: p_mask_alu
     alu_result          = '0;
@@ -349,6 +413,9 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     mask                = '0;
     masku_operand_vd    = '0;
     vcpop_operand       = '0;
+    vl_mask             = '0;
+    masku_operand_ready = '0;
+    in_ready_threshold_d   = in_ready_threshold_q;
 
     // Comparisons work on vtype.vsew from VALU or VMFPU
     bit_enable_shuffle_eew = vinsn_issue.op inside {[VMFEQ:VMSGTU], [VMSGT:VMSBC]}
@@ -412,9 +479,20 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       alu_operand_a = masku_operand_a_i;
       alu_operand_b = masku_operand_b_i;
 
+      // masku_operand_valid = '1;
+      // for (int i = 0; i < NrLanes; i++)
+      //     masku_operand_valid &= masku_operand_valid_i[i][2];
+
+      if (|masku_operand_a_valid_i) begin
+        in_ready_cnt_en = 1'b1;
+        if (iteration_count_q == (((vinsn_commit.vl << 3) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
+          masku_operand_ready = 1'b1;
+        end
+      end
+
       // Deshuffle the operands for the mask instructions
       for (int b = 0; b < (NrLanes*StrbWidth); b++) begin
-        automatic int deshuffle_byte             = deshuffle_index(b, NrLanes, vinsn_issue.vtype.vsew);
+        automatic int deshuffle_byte             = deshuffle_index(b, NrLanes, EW8/*vinsn_issue.vtype.vsew*/);
         alu_operand_b_seq[8*deshuffle_byte +: 8] = alu_operand_a[8*b +: 8];
         masku_operand_vd [8*deshuffle_byte +: 8] = alu_operand_b[8*b +: 8];
       end
@@ -668,7 +746,13 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           end
         end
         [VCPOP:VFIRST] : begin
-          vcpop_operand = (!vinsn_issue.vm) ? masku_operand_a_i & bit_enable_mask : masku_operand_a_i;
+          in_ready_threshold_d   = NrLanes*DataWidth/VcpopParallelism-1;
+          vcpop_operand = (!vinsn_issue.vm) ? alu_operand_b_seq & bit_enable_mask : alu_operand_b_seq;
+
+          for (int i = 0; i < vinsn_issue.vl << 3; i++) begin
+            vl_mask[i] = 1'b1;
+          end
+          vcpop_operand &= vl_mask;
         end
         default: begin
           alu_result    = '0;
@@ -868,18 +952,21 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         masku_operand_a_ready_o = masku_operand_a_valid_i;
 
         // Account for the elements that were processed
-        issue_cnt_d = issue_cnt_q - ((NrLanes*DataWidth)/(8 << vinsn_issue.vtype.vsew));
-        if (iteration_count_d >= (((8 << vinsn_issue.vtype.vsew)*vinsn_issue.vl)/(DataWidth*NrLanes)))
+        issue_cnt_d = issue_cnt_q - VcpopParallelism; //((NrLanes*DataWidth)/(8 << vinsn_issue.vtype.vsew)); //VcpopParallelism;
+        if (iteration_count_d >= 2)//(((8 << vinsn_issue.vtype.vsew)*(vinsn_issue.vl << 3))/(DataWidth*NrLanes)))
           issue_cnt_d = '0;
 
         // Acknowledge the operands, also triggers another beat if necessary
         if (!vinsn_issue.vm) masku_operand_m_ready_o = '1;
 
         popcount_d     = popcount_q + popcount;
-        vfirst_count_d = vfirst_count_q + vfirst_count;
+
+        if (popcount_q == 0) begin
+          vfirst_count_d = vfirst_count_q + vfirst_count;
+        end
 
         // if this is the last beat, commit the result to the scalar_result queue
-        if (iteration_count_d >= (((8 << vinsn_issue.vtype.vsew)*vinsn_issue.vl)/(DataWidth*NrLanes))) begin
+        if (iteration_count_d >= 2) begin//(((8 << vinsn_issue.vtype.vsew)*(vinsn_issue.vl))/(DataWidth*NrLanes))) begin
           result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (vfirst_empty) ? -1 : vfirst_count_d;
           result_scalar_valid_d = '1;
 
@@ -1169,8 +1256,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
       // Initialize counters
       if (vinsn_queue_d.issue_cnt == '0) begin
-        issue_cnt_d = pe_req_i.vl;
-        read_cnt_d  = pe_req_i.vl;
+        issue_cnt_d = pe_req_i.vl << 3;
+        read_cnt_d  = pe_req_i.vl << 3;
 
         // Trim skipped words
         if (pe_req_i.op == VSLIDEUP) begin
@@ -1226,6 +1313,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       result_final_gnt_q <= '0;
       popcount_q         <= '0;
       vfirst_count_q     <= '0;
+      in_ready_threshold_q    <= '0;
     end else begin
       vinsn_running_q    <= vinsn_running_d;
       read_cnt_q         <= read_cnt_d;
@@ -1237,6 +1325,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       result_final_gnt_q <= result_final_gnt_d;
       popcount_q         <= popcount_d;
       vfirst_count_q     <= vfirst_count_d;
+      in_ready_threshold_q    <=       in_ready_threshold_d;
     end
   end
 

@@ -277,6 +277,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   // Interface with the operand queues
   elen_t [NrOperandQueues-1:0] vrf_operand;
+  elen_t [NrOperandQueues-1:0] vrf_operand_out;
   logic  [NrOperandQueues-1:0] vrf_operand_valid;
 
   vector_regfile #(
@@ -294,7 +295,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .be_i           (vrf_be           ),
     .tgt_opqueue_i  (vrf_tgt_opqueue  ),
     // Interface with the operand queues
-    .operand_o      (vrf_operand      ),
+    .operand_o      (vrf_operand_out  ),
     .operand_valid_o(vrf_operand_valid)
   );
 
@@ -316,6 +317,28 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   logic sldu_operand_opqueues_ready;
   logic sldu_addrgen_operand_opqueues_valid;
+
+  logic [63:0] valid_mask;
+
+  logic [$clog2(64)-1:0] idx;
+
+  always_comb begin
+    vrf_operand = '0;
+    
+    if (pe_req_i.op == VCPOP) begin
+      for (int i = 0; i < NrOperandQueues; i++) begin
+        if (vrf_operand_valid[i]) begin
+          for (int b = 0; b < 8; b++) begin
+            if(|vrf_operand_out[i][8*b +: 8]) begin
+              vrf_operand[i][8*b +: 8] = vrf_operand_out[i][8*b +: 8];
+            end
+          end
+        end
+      end
+    end else begin
+      vrf_operand = vrf_operand_out;
+    end
+  end
 
   operand_queues_stage #(
     .NrLanes   (NrLanes   ),
@@ -373,7 +396,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   // Need to know if previous instruction was vcpop
   always_comb begin
     prev_vcpop_d = prev_vcpop_q;
-    if (pe_req_i.op == VCPOP && pe_req_valid_i) 
+    if ((pe_req_i.op == VCPOP) || (pe_req_i.op == VFIRST) && pe_req_valid_i) 
       prev_vcpop_d = 1;
     if (prev_vcpop_q == 1 && sldu_red_completed_i)
       prev_vcpop_d = 0;
@@ -480,6 +503,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   assign sldu_addrgen_operand_o       = sldu_addrgen_operand_opqueues;
 
   // ALU/MFPU to SLDU
+  //assign sldu_red_operand_valid_o = (sldu_issue_mux_sel_i == ALU_RED) ? sldu_alu_req_valid_o : sldu_mfpu_req_valid_o;
   assign sldu_red_operand_valid_o = (sldu_issue_mux_sel_i == ALU_RED) ? sldu_alu_req_valid_o : sldu_mfpu_req_valid_o;
 
   //////////////////

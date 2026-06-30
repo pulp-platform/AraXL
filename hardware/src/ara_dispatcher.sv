@@ -1465,6 +1465,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.op      = ara_pkg::VCPOP;
                           ara_req_d.use_vs1 = 1'b0;
                           vcpop_disp_d = 1;
+                          // We operate ceil(vl/8) bytes
+                          ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                          ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          //ara_req_d.vl = (vl_q + 7) / 8;
+                          //ara_req_d.vl_cluster =  (vl_cluster_q + 7) / 8;
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDSUM;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
@@ -1472,12 +1477,24 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.vl             = NrLanes;
                           ara_req_d.vl_cluster     = NrLanes * NrClusters;
                           ara_req_d.token          = ~ara_req_o.token;
+                          ara_req_d.is_mask_instr  = 1'b1;
                           vcpop_disp_d = 0;
                         end
                       end
                       5'b10001: begin
-                        ara_req_d.op      = ara_pkg::VFIRST;
-                        ara_req_d.use_vs1 = 1'b0;
+                        if (!vcpop_disp_q) begin
+                          ara_req_d.op      = ara_pkg::VFIRST;
+                          ara_req_d.use_vs1 = 1'b0;
+                          vcpop_disp_d = 1;
+                        end else begin
+                          ara_req_d.op             = ara_pkg::VREDMIN;
+                          ara_req_d.conversion_vs1 = OpQueueReductionZExt;
+                          ara_req_d.cvt_resize     = resize_e'(2'b00);
+                          ara_req_d.vl             = NrLanes;
+                          ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          ara_req_d.token          = ~ara_req_o.token;
+                          vcpop_disp_d = 0;
+                        end
                       end
                       default :;
                     endcase
@@ -3406,26 +3423,28 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       // Reshuffle if at least one of the three registers needs a reshuffle
-      if (|reshuffle_req_d) begin
-        // Instruction is of one of the RVV types
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+      // if (|reshuffle_req_d) begin
+      //   // Instruction is of one of the RVV types
+      //   automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
-        // Stall the interface, and inject a reshuffling instruction
-        acc_resp_o.req_ready  = 1'b0;
-        acc_resp_o.resp_valid = 1'b0;
-        ara_req_valid_d  = 1'b0;
+      //   // Stall the interface, and inject a reshuffling instruction
+      //   acc_resp_o.req_ready  = 1'b0;
+      //   acc_resp_o.resp_valid = 1'b0;
+      //   ara_req_valid_d  = 1'b0;
 
-        // Initialize the reshuffle counter limit to handle LMUL > 1
-        unique case (ara_req_d.emul)
-          LMUL_2:  rs_lmul_cnt_limit_d = 1;
-          LMUL_4:  rs_lmul_cnt_limit_d = 3;
-          LMUL_8:  rs_lmul_cnt_limit_d = 7;
-          default: rs_lmul_cnt_limit_d = 0;
-        endcase
+      //   vcpop_disp_d = 0;
 
-        // Reshuffle
-        state_d = RESHUFFLE;
-      end
+      //   // Initialize the reshuffle counter limit to handle LMUL > 1
+      //   unique case (ara_req_d.emul)
+      //     LMUL_2:  rs_lmul_cnt_limit_d = 1;
+      //     LMUL_4:  rs_lmul_cnt_limit_d = 3;
+      //     LMUL_8:  rs_lmul_cnt_limit_d = 7;
+      //     default: rs_lmul_cnt_limit_d = 0;
+      //   endcase
+
+      //   // Reshuffle
+      //   state_d = RESHUFFLE;
+      // end
     end
 
     // Raise an illegal instruction exception
