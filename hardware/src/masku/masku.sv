@@ -984,7 +984,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
         // if this is the last beat, commit the result to the scalar_result queue
         if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0]) begin
-          result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (popcount_d) ? vfirst_count_d : (cluster_id_i != 0) ? {1'b0, {($bits(vfirst_count_d)-1){1'b1}}} : -1;
+          //result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (popcount_d) ? vfirst_count_d : (cluster_id_i != 0) ? {1'b0, {($bits(vfirst_count_d)-1){1'b1}}} : -1;
+          result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (popcount_d) ? vfirst_count_d : (cluster_id_i == NrClusters-1) ? -1 : {1'b0, {($bits(vfirst_count_d)-1){1'b1}}};
           result_scalar_valid_d = '1;
           
           // Decrement the commit counter by the entire number of elements,

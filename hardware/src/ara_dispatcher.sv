@@ -3442,29 +3442,33 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         endcase
       end
 
+      if (ara_req_d.op inside {[VCPOP:VFIRST]} || ara_req_d.is_mask_instr == 1'b1) begin
+        reshuffle_req_d = '0;
+      end
+
       // Reshuffle if at least one of the three registers needs a reshuffle
-      // if (|reshuffle_req_d) begin
-      //   // Instruction is of one of the RVV types
-      //   automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+      if (|reshuffle_req_d) begin
+        // Instruction is of one of the RVV types
+        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
-      //   // Stall the interface, and inject a reshuffling instruction
-      //   acc_resp_o.req_ready  = 1'b0;
-      //   acc_resp_o.resp_valid = 1'b0;
-      //   ara_req_valid_d  = 1'b0;
+        // Stall the interface, and inject a reshuffling instruction
+        acc_resp_o.req_ready  = 1'b0;
+        acc_resp_o.resp_valid = 1'b0;
+        ara_req_valid_d  = 1'b0;
 
-      //   vcpop_disp_d = 0;
+        vcpop_disp_d = 0;
 
-      //   // Initialize the reshuffle counter limit to handle LMUL > 1
-      //   unique case (ara_req_d.emul)
-      //     LMUL_2:  rs_lmul_cnt_limit_d = 1;
-      //     LMUL_4:  rs_lmul_cnt_limit_d = 3;
-      //     LMUL_8:  rs_lmul_cnt_limit_d = 7;
-      //     default: rs_lmul_cnt_limit_d = 0;
-      //   endcase
+        // Initialize the reshuffle counter limit to handle LMUL > 1
+        unique case (ara_req_d.emul)
+          LMUL_2:  rs_lmul_cnt_limit_d = 1;
+          LMUL_4:  rs_lmul_cnt_limit_d = 3;
+          LMUL_8:  rs_lmul_cnt_limit_d = 7;
+          default: rs_lmul_cnt_limit_d = 0;
+        endcase
 
-      //   // Reshuffle
-      //   state_d = RESHUFFLE;
-      // end
+        // Reshuffle
+        state_d = RESHUFFLE;
+      end
     end
 
     // Raise an illegal instruction exception
