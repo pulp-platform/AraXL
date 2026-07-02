@@ -211,6 +211,7 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
   axi_inval_filter #(
     .MaxTxns    (16                             ),
     .AddrWidth  (AxiAddrWidth                   ),
+    .NumSets    (CVA6Cfg.DCACHE_NUM_WORDS       ),
     .L1LineWidth(CVA6Cfg.DCACHE_LINE_WIDTH/8    ),
     .aw_chan_t  (ara_axi_aw_t                   ),
     .req_t      (ara_axi_req_t                  ),
