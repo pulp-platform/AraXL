@@ -86,6 +86,7 @@ To simulate a single-core 64-lane configuration (1 core, 4 lanes per cluster, 16
 ```bash
 cd hardware/deps/axi
 git apply ../../../patches/AraXL-64L.patch
+git apply ../../../patches/AraXL-64L_axi_atomics.patch
 ```
 
 ## Software
