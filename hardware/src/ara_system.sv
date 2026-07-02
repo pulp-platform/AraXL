@@ -208,13 +208,14 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .mst_resp_i(ariane_axi_resp       )
   );
 
-  axi_inval_filter #(
-    .MaxTxns    (16                             ),
-    .AddrWidth  (AxiAddrWidth                   ),
-    .L1LineWidth(CVA6Cfg.DCACHE_LINE_WIDTH/8    ),
-    .aw_chan_t  (ara_axi_aw_t                   ),
-    .req_t      (ara_axi_req_t                  ),
-    .resp_t     (ara_axi_resp_t                 )
+  axi_inval_filter_local #(
+      .MaxTxns    (16),
+      .AddrWidth  (AxiAddrWidth),
+      .NumSets    (CVA6Cfg.DCACHE_NUM_WORDS),
+      .L1LineWidth(CVA6Cfg.DCACHE_LINE_WIDTH / 8),
+      .aw_chan_t  (ara_axi_aw_t),
+      .req_t      (ara_axi_req_t),
+      .resp_t     (ara_axi_resp_t)
   ) i_axi_inval_filter (
     .clk_i        (clk_i             ),
     .rst_ni       (rst_ni            ),
