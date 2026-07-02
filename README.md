@@ -92,6 +92,7 @@ To run the 64 lane configuration i.e. `nr_clusters=16` an additional patch to th
 ```bash
 cd hardware/deps/axi
 git apply ../../../patches/AraXL-64L.patch
+git apply ../../../patches/AraXL-64L_axi_atomics.patch
 ```
 
 ## Software
