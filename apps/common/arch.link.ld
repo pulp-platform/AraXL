@@ -56,7 +56,6 @@ SECTIONS {
   sync_generation        = 0xBFFFF804;
   /* to later use l2 alloc base within applications to allocate the following atomic pointers */
   canneal_keep_going_global_flag        = 0xBFFFF808;
-  canneal_atomic_ptr_pool               = 0xBFFFF810;
   streamcluster_pspeedy_cond_generation = 0xBFFFF810;
   streamcluster_pspeedy_i               = 0xBFFFF814;
   printf_lock                           = 0xBFFFF818;
