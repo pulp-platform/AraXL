@@ -21,6 +21,8 @@
 #ifndef _MALLOC_H_
 #define _MALLOC_H_
 
+#include <stdint.h>
+
 // Allocate atomic variables in non-cacheable L2 heap
 static inline void * baremetal_atomic_malloc(int incr)
 {
