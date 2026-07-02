@@ -1,0 +1,165 @@
+diff --git a/src/axi_riscv_amos.sv b/src/axi_riscv_amos.sv
+index 0996e82..9c5a18c 100644
+--- a/src/axi_riscv_amos.sv
++++ b/src/axi_riscv_amos.sv
+@@ -44,7 +44,7 @@ module axi_riscv_amos #(
+     input  logic [3:0]                  slv_aw_region_i,
+     input  logic [5:0]                  slv_aw_atop_i,
+     input  logic [7:0]                  slv_aw_len_i,
+-    input  logic [2:0]                  slv_aw_size_i,
++    input  logic [3:0]                  slv_aw_size_i,
+     input  logic [1:0]                  slv_aw_burst_i,
+     input  logic                        slv_aw_lock_i,
+     input  logic [3:0]                  slv_aw_cache_i,
+@@ -58,7 +58,7 @@ module axi_riscv_amos #(
+     input  logic [2:0]                  slv_ar_prot_i,
+     input  logic [3:0]                  slv_ar_region_i,
+     input  logic [7:0]                  slv_ar_len_i,
+-    input  logic [2:0]                  slv_ar_size_i,
++    input  logic [3:0]                  slv_ar_size_i,
+     input  logic [1:0]                  slv_ar_burst_i,
+     input  logic                        slv_ar_lock_i,
+     input  logic [3:0]                  slv_ar_cache_i,
+@@ -95,7 +95,7 @@ module axi_riscv_amos #(
+     output logic [3:0]                  mst_aw_region_o,
+     output logic [5:0]                  mst_aw_atop_o,
+     output logic [7:0]                  mst_aw_len_o,
+-    output logic [2:0]                  mst_aw_size_o,
++    output logic [3:0]                  mst_aw_size_o,
+     output logic [1:0]                  mst_aw_burst_o,
+     output logic                        mst_aw_lock_o,
+     output logic [3:0]                  mst_aw_cache_o,
+@@ -109,7 +109,7 @@ module axi_riscv_amos #(
+     output logic [2:0]                  mst_ar_prot_o,
+     output logic [3:0]                  mst_ar_region_o,
+     output logic [7:0]                  mst_ar_len_o,
+-    output logic [2:0]                  mst_ar_size_o,
++    output logic [3:0]                  mst_ar_size_o,
+     output logic [1:0]                  mst_ar_burst_o,
+     output logic                        mst_ar_lock_o,
+     output logic [3:0]                  mst_ar_cache_o,
+diff --git a/src/axi_riscv_atomics.sv b/src/axi_riscv_atomics.sv
+index 08a138a..b2af179 100644
+--- a/src/axi_riscv_atomics.sv
++++ b/src/axi_riscv_atomics.sv
+@@ -62,7 +62,7 @@ module axi_riscv_atomics
+     input  logic [3:0]                  slv_aw_region_i,
+     input  logic [5:0]                  slv_aw_atop_i,
+     input  logic [7:0]                  slv_aw_len_i,
+-    input  logic [2:0]                  slv_aw_size_i,
++    input  logic [3:0]                  slv_aw_size_i,
+     input  logic [1:0]                  slv_aw_burst_i,
+     input  logic                        slv_aw_lock_i,
+     input  logic [3:0]                  slv_aw_cache_i,
+@@ -76,7 +76,7 @@ module axi_riscv_atomics
+     input  logic [2:0]                  slv_ar_prot_i,
+     input  logic [3:0]                  slv_ar_region_i,
+     input  logic [7:0]                  slv_ar_len_i,
+-    input  logic [2:0]                  slv_ar_size_i,
++    input  logic [3:0]                  slv_ar_size_i,
+     input  logic [1:0]                  slv_ar_burst_i,
+     input  logic                        slv_ar_lock_i,
+     input  logic [3:0]                  slv_ar_cache_i,
+@@ -113,7 +113,7 @@ module axi_riscv_atomics
+     output logic [3:0]                  mst_aw_region_o,
+     output logic [5:0]                  mst_aw_atop_o,
+     output logic [7:0]                  mst_aw_len_o,
+-    output logic [2:0]                  mst_aw_size_o,
++    output logic [3:0]                  mst_aw_size_o,
+     output logic [1:0]                  mst_aw_burst_o,
+     output logic                        mst_aw_lock_o,
+     output logic [3:0]                  mst_aw_cache_o,
+@@ -127,7 +127,7 @@ module axi_riscv_atomics
+     output logic [2:0]                  mst_ar_prot_o,
+     output logic [3:0]                  mst_ar_region_o,
+     output logic [7:0]                  mst_ar_len_o,
+-    output logic [2:0]                  mst_ar_size_o,
++    output logic [3:0]                  mst_ar_size_o,
+     output logic [1:0]                  mst_ar_burst_o,
+     output logic                        mst_ar_lock_o,
+     output logic [3:0]                  mst_ar_cache_o,
+@@ -175,7 +175,7 @@ module axi_riscv_atomics
+     logic [3:0]                  int_axi_aw_region;
+     logic [5:0]                  int_axi_aw_atop;
+     logic [7:0]                  int_axi_aw_len;
+-    logic [2:0]                  int_axi_aw_size;
++    logic [3:0]                  int_axi_aw_size;
+     logic [1:0]                  int_axi_aw_burst;
+     logic                        int_axi_aw_lock;
+     logic [3:0]                  int_axi_aw_cache;
+@@ -189,7 +189,7 @@ module axi_riscv_atomics
+     logic [2:0]                  int_axi_ar_prot;
+     logic [3:0]                  int_axi_ar_region;
+     logic [7:0]                  int_axi_ar_len;
+-    logic [2:0]                  int_axi_ar_size;
++    logic [3:0]                  int_axi_ar_size;
+     logic [1:0]                  int_axi_ar_burst;
+     logic                        int_axi_ar_lock;
+     logic [3:0]                  int_axi_ar_cache;
+@@ -225,7 +225,7 @@ module axi_riscv_atomics
+     logic [3:0]                  int_axi_cut_aw_region;
+     logic [5:0]                  int_axi_cut_aw_atop;
+     logic [7:0]                  int_axi_cut_aw_len;
+-    logic [2:0]                  int_axi_cut_aw_size;
++    logic [3:0]                  int_axi_cut_aw_size;
+     logic [1:0]                  int_axi_cut_aw_burst;
+     logic                        int_axi_cut_aw_lock;
+     logic [3:0]                  int_axi_cut_aw_cache;
+@@ -239,7 +239,7 @@ module axi_riscv_atomics
+     logic [2:0]                  int_axi_cut_ar_prot;
+     logic [3:0]                  int_axi_cut_ar_region;
+     logic [7:0]                  int_axi_cut_ar_len;
+-    logic [2:0]                  int_axi_cut_ar_size;
++    logic [3:0]                  int_axi_cut_ar_size;
+     logic [1:0]                  int_axi_cut_ar_burst;
+     logic                        int_axi_cut_ar_lock;
+     logic [3:0]                  int_axi_cut_ar_cache;
+diff --git a/src/axi_riscv_lrsc.sv b/src/axi_riscv_lrsc.sv
+index 679c9c9..2b7f7c7 100644
+--- a/src/axi_riscv_lrsc.sv
++++ b/src/axi_riscv_lrsc.sv
+@@ -64,7 +64,7 @@ module axi_riscv_lrsc #(
+     input  logic [3:0]                  slv_aw_region_i,
+     input  logic [5:0]                  slv_aw_atop_i,
+     input  logic [7:0]                  slv_aw_len_i,
+-    input  logic [2:0]                  slv_aw_size_i,
++    input  logic [3:0]                  slv_aw_size_i,
+     input  logic [1:0]                  slv_aw_burst_i,
+     input  logic                        slv_aw_lock_i,
+     input  logic [3:0]                  slv_aw_cache_i,
+@@ -78,7 +78,7 @@ module axi_riscv_lrsc #(
+     input  logic [2:0]                  slv_ar_prot_i,
+     input  logic [3:0]                  slv_ar_region_i,
+     input  logic [7:0]                  slv_ar_len_i,
+-    input  logic [2:0]                  slv_ar_size_i,
++    input  logic [3:0]                  slv_ar_size_i,
+     input  logic [1:0]                  slv_ar_burst_i,
+     input  logic                        slv_ar_lock_i,
+     input  logic [3:0]                  slv_ar_cache_i,
+@@ -115,7 +115,7 @@ module axi_riscv_lrsc #(
+     output logic [3:0]                  mst_aw_region_o,
+     output logic [5:0]                  mst_aw_atop_o,
+     output logic [7:0]                  mst_aw_len_o,
+-    output logic [2:0]                  mst_aw_size_o,
++    output logic [3:0]                  mst_aw_size_o,
+     output logic [1:0]                  mst_aw_burst_o,
+     output logic                        mst_aw_lock_o,
+     output logic [3:0]                  mst_aw_cache_o,
+@@ -129,7 +129,7 @@ module axi_riscv_lrsc #(
+     output logic [2:0]                  mst_ar_prot_o,
+     output logic [3:0]                  mst_ar_region_o,
+     output logic [7:0]                  mst_ar_len_o,
+-    output logic [2:0]                  mst_ar_size_o,
++    output logic [3:0]                  mst_ar_size_o,
+     output logic [1:0]                  mst_ar_burst_o,
+     output logic                        mst_ar_lock_o,
+     output logic [3:0]                  mst_ar_cache_o,
+@@ -231,7 +231,7 @@ module axi_riscv_lrsc #(
+         logic [3:0] region;
+         logic [5:0] atop;
+         logic [7:0] len;
+-        logic [2:0] size;
++        logic [3:0] size;
+         logic [1:0] burst;
+         logic [3:0] cache;
+         logic [3:0] qos;
