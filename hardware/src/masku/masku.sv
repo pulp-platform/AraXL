@@ -435,8 +435,13 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         if (vinsn_issue.vl >= ELEN*NrLanes)
           bit_enable = '1;
         else begin
-          bit_enable[vinsn_issue.vl_org] = 1'b1;
-          bit_enable                 = bit_enable - 1;
+          if (pe_req_i.op inside{[VCPOP:VFIRST]}) begin
+            bit_enable[vinsn_issue.vl_org] = 1'b1;
+            bit_enable                 = bit_enable - 1;
+          end else begin
+            bit_enable[vinsn_issue.vl] = 1'b1;
+            bit_enable                 = bit_enable - 1;
+          end
         end
 
         // Shuffle the bit enable signal
@@ -484,8 +489,14 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       // Only ready when all slices are computed
       if (|masku_operand_a_valid_i) begin
         in_ready_cnt_en = 1'b1;
-        if (iteration_count_q == (((vinsn_commit.vl_org) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
-          masku_operand_ready = 1'b1;
+        if (pe_req_i.op inside{[VCPOP:VFIRST]}) begin
+          if (iteration_count_q == (((vinsn_commit.vl_org) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
+            masku_operand_ready = 1'b1;
+          end
+        end else begin
+          if (iteration_count_q == (((vinsn_commit.vl) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
+            masku_operand_ready = 1'b1;
+          end
         end
       end
 
@@ -975,7 +986,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           if (vfirst_empty) begin
             vfirst_count_d = vfirst_count_q + VfirstParallelism * NrClusters;
           end else begin
-            vfirst_count_d = vfirst_count_q + (vfirst_count >> 2) * 8 + (vfirst_count & 2'b11);
+            vfirst_count_d = vfirst_count_q + (vfirst_count >> 2) * (NrClusters * NrLanes) + (vfirst_count & 2'b11);
           end
           if (iteration_count_q == 0) begin
             vfirst_count_d += cluster_id_i * NrLanes;
@@ -1277,7 +1288,11 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         if (pe_req_i.op inside{[VCPOP:VFIRST]}) begin
           issue_cnt_d = pe_req_i.vl_org;
           read_cnt_d  = pe_req_i.vl_org;
+        end else begin
+          issue_cnt_d = pe_req_i.vl;
+          read_cnt_d  = pe_req_i.vl;
         end
+
 
         // Trim skipped words
         if (pe_req_i.op == VSLIDEUP) begin
