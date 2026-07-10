@@ -255,7 +255,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   logic  [NrLanes*DataWidth-1:0] alu_result_vm, alu_result_vm_m, alu_result_vm_seq;
   logic  [NrLanes*DataWidth-1:0] masku_operand_vd;
   logic  [NrLanes*DataWidth-1:0] alu_src_idx, alu_src_idx_m;
-  logic  [4:0]                   iteration_count_d, iteration_count_q;
+  logic  [(8+$clog2(NrLanes))-1:0] iteration_count_d, iteration_count_q;
   logic                          not_found_one_d, not_found_one_q;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin: p_result_queue_ff
@@ -490,7 +490,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
       if (|masku_operand_a_valid_i) begin
         in_ready_cnt_en = 1'b1;
         if (pe_req_i.op inside{[VCPOP:VFIRST]}) begin
-          if (iteration_count_q == (((vinsn_commit.vl_org) + VcpopParallelism - 1) / VcpopParallelism) - 1) begin
+          if (iteration_count_q == (((vinsn_commit.vl_org) + VcpopParallelism - 1) / VcpopParallelism) - 1 || iteration_count_q == ((NrLanes*DataWidth-1) / VcpopParallelism)) begin
             masku_operand_ready = 1'b1;
           end
         end else begin
@@ -969,11 +969,11 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
         if (vinsn_issue.op inside{[VCPOP:VFIRST]}) begin
           issue_cnt_d = issue_cnt_q - VcpopParallelism;
-          if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0])
+          if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl_org[idx_width(VcpopParallelism)-1:0])
             issue_cnt_d = '0;
         end else begin
           issue_cnt_d = issue_cnt_q - ((NrLanes*DataWidth)/(8 << vinsn_issue.vtype.vsew));
-          if (iteration_count_d >= (((8 << vinsn_issue.vtype.vsew)*(vinsn_issue.vl))/(DataWidth*NrLanes)))
+          if (iteration_count_d >= (((8 << vinsn_issue.vtype.vsew)*(vinsn_issue.vl_org))/(DataWidth*NrLanes)))
             issue_cnt_d = '0;
         end
 
@@ -994,7 +994,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         end
 
         // if this is the last beat, commit the result to the scalar_result queue
-        if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl[idx_width(VcpopParallelism)-1:0]) begin
+        if (iteration_count_d >= ((vinsn_issue.vl_org) / VcpopParallelism) + |vinsn_issue.vl_org[idx_width(VcpopParallelism)-1:0]) begin
           //result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (popcount_d) ? vfirst_count_d : (cluster_id_i != 0) ? {1'b0, {($bits(vfirst_count_d)-1){1'b1}}} : -1;
           result_scalar_d = (vinsn_issue.op == VCPOP) ? popcount_d : (popcount_d) ? vfirst_count_d : (cluster_id_i == NrClusters-1) ? -1 : {1'b0, {($bits(vfirst_count_d)-1){1'b1}}};
           result_scalar_valid_d = '1;
