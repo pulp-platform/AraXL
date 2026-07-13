@@ -295,7 +295,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .be_i           (vrf_be           ),
     .tgt_opqueue_i  (vrf_tgt_opqueue  ),
     // Interface with the operand queues
-    .operand_o      (vrf_operand_out  ),
+    .operand_o      (vrf_operand      ),
     .operand_valid_o(vrf_operand_valid)
   );
 
@@ -321,30 +321,12 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   elen_t [1:0] mask_result_broadcast;
 
   always_comb begin
-    vrf_operand = '0;
-    
-    if (pe_req_i.op inside {[VCPOP:VFIRST]}) begin
-      for (int i = 0; i < NrOperandQueues; i++) begin
-        if (vrf_operand_valid[i]) begin
-          for (int b = 0; b < 8; b++) begin
-            if(|vrf_operand_out[i][8*b +: 8]) begin
-              vrf_operand[i][8*b +: 8] = vrf_operand_out[i][8*b +: 8];
-            end
-          end
-        end
-      end
-    end else begin
-      vrf_operand = vrf_operand_out;
-    end
-
     if (pe_req_i.op == VCPOP) begin
       mask_result_broadcast[0] = '0;
     end else if (pe_req_i.op == VFIRST) begin
       mask_result_broadcast[0] = {1'b0, {($bits(mask_result_broadcast[0])-1){1'b1}}};
     end
     mask_result_broadcast[1] = mask_result_scalar_i;
-
-
   end
 
   operand_queues_stage #(

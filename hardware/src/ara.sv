@@ -187,6 +187,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
   logic      [NrLanes-1:0]                     sldu_result_final_gnt;
   logic                                        sldu_red_pending;
   logic                                        sldu_red_completed;
+  elen_t                                       vfirst_idx;
+  logic                                        broadcast_valid;
 
   ara_sequencer #(.NrLanes(NrLanes)) i_sequencer (
     .clk_i                 (clk_i                    ),
@@ -209,8 +211,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // Interface with the operand requesters
     .global_hazard_table_o (global_hazard_table      ),
     // Interface with the lane 0
-    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_result_wdata[0] : masku_operand[0][1]), // MaskB OpQueue
-    .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? sldu_red_completed | result_scalar_valid : masku_operand_valid[0][1]), // MaskB OpQueue Valid
+    .pe_scalar_resp_i      (pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? (pe_req.broadcast ? vfirst_idx : sldu_result_wdata[0]) : masku_operand[0][1]), // MaskB OpQueue
+    .pe_scalar_resp_valid_i(pe_req.op inside{[VCPOP:VFIRST], VREDSUM, VREDMIN} ? (pe_req.broadcast ? ((sldu_red_completed && broadcast_valid) | result_scalar_valid ) : (sldu_red_completed | result_scalar_valid)) : masku_operand_valid[0][1]), // MaskB OpQueue Valid
     .pe_scalar_resp_ready_o(pe_scalar_resp_ready     ),
     // Interface with the address generator
     .addrgen_ack_i         (addrgen_ack              ),
@@ -318,7 +320,7 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
       .sldu_result_gnt_o               (sldu_result_gnt[lane]               ),
       .sldu_result_final_gnt_o         (sldu_result_final_gnt[lane]         ),
       .sldu_red_pending_i              (sldu_red_pending                    ),
-      .sldu_red_completed_i            (sldu_red_completed                  ),
+      .sldu_red_completed_i            (pe_req.broadcast ? sldu_red_completed & broadcast_valid : sldu_red_completed),
       // Interface with the load unit
       .ldu_result_req_i                (ldu_result_req[lane]                ),
       .ldu_result_addr_i               (ldu_result_addr[lane]               ),
@@ -486,7 +488,11 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
 
     .sldu_ring_i             (ring_data_i),
     .sldu_ring_valid_i       (ring_valid_i),
-    .sldu_ring_ready_o       (ring_ready_o)
+    .sldu_ring_ready_o       (ring_ready_o),
+
+    .vfirst_idx_o            (vfirst_idx),
+    .broadcast_valid_o       (broadcast_valid)
+
   );
 
   assign sldu_completed_o = sldu_red_completed;

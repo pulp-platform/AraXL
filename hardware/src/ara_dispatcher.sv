@@ -118,7 +118,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   elen_t slide1_cnt_q;
 
   // Indicates that vcpop instruction is dispatched and can now be followed by reduction
-  logic vcpop_disp_d, vcpop_disp_q;
+  logic [1:0] vcpop_disp_d, vcpop_disp_q;
 
   // Save previous ara_req_ready_i for edge detection
   logic ara_req_valid_q;
@@ -1474,6 +1474,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDSUM;
+                          // When executing masked instructions, vredmin operates on 64 bit elements
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
                           ara_req_d.cvt_resize     = resize_e'(2'b00);
                           ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
@@ -1502,6 +1503,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                         end else begin
                           ara_req_d.op             = ara_pkg::VREDMIN;
+                          ara_req_d.use_vs1 = 1'b0;
+                          // When executing masked instructions, vredmin operates on 64 bit elements
+                          ara_req_d.vtype.vsew = EW64;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
                           ara_req_d.cvt_resize     = resize_e'(2'b00);
                           ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
@@ -1547,19 +1551,107 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         acc_resp_o.result = ara_resp_i.resp;
                         acc_resp_o.error  = ara_resp_i.error;
                       end
-
                     end
                   end
                   6'b010100: begin
-                    ara_req_d.use_vd_op = 1'b1;
-                    ara_req_d.use_vs1   = 1'b0;
+                    // Stall the interface until we get the result
+                    acc_resp_o.req_ready  = 1'b0;
+                    acc_resp_o.resp_valid = 1'b0;
+                    ara_req_d.use_vd     = 1'b0;
+                    ara_req_d.use_vd_op = 1'b0;
+                    ara_req_d.use_vs1   = 1'b1;
                     case (insn.varith_type.rs1)
-                      5'b00001: ara_req_d.op = ara_pkg::VMSBF;
+                      5'b00001: begin//VMSBF
+                        if (vcpop_disp_q == 0) begin
+                          ara_req_d.op      = ara_pkg::VFIRST;
+                          ara_req_d.use_vs1 = 1'b0;
+                          vcpop_disp_d++;
+
+                          // We operate on ceil(vl/8) bytes
+                          ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                          ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          ara_req_d.vl_org     = vl_q;
+                          ara_req_d.vl_cluster_org = vl_cluster_q;
+
+                        end else if (vcpop_disp_q == 1) begin
+                          ara_req_d.op             = ara_pkg::VREDMIN;
+                          ara_req_d.use_vs1 = 1'b0;
+                          // When executing masked instructions, vredmin operates on 64 bit elements
+                          ara_req_d.conversion_vs1 = OpQueueReductionZExt;
+                          ara_req_d.cvt_resize     = resize_e'(2'b00);
+                          ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
+                          if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
+                            ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          end else begin
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + NrLanes) / NrLanes) * NrLanes;
+                          end
+
+                          // vfirst value must be broadcasted from cluster 0 to all other clusters
+                          ara_req_d.broadcast      = 1'b1;
+                          ara_req_d.token          = ~ara_req_o.token;
+                          ara_req_d.is_mask_instr  = 1'b1;
+                          ara_req_d.vm = 1;
+                          vcpop_disp_d++;
+                        end else if (vcpop_disp_q == 2) begin
+                          ara_req_d.op         = ara_pkg::VMXNOR;
+                          ara_req_d.eew_vs1    = EW8;
+                          ara_req_d.eew_vs2    = EW8;
+                          ara_req_d.eew_vd_op  = EW8;
+                          ara_req_d.vtype.vsew = EW8;
+                          ara_req_d.use_vd_op  = 1'b1;
+                          ara_req_d.use_vd     = 1'b1;
+                          ara_req_d.vs1        = ara_req_d.vs2;  
+                          if (cluster_id_i == 0) begin
+                            ara_req_d.vl        = 4; 
+                          end else if (cluster_id_i == 1) begin
+                            ara_req_d.vl        = 4;                             
+                          end else begin
+                            ara_req_d.vl        = 0; 
+                          end
+                          ara_req_d.vl_cluster = ara_resp_i.resp;
+                          vcpop_disp_d         = 3;  
+              
+                        end
+                       end 
+
+
                       5'b00010: ara_req_d.op = ara_pkg::VMSOF;
                       5'b00011: ara_req_d.op = ara_pkg::VMSIF;
                       5'b10000: ara_req_d.op = ara_pkg::VIOTA;
                       5'b10001: ara_req_d.op = ara_pkg::VID;
+
                     endcase
+                    //ara_req_d.use_vd     = 1'b0;
+                    ara_req_d.vstart     = '0;
+                    skip_lmul_checks     = 1'b1;
+                    ignore_zero_vl_check = 1'b1;
+
+                    // Sign extend operands
+                    unique case (vtype_q.vsew)
+                      EW8: begin
+                        ara_req_d.conversion_vs2 = OpQueueConversionSExt8;
+                      end
+                      EW16: begin
+                        ara_req_d.conversion_vs2 = OpQueueConversionSExt4;
+                      end
+                      EW32: begin
+                        ara_req_d.conversion_vs2 = OpQueueConversionSExt2;
+                      end
+                      default:;
+                    endcase
+
+                    // Wait until the back-end answers to acknowledge those instructions
+                    if (ara_resp_valid_i) begin
+                      if (vcpop_disp_d == 3) begin
+                        acc_resp_o.req_ready   = 1'b1;
+                        acc_resp_o.resp_valid  = 1'b1;
+                        ara_req_valid_d   = 1'b1;
+                        acc_resp_o.result = ara_resp_i.resp;
+                        acc_resp_o.error  = ara_resp_i.error;                        
+                      end
+                    end
+
+
                   end
                   6'b001000: ara_req_d.op = ara_pkg::VAADDU;
                   6'b001001: ara_req_d.op = ara_pkg::VAADD;
@@ -3456,7 +3548,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         acc_resp_o.resp_valid = 1'b0;
         ara_req_valid_d  = 1'b0;
 
-        vcpop_disp_d = 0;
+        //vcpop_disp_d = 0;
 
         // Initialize the reshuffle counter limit to handle LMUL > 1
         unique case (ara_req_d.emul)
