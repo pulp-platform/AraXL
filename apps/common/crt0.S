@@ -105,6 +105,13 @@ reset_vector:
     // Enable Vector Extension
     li      t0, (MSTATUS_VS & (MSTATUS_VS >> 1))
     csrs    mstatus, t0
+    // Initialize vector registers to zero
+    li      t0, -1
+    vsetvli zero, t0, e8, m8, ta, ma
+    vmv.v.i v0,  0
+    vmv.v.i v8,  0
+    vmv.v.i v16, 0
+    vmv.v.i v24, 0  
     // Enable the counters
     csrsi   mcounteren, 1
     csrsi   scounteren, 1
