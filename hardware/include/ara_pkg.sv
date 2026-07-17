@@ -303,6 +303,7 @@ package ara_pkg;
     logic start_generic_slide;      // indicates that the current slide instruction is the start of a generic slide
     logic is_non_mul_cl;            // indicates that the vl_cluster is a multiple of cluster x lanes
     logic is_mask_instr;            // indicates if a reduction instruction is part of a mask instruction
+    logic broadcast;                // vfirst value must be broadcasted from cluster 0 to all other clusters
 
     // Destination vector register
     logic [4:0] vd;
@@ -416,6 +417,7 @@ package ara_pkg;
     logic start_generic_slide;      // indicates that the current slide instruction is the start of a generic slide
     logic is_non_mul_cl;            // indicates that the vl_cluster is a multiple of cluster x lanes 
     logic is_mask_instr;            // indicates if a reduction instruction is part of a mask instruction
+    logic broadcast;                // vfirst value must be broadcasted from cluster 0 to all other clusters
 
     // Destination vector register
     logic [4:0] vd;

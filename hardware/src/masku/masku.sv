@@ -258,6 +258,11 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   logic  [(8+$clog2(NrLanes))-1:0] iteration_count_d, iteration_count_q;
   logic                          not_found_one_d, not_found_one_q;
 
+  // Variables used to set bit for vmxor when calculating vmsof
+//  id_cluster_t target_cluster;                  // in which cluster the bit needs to be set
+//  logic  [$clog(NrLanes)-1:0]  target_lane;     // in which lane the bit needs to be set
+//  elen_t [$clog2(NrLanes)-1:0] target_bit;      // the bit position inside the target cluster
+
   always_ff @(posedge clk_i or negedge rst_ni) begin: p_result_queue_ff
     if (!rst_ni) begin
       result_queue_q           <= '0;
@@ -534,8 +539,21 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
       // Evaluate the instruction
       unique case (vinsn_issue.op) inside
-        [VMANDNOT:VMXNOR]: alu_result = (masku_operand_a_i & bit_enable_mask) |
-          (masku_operand_b_i & ~bit_enable_mask);
+        [VMANDNOT:VMXNOR]: begin
+          automatic int target_cluster = (vinsn_issue.vl_cluster % (NrClusters * NrLanes)) / 4;                                             // in which cluster the bit needs to be set
+          automatic int target_lane    = (vinsn_issue.vl/(NrLanes*8))/8;                                                                    // in which lane the bit needs to be set
+          automatic int target_bit     = (NrLanes*(vinsn_issue.vl_cluster/(NrClusters*NrLanes)) + (vinsn_issue.vl_cluster % NrLanes)) - 1;  // the bit position inside the target cluster
+
+          alu_result = (masku_operand_a_i & bit_enable_mask) | (masku_operand_b_i & ~bit_enable_mask);
+
+          //if (vinsn_issue.is_vmsof) begin
+            if (cluster_id_i == target_cluster) begin
+              if ((target_bit >> $clog2(ELEN)) == iteration_count_q) begin
+                alu_result[target_lane][target_bit] = 1'b1;
+              end
+            end
+          //end
+        end
         [VMFEQ:VMSGTU], [VMSGT:VMSBC] : begin
           automatic logic [ELEN*NrLanes-1:0] alu_result_flat = '0;
 
@@ -984,7 +1002,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
 
         if (masku_operand_a_valid_i && (popcount_q == 0)) begin
           if (vfirst_empty) begin
-            if (cluster_id_i == 0) begin
+            if (cluster_id_i == 0 && vinsn_issue.vl_cluster < NrLanes) begin
               vfirst_count_d = 0;
             end else begin
               vfirst_count_d = vfirst_count_q + VfirstParallelism * NrClusters;
