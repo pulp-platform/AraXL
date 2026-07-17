@@ -237,6 +237,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   logic null_vslideup;
   // In case of a generic slidedown all clusters need to participate
   logic all_participate;
+  // In case vl < NrClusters * NrLanes and only up to the lower 4 bits of a byte are stored 
+  // an axi_request from the next cluster is also needed to preserve the upper 4 bits in the destination
+  // register since store granularity is 8 bits
+  logic preserve_bits;
 
   // Pipeline the VLSU's load and store complete signals, for timing reasons
   logic load_complete_q;
@@ -303,6 +307,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     null_vslideup = 1'b0;
     all_participate = 1'b0;
+    preserve_bits   = 1'b0;
 
     is_decoding = 1'b0;
     in_lane_op  = 1'b0;
@@ -1468,7 +1473,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                          ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          if (vl_q == 0) begin
+                            ara_req_d.vl_cluster = 0;
+                          end else begin
+                            ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];  
+                          end
                           ara_req_d.vl_org     = vl_q;
                           ara_req_d.vl_cluster_org = vl_cluster_q;
 
@@ -1481,7 +1490,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
                             ara_req_d.vl_cluster     = NrLanes * NrClusters;
                           end else begin
-                            ara_req_d.vl_cluster     = ((vl_cluster_q + NrLanes) / NrLanes) * NrLanes;
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + (NrLanes-1)) / NrLanes) * NrLanes;
                           end
                           ara_req_d.token          = ~ara_req_o.token;
                           ara_req_d.is_mask_instr  = 1'b1;
@@ -1497,7 +1506,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                          ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          if (vl_q == 0) begin
+                            ara_req_d.vl_cluster = 0;
+                          end else begin
+                            ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];  
+                          end
                           ara_req_d.vl_org     = vl_q;
                           ara_req_d.vl_cluster_org = vl_cluster_q;
 
@@ -1512,7 +1525,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
                             ara_req_d.vl_cluster     = NrLanes * NrClusters;
                           end else begin
-                            ara_req_d.vl_cluster     = ((vl_cluster_q + NrLanes) / NrLanes) * NrLanes;
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + (NrLanes-1)) / NrLanes) * NrLanes;
                           end
                           ara_req_d.token          = ~ara_req_o.token;
                           ara_req_d.is_mask_instr  = 1'b1;
@@ -1526,7 +1539,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     ara_req_d.use_vd     = 1'b0;
                     ara_req_d.vstart     = '0;
                     skip_lmul_checks     = 1'b1;
-                    ignore_zero_vl_check = 1'b1;
+                    ignore_zero_vl_check = 1'b0;
 
                     // Sign extend operands
                     unique case (vtype_q.vsew)
@@ -1569,7 +1582,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                          ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                          if (vl_q == 0) begin
+                            ara_req_d.vl_cluster = 0;
+                          end else begin
+                            ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];  
+                          end
                           ara_req_d.vl_org     = vl_q;
                           ara_req_d.vl_cluster_org = vl_cluster_q;
 
@@ -1577,17 +1594,22 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.op             = ara_pkg::VREDMIN;
                           ara_req_d.use_vs1 = 1'b0;
                           // When executing masked instructions, vredmin operates on 64 bit elements
+                          ara_req_d.vtype.vsew = EW64;
                           ara_req_d.conversion_vs1 = OpQueueReductionZExt;
                           ara_req_d.cvt_resize     = resize_e'(2'b00);
                           ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
                           if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
                             ara_req_d.vl_cluster     = NrLanes * NrClusters;
                           end else begin
-                            ara_req_d.vl_cluster     = ((vl_cluster_q + NrLanes) / NrLanes) * NrLanes;
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + (NrLanes-1)) / NrLanes) * NrLanes;
                           end
 
                           // vfirst value must be broadcasted from cluster 0 to all other clusters
-                          ara_req_d.broadcast      = 1'b1;
+                          if (ara_req_d.vl_cluster <= NrLanes) begin
+                            ara_req_d.broadcast      = 1'b0;
+                          end else begin
+                            ara_req_d.broadcast      = 1'b1;
+                          end
                           ara_req_d.token          = ~ara_req_o.token;
                           ara_req_d.is_mask_instr  = 1'b1;
                           ara_req_d.vm = 1;
@@ -1600,23 +1622,151 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.vtype.vsew = EW8;
                           ara_req_d.use_vd_op  = 1'b1;
                           ara_req_d.use_vd     = 1'b1;
-                          ara_req_d.vs1        = ara_req_d.vs2;  
-                          if (cluster_id_i == 0) begin
-                            ara_req_d.vl        = 4; 
-                          end else if (cluster_id_i == 1) begin
-                            ara_req_d.vl        = 4;                             
+                          ara_req_d.vs1        = ara_req_d.vs2; 
+                          if (ara_resp_i.resp == '1) begin
+                            ara_req_d.vl_cluster = '0;
+                            ara_req_d.vl         = '0;
                           end else begin
-                            ara_req_d.vl        = 0; 
+                            ara_req_d.vl_cluster = ara_resp_i.resp;
+                            ara_req_d.vl         = (ara_resp_i.resp / (NrClusters * NrLanes)) * NrLanes;                             
+                            if (cluster_id_i * NrLanes <= ara_resp_i.resp % (NrClusters * NrLanes) && ara_resp_i.resp % (NrClusters * NrLanes) < (cluster_id_i + 1) * NrLanes) begin
+                              ara_req_d.vl       += ara_resp_i.resp % (NrClusters * NrLanes) - (cluster_id_i * NrLanes); 
+                            end else if (ara_resp_i.resp % (NrClusters * NrLanes) >= (cluster_id_i + 1) * NrLanes) begin
+                              ara_req_d.vl       += NrLanes; 
+                            end
                           end
-                          ara_req_d.vl_cluster = ara_resp_i.resp;
                           vcpop_disp_d         = 3;  
-              
                         end
-                       end 
+                      end 
 
+                      5'b00010: begin //VMSOF
+                        if (vcpop_disp_q == 0) begin
+                          ara_req_d.op      = ara_pkg::VFIRST;
+                          ara_req_d.use_vs1 = 1'b0;
+                          vcpop_disp_d++;
 
-                      5'b00010: ara_req_d.op = ara_pkg::VMSOF;
-                      5'b00011: ara_req_d.op = ara_pkg::VMSIF;
+                          // We operate on ceil(vl/8) bytes
+                          ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                          if (vl_q == 0) begin
+                            ara_req_d.vl_cluster = 0;
+                          end else begin
+                            ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];  
+                          end
+                          ara_req_d.vl_org     = vl_q;
+                          ara_req_d.vl_cluster_org = vl_cluster_q;
+
+                        end else if (vcpop_disp_q == 1) begin
+                          ara_req_d.op             = ara_pkg::VREDMIN;
+                          ara_req_d.use_vs1 = 1'b0;
+                          // When executing masked instructions, vredmin operates on 64 bit elements
+                          ara_req_d.vtype.vsew = EW64;
+                          ara_req_d.conversion_vs1 = OpQueueReductionZExt;
+                          ara_req_d.cvt_resize     = resize_e'(2'b00);
+                          ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
+                          if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
+                            ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          end else begin
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + (NrLanes-1)) / NrLanes) * NrLanes;
+                          end
+
+                          // vfirst value must be broadcasted from cluster 0 to all other clusters
+                          if (ara_req_d.vl_cluster <= NrLanes) begin
+                            ara_req_d.broadcast      = 1'b0;
+                          end else begin
+                            ara_req_d.broadcast      = 1'b1;
+                          end
+                          ara_req_d.token          = ~ara_req_o.token;
+                          ara_req_d.is_mask_instr  = 1'b1;
+                          ara_req_d.vm = 1;
+                          vcpop_disp_d++;
+                        end else if (vcpop_disp_q == 2) begin
+                          ara_req_d.op         = ara_pkg::VMXOR;
+                          ara_req_d.eew_vs1    = EW8;
+                          ara_req_d.eew_vs2    = EW8;
+                          ara_req_d.eew_vd_op  = EW8;
+                          ara_req_d.vtype.vsew = EW8;
+                          ara_req_d.use_vd_op  = 1'b1;
+                          ara_req_d.use_vd     = 1'b1;
+                          ara_req_d.vs1        = ara_req_d.vs2; 
+                          if (ara_resp_i.resp == '1) begin
+                            ara_req_d.vl_cluster = '0;
+                            ara_req_d.vl         = '0;
+                          end else begin
+                            ara_req_d.vl_cluster = ara_resp_i.resp + 1;
+                            ara_req_d.vl         = ((ara_resp_i.resp + 1) / (NrClusters * NrLanes)) * NrLanes;                             
+                            if (cluster_id_i * NrLanes <= (ara_resp_i.resp + 1) % (NrClusters * NrLanes) && (ara_resp_i.resp + 1) % (NrClusters * NrLanes) < (cluster_id_i + 1) * NrLanes) begin
+                              ara_req_d.vl       += (ara_resp_i.resp + 1) % (NrClusters * NrLanes) - (cluster_id_i * NrLanes); 
+                            end else if ((ara_resp_i.resp + 1) % (NrClusters * NrLanes) >= (cluster_id_i + 1) * NrLanes) begin
+                              ara_req_d.vl       += NrLanes; 
+                            end
+                          end
+                          vcpop_disp_d         = 3;  
+                        end
+                      end 
+                      5'b00011: begin //VMSIF
+                        if (vcpop_disp_q == 0) begin
+                          ara_req_d.op      = ara_pkg::VFIRST;
+                          ara_req_d.use_vs1 = 1'b0;
+                          vcpop_disp_d++;
+
+                          // We operate on ceil(vl/8) bytes
+                          ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
+                          if (vl_q == 0) begin
+                            ara_req_d.vl_cluster = 0;
+                          end else begin
+                            ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];  
+                          end
+                          ara_req_d.vl_org     = vl_q;
+                          ara_req_d.vl_cluster_org = vl_cluster_q;
+
+                        end else if (vcpop_disp_q == 1) begin
+                          ara_req_d.op             = ara_pkg::VREDMIN;
+                          ara_req_d.use_vs1 = 1'b0;
+                          // When executing masked instructions, vredmin operates on 64 bit elements
+                          ara_req_d.vtype.vsew = EW64;
+                          ara_req_d.conversion_vs1 = OpQueueReductionZExt;
+                          ara_req_d.cvt_resize     = resize_e'(2'b00);
+                          ara_req_d.vl             = (vl_q != 0) ? NrLanes : 0;
+                          if ((vl_cluster_q/(NrLanes * NrClusters)) >= 1) begin
+                            ara_req_d.vl_cluster     = NrLanes * NrClusters;
+                          end else begin
+                            ara_req_d.vl_cluster     = ((vl_cluster_q + (NrLanes-1)) / NrLanes) * NrLanes;
+                          end
+
+                          // vfirst value must be broadcasted from cluster 0 to all other clusters
+                          if (ara_req_d.vl_cluster <= NrLanes) begin
+                            ara_req_d.broadcast      = 1'b0;
+                          end else begin
+                            ara_req_d.broadcast      = 1'b1;
+                          end
+                          ara_req_d.token          = ~ara_req_o.token;
+                          ara_req_d.is_mask_instr  = 1'b1;
+                          ara_req_d.vm = 1;
+                          vcpop_disp_d++;
+                        end else if (vcpop_disp_q == 2) begin
+                          ara_req_d.op         = ara_pkg::VMXNOR;
+                          ara_req_d.eew_vs1    = EW8;
+                          ara_req_d.eew_vs2    = EW8;
+                          ara_req_d.eew_vd_op  = EW8;
+                          ara_req_d.vtype.vsew = EW8;
+                          ara_req_d.use_vd_op  = 1'b1;
+                          ara_req_d.use_vd     = 1'b1;
+                          ara_req_d.vs1        = ara_req_d.vs2; 
+                          if (ara_resp_i.resp == '1) begin
+                            ara_req_d.vl_cluster = '0;
+                            ara_req_d.vl         = '0;
+                          end else begin
+                            ara_req_d.vl_cluster = ara_resp_i.resp + 1;
+                            ara_req_d.vl         = ((ara_resp_i.resp + 1) / (NrClusters * NrLanes)) * NrLanes;                             
+                            if (cluster_id_i * NrLanes <= (ara_resp_i.resp + 1) % (NrClusters * NrLanes) && (ara_resp_i.resp + 1) % (NrClusters * NrLanes) < (cluster_id_i + 1) * NrLanes) begin
+                              ara_req_d.vl       += (ara_resp_i.resp + 1) % (NrClusters * NrLanes) - (cluster_id_i * NrLanes); 
+                            end else if ((ara_resp_i.resp + 1) % (NrClusters * NrLanes) >= (cluster_id_i + 1) * NrLanes) begin
+                              ara_req_d.vl       += NrLanes; 
+                            end
+                          end
+                          vcpop_disp_d         = 3;  
+                        end
+                      end 
                       5'b10000: ara_req_d.op = ara_pkg::VIOTA;
                       5'b10001: ara_req_d.op = ara_pkg::VID;
 
@@ -1624,7 +1774,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     //ara_req_d.use_vd     = 1'b0;
                     ara_req_d.vstart     = '0;
                     skip_lmul_checks     = 1'b1;
-                    ignore_zero_vl_check = 1'b1;
+                    ignore_zero_vl_check = 1'b0;
 
                     // Sign extend operands
                     unique case (vtype_q.vsew)
@@ -1647,7 +1797,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         acc_resp_o.resp_valid  = 1'b1;
                         ara_req_valid_d   = 1'b1;
                         acc_resp_o.result = ara_resp_i.resp;
-                        acc_resp_o.error  = ara_resp_i.error;                        
+                        acc_resp_o.error  = ara_resp_i.error; 
+                        vcpop_disp_d = 0;                      
                       end
                     end
 
@@ -2961,8 +3112,23 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   5'b01000:;      // Unit-strided, whole registers
                   5'b01011: begin // Unit-strided, mask load, EEW=1
                     // We operate ceil(vl/8) bytes
-                    ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                    ara_req_d.vl       = (vl_q >> 3) + |vl_q[2:0];
+
+                    if ((vl_cluster_q % (8 * NrClusters)) <= NrLanes * NrClusters) begin
+
+                      if (cluster_id_i[0] == 0) begin                   // Even cluster id
+                        if (cluster_id_i * NrLanes < (vl_cluster_q % (NrClusters * NrLanes)) && (vl_cluster_q % (NrClusters * NrLanes)) <= ((cluster_id_i+1) * NrLanes)) begin
+                          preserve_bits      = 1'b1;
+                          ara_req_d.vl       += 1;
+                        end
+                      end else begin                                    // Uneven cluster id
+                        if ((cluster_id_i-1) * NrLanes < (vl_cluster_q % (NrClusters * NrLanes)) && (vl_cluster_q % (NrClusters * NrLanes)) <= ((cluster_id_i+1) * NrLanes)) begin
+                          preserve_bits      = 1'b1;
+                          ara_req_d.vl       += 1;
+                        end
+                      end
+                    end 
+                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0]; 
                     ara_req_d.vtype.vsew = EW8;
                     ara_req_d.use_eew1   = 1'b1;
                   end
@@ -3177,8 +3343,24 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                   5'b01000:;     // Unit-strided, whole registers
                   5'b01011: begin // Unit-strided, mask store, EEW=1
                     // We operate ceil(vl/8) bytes
-                    ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                    // additional clusters also need to store data to ensure bits are preserved in the destination register
+                    ara_req_d.vl       = (vl_q >> 3) + |vl_q[2:0];
+                    if ((vl_cluster_q % (8 * NrClusters)) <= NrLanes * NrClusters) begin
+
+                      if (cluster_id_i[0] == 0) begin                   // Even cluster id
+                        if (cluster_id_i * NrLanes < (vl_cluster_q % (NrClusters * NrLanes)) && (vl_cluster_q % (NrClusters * NrLanes)) <= ((cluster_id_i+1) * NrLanes)) begin
+                          preserve_bits      = 1'b1;
+                          ara_req_d.vl       += 1;
+                        end
+                      end else begin                                    // Uneven cluster id
+                        if ((cluster_id_i-1) * NrLanes < (vl_cluster_q % (NrClusters * NrLanes)) && (vl_cluster_q % (NrClusters * NrLanes)) <= ((cluster_id_i+1) * NrLanes)) begin
+                          preserve_bits      = 1'b1;
+                          ara_req_d.vl       += 1;
+                        end
+                      end
+
+                    end 
+                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0]; 
                     ara_req_d.vtype.vsew = EW8;
                     ara_req_d.use_eew1   = 1'b1;
                   end
@@ -3548,8 +3730,6 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         acc_resp_o.resp_valid = 1'b0;
         ara_req_valid_d  = 1'b0;
 
-        //vcpop_disp_d = 0;
-
         // Initialize the reshuffle counter limit to handle LMUL > 1
         unique case (ara_req_d.emul)
           LMUL_2:  rs_lmul_cnt_limit_d = 1;
@@ -3607,7 +3787,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
-    if (is_decoding && ((vl_q == '0 && !all_participate) || null_vslideup) && !is_config &&
+    if (is_decoding && ((vl_q == '0 && !all_participate && !preserve_bits) || null_vslideup) && !is_config &&
       !ignore_zero_vl_check && !acc_resp_o.error) begin
       // If we are acknowledging a memory operation, we must tell Ariane that the memory
       // operation was resolved (to decrement its pending load/store counter)
