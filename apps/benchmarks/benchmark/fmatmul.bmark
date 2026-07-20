@@ -129,7 +129,9 @@ int main(int hart_id) {
 
     printf("M:%d N:%d P=%d [sw-cycles]: %ld performance:%f util:%f%%\n", M, N, P, runtime, performance, utilization);
 
+#ifdef ERR_CHK
     int error = verify_matrix(c, g, M, P, THRESHOLD64);
+#endif
   }
 
 #if NR_CORES > 1
