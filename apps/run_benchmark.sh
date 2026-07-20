@@ -10,9 +10,9 @@ logdir=logs
 
 mkdir -p ${logdir}/$app
 
-for nr_cores in 1
+for nr_cores in 1 #1 2 4
 do
-for nr_clusters in 4
+for nr_clusters in 2 #2 4 8 16
 do
 for nr_lanes in 4
 do
@@ -22,7 +22,7 @@ cd ../hardware/
 make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
 cd ../apps/
 
-for bytes_lane in 512 #256 128 64 32 16 8
+for bytes_lane in 512 256 128 64 32 16 8
 do
 
 len=$((bytes_lane * nr_lanes * nr_clusters * nr_cores / 8))
@@ -32,7 +32,7 @@ echo "C=$nr_clusters L=$nr_lanes LEN=$len"
 if [[ $app == "fmatmul" ]]
 then
   #args_app="256 256 $len"
-  args_app="16 16 $len"
+  args_app="32 32 $len"
   str_app=FMATMUL
 elif [[ $app == "fconv2d" ]]
 then
