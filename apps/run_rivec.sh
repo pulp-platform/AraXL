@@ -12,16 +12,16 @@ latency=$3
 logdir=logs
 nr_lanes=4
 
-for nr_cores in 2
+for nr_cores in 1 #1 2 4
 do
-for nr_clusters in 4
+for nr_clusters in 2 #2 4 8 16
 do
 
 #Build hw
 cd ../hardware/
 make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
 cd ../apps/
-for bytes_lane in 512 #256 128 64 32 16 8
+for bytes_lane in 512 256 128 64 32 16 8
 do
 
 len_core=$((bytes_lane * nr_lanes * nr_clusters / 8))
@@ -62,8 +62,8 @@ app_size=${len_core}_${nr_cores}
 elif [[ $app == "_lavaMD" ]]
 then
 len=$((len * 2))
-args_app="1 1 ${len}"
-app_size=1_1_${len}
+args_app="${nr_cores} 1 ${len}"
+app_size=${nr_cores}_1_${len}
 else
   echo "RiVEC app not supported!!"
 fi
