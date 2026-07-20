@@ -127,7 +127,7 @@ int main(int hart_id) {
     
     printf("Checking results: v = %f, golden = %f\n", res64_v, gold64);
     if (!similarity_check(res64_v, gold64, THRESHOLD_64b)) {
-      printf("Error %f != %f\n", i, res64_v, gold64);
+      printf("Error %f != %f\n", res64_v, gold64);
     }
   }
 

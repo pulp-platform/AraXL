@@ -85,14 +85,16 @@ int main(int hart_id) {
     runtime = get_timer();
   
     float utilization = 100.0 * (22 * innerSize * channels) / (NR_LANES * NR_CLUSTERS * NR_CORES * runtime);
-    printf("[sw-cycles]: %ld util:%f%%\n", runtime, utilization);
+    printf("innerSize:%d channels:%d [sw-cycles]: %ld util:%f%%\n", innerSize, channels, runtime, utilization);
 
+#ifdef ERR_CHK
     for (uint64_t k = 0; k < channels * innerSize; ++k) {
       if (!similarity_check(o_g[k], o_v[k], THRESHOLD)) {
         printf("Error at index %d. %lf != %lf\n", k, o_v[k], o_g[k]);
         return -1;
       }
     }
+#endif
   }
 
 #if NR_CORES > 1
