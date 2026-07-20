@@ -911,11 +911,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     end
 
     if (sldu_completed_sync_i && (broadcasting_q == 0) && broadcast_cnt_q != 0) begin
-      broadcasting_d = 1'b1;
+      broadcasting_d    = 1'b1;
       broadcast_valid_d = 1'b1;
     end else if (sldu_completed_sync_i && broadcasting_q) begin
-      broadcasting_d = 1'b0;
+      broadcasting_d    = 1'b0;
       broadcast_valid_d = 1'b0;
+      send_broadcast_d  = 1'b0;
     end else begin
       broadcasting_d = broadcasting_q;
     end
@@ -1269,7 +1270,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                   end
                   `ifndef VERILATOR
                   `ifndef TARGET_SYNTHESIS
-                  assert (cluster_red_cnt_q == 1 || broadcast_cnt_q == 1) else $error("cluster_red_cnt_q should not be 0 when sending data on the ring for reduction");
+                  assert (cluster_red_cnt_q >= 1 || broadcast_cnt_q >= 1) else $error("cluster_red_cnt_q and broad_cast_cnt_q should not both be 0 when sending data on the ring for reduction or broadcasting");
                   `endif
                   `endif
                 end
@@ -1708,7 +1709,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
           `ifndef VERILATOR
           `ifndef TARGET_SYNTHESIS
-          assert(commit_cnt_q != 0) 
+          assert(commit_cnt_q != 0 || broadcasting_q) 
             else $error("commit_cnt_q should not be 0 here");
           assert((vinsn_queue_q.commit_pnt == vinsn_queue_q.ring_pnt) ? (commit_cnt_q >= ring_cnt_q) : 1'b1)
             else $error("committing to VRF cannot be ahead of receiving packets on the ring for the same instruction");
@@ -1872,11 +1873,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                 end else begin
                   cluster_red_cnt_d = cluster_red_cnt_q - 1;
                 end
-                `ifndef VERILATOR
-                `ifndef TARGET_SYNTHESIS
-                assert (cluster_red_cnt_q != 0) else $error("cluster_red_cnt_q should not be 0 when sending data on the ring for reduction");
-                `endif
-                `endif
+                  `ifndef VERILATOR
+                  `ifndef TARGET_SYNTHESIS
+                  assert (cluster_red_cnt_q >= 1 || broadcast_cnt_q >= 1) else $error("cluster_red_cnt_q and broad_cast_cnt_q should not both be 0 when sending data on the ring for reduction or broadcasting");
+                  `endif
+                  `endif
               end
               slide_result_valid = 1'b1;
             

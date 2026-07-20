@@ -503,6 +503,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
             masku_operand_ready = 1'b1;
           end
         end
+      end else begin
+        in_ready_cnt_en = 1'b0;
       end
 
       // Deshuffle the operands for the mask instructions
@@ -791,6 +793,9 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           alu_result_vm = '0;
         end
       endcase
+    end else begin
+      in_ready_cnt_en = 1'b0;
+      in_ready_cnt_clr = 1'b1;
     end
 
     // Shuffle result for masked instructions
