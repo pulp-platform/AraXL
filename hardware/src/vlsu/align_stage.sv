@@ -23,7 +23,8 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   parameter  type                   axi_resp_t          = logic,
   parameter  type                   axi_addr_t          = logic [AxiAddrWidth-1:0],
   parameter  type                   axi_data_t          = logic [AxiDataWidth-1:0],
-  localparam int           unsigned NumStages           = $clog2(AxiDataWidth/8)
+  localparam int           unsigned NumStages           = $clog2(AxiDataBytes),
+  localparam int           unsigned AxiDataBytes        = AxiDataWidth/8
 
 ) (
   // Clock and Reset
@@ -69,7 +70,7 @@ axi_resp_t [NumStages-1:0] axi_resp_o_cut;
 axi_data_t data_d, data_q;
 logic data_valid_d, data_valid_q;
 
-typedef logic [AxiDataWidth/8-1:0] be_data_t;
+typedef logic [AxiDataBytes-1:0] be_data_t;
 be_data_t [NumStages:0] be_d, be_q;
 be_data_t be_final_d, be_final_q;
 
@@ -195,8 +196,8 @@ always_comb begin
   if (axi_req_i.ar_valid && axi_resp_o.ar_ready) begin
     automatic vew_e     vew          = cluster_metadata_i.vew;  
     automatic int       burst        = axi_req_i.ar.len + 1;
-    automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.ar.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew;
+    automatic int       axi_bytes    = AxiDataBytes;
+    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataBytes)) - (axi_req_i.ar.addr[$clog2(AxiDataBytes)-1:0])) >> vew;
     vl_d = vl_q + vlen_request;
 
     tracker_d[rd_req_pnt_q].addr  = axi_req_i.ar.addr;
@@ -270,13 +271,13 @@ always_comb begin
     // Combine the previous data and the current data packets using byte enable
     if (data_valid_q && axi_req_cut_ready[NumStages]) begin
       // Number of elements in a single AXI transaction
-      automatic vlen_t axi_valid_el = (AxiDataWidth/8) >> tracker_q[rd_resp_pnt_q_del[NumStages-1]].vew;
+      automatic vlen_t axi_valid_el = AxiDataBytes >> tracker_q[rd_resp_pnt_q_del[NumStages-1]].vew;
 
       // If misaligned, make sure you have a valid beat in the current cycle
       // or if the transaction is short that is check if previous beat was the last beat
       // Otherwise, we have a valid data if the request is aligned
-      automatic logic valid_data = (~be_final_d[AxiDataWidth/8-1] & (axi_resp_i_cut[NumStages].r_valid | last_q)) | be_final_d[AxiDataWidth/8-1];
-      for (int b=0; b<AxiDataWidth/8; b++) begin
+      automatic logic valid_data = (~be_final_d[AxiDataBytes-1] & (axi_resp_i_cut[NumStages].r_valid | last_q)) | be_final_d[AxiDataBytes-1];
+      for (int b=0; b<AxiDataBytes; b++) begin
         axi_resp_o.r.data[b*8 +: 8] = be_final_d[b] ? data_q[b*8 +: 8] : axi_resp_i_cut[NumStages].r.data[b*8 +: 8];
       end
 
@@ -288,7 +289,7 @@ always_comb begin
         tracker_d[rd_resp_pnt_q_del[NumStages-1]].len -= axi_valid_el;
 
         // If aligned request, set data valid only if available valid beat
-        data_valid_d = be_final_d[AxiDataWidth/8-1] ? axi_resp_i_cut[NumStages].r_valid : 1'b1;
+        data_valid_d = be_final_d[AxiDataBytes-1] ? axi_resp_i_cut[NumStages].r_valid : 1'b1;
       
         // Use vl from tracker to check if this is the last data packet or not
         // Since using delayed data, using delayed pointer to the tracker
@@ -298,7 +299,7 @@ always_comb begin
 
           // If the current data is not misaligned and we have a valid data
           // Set valid data for the next subsequent load to avoid bubble
-          data_valid_d = be_final_d[AxiDataWidth/8-1] & axi_resp_i_cut[NumStages].r_valid;
+          data_valid_d = be_final_d[AxiDataBytes-1] & axi_resp_i_cut[NumStages].r_valid;
           last_d = 1'b0;
         end
       end
@@ -413,8 +414,8 @@ always_comb begin
   if (axi_req_i.aw_valid && axi_resp_o.aw_ready) begin
     automatic vew_e     vew          = cluster_metadata_i.vew;
     automatic int       burst        = axi_req_i.aw.len + 1;
-    automatic int       axi_bytes    = AxiDataWidth/8;
-    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataWidth/8)) - (axi_req_i.aw.addr[$clog2(AxiDataWidth/8)-1:0])) >> vew;
+    automatic int       axi_bytes    = AxiDataBytes;
+    automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataBytes)) - (axi_req_i.aw.addr[$clog2(AxiDataBytes)-1:0])) >> vew;
     wr_vl_d = wr_vl_q + vlen_request;
     
     wr_track_d[wr_pnt_q].addr          = axi_req_i.aw.addr;
@@ -451,7 +452,7 @@ always_comb begin
     // Set the strobe and data according to the address
     if (wr_track_q[wr_commit_pnt_q].op inside {VSXE, VSSE}) begin
       automatic axi_addr_t addr = wr_track_q[wr_commit_pnt_q].addr;
-      automatic logic [$clog2(AxiDataWidth/8)-1:0] start_byte_pos = addr[$clog2(AxiDataWidth/8)-1:0];
+      automatic logic [$clog2(AxiDataBytes)-1:0] start_byte_pos = addr[$clog2(AxiDataBytes)-1:0];
       axi_req_o.w.strb = '0;
       axi_req_o.w.data = '0;
       // Set the strb at the correct byte position depending on the address and the element width
@@ -499,6 +500,10 @@ assign axi_req_o.w_valid = axi_req_i.w_valid && !wr_tracker_empty;
 // Assertion: Verify AXI response data does not change when there is no valid handshake
 `ifndef VERILATOR
 `ifndef TARGET_SYNTHESIS
+assert property (@(posedge clk_i) disable iff (~rst_ni)
+  axi_req_o.aw_valid |-> (axi_req_o.aw.addr[$clog2(AxiDataBytes)-1:0] == '0))
+  else $fatal(1, "AXI write address is not aligned to %0d bytes, Misaligned stores not supported in AraXL now, Ensure alignment of data structure in Software", AxiDataBytes);
+
 assert property (@(posedge clk_i) disable iff (~rst_ni)
   (axi_resp_i_cut[NumStages].r_valid && axi_req_cut_ready[NumStages]) || 
   (data_q == $past(data_d)))
