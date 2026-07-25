@@ -33,10 +33,10 @@
 
 // Matrices defined in data.S
 extern int64_t i[] __attribute__((
-    aligned(4 * NR_LANES))); // [ (M+floor(F/2)) * (N+floor(F/2)) ]
-extern int64_t f[] __attribute__((aligned(4 * NR_LANES)));        // [ F*F ]
-extern int64_t o[] __attribute__((aligned(4 * NR_LANES)));        // [ M*N ]
-extern int64_t golden_o[] __attribute__((aligned(4 * NR_LANES))); // [ M*N ]
+    aligned(4 * NR_LANES * NR_CLUSTERS))); // [ (M+floor(F/2)) * (N+floor(F/2)) ]
+extern int64_t f[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));        // [ F*F ]
+extern int64_t o[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS)));        // [ M*N ]
+extern int64_t golden_o[] __attribute__((aligned(4 * NR_LANES * NR_CLUSTERS))); // [ M*N ]
 // M, N, F defined in data.S
 extern int64_t M;
 extern int64_t N;
@@ -89,7 +89,7 @@ int main() {
   // Performance metrics
   int64_t runtime = get_timer();
   float performance = 2.0 * F * F * M * N / runtime;
-  float utilization = 100 * performance / (2.0 * NR_LANES);
+  float utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);
 
   printf("The execution took %d cycles.\n", runtime);
   printf("The performance is %f OP/cycle (%f%% utilization).\n", performance,

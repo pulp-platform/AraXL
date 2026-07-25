@@ -16,7 +16,7 @@
 
 #!/usr/bin/env python3
 
-# arg1: image size, arg2: filter size
+# arg1: row size, arg2: column size, arg3: filter size
 
 import numpy as np
 import sys
@@ -67,25 +67,25 @@ def emit(name, array, alignment='8'):
 			s += "%02x" % bs[i+3-n]
 		print("    .word 0x%s" % s)
 
-# Define the filter size and the matrix dimension (max, for now, is 128 64-bit elements)
+# Define the filter size and the matrix dimensions.
 if len(sys.argv) > 1:
-	matrix_width = int(sys.argv[1])
-	assert(matrix_width <= 128), "The width of the image cannot be greater than 128 64-bit \
-	                                  elements. If this is not enough, modify the algorithm."
-	F = int(sys.argv[2])
-	# Filter size must be odd
-	assert(F % 2 == 1), "The filter size must be an odd integer number"
+    row_size = int(sys.argv[1])
+    col_size = int(sys.argv[2])
+    F = int(sys.argv[3])
+    # Filter size must be odd
+    assert(F % 2 == 1), "The filter size must be an odd integer number"
 else:
-	matrix_width = 64
-	F = 3
+    row_size = 64
+    col_size = 64
+    F = 7
 
 dtype = np.int64
 MIN_DTYPE = -2**20
 MAX_DTYPE = +2**20
 
-# Input image. Take a square image
-M = matrix_width
-N = matrix_width
+# Input image.
+M = row_size
+N = col_size
 padding = int(F/2)
 M_pad = M + 2*padding
 N_pad = N + 2*padding
@@ -109,7 +109,7 @@ print(".section .data,\"aw\",@progbits")
 emit("M", np.array(M, dtype=np.uint64))
 emit("N", np.array(N, dtype=np.uint64))
 emit("F", np.array(F, dtype=np.uint64))
-emit("i", image, 'NR_LANES*4')
-emit("f", gen_filter, 'NR_LANES*4')
-emit("o", empty_o, 'NR_LANES*4')
-emit("golden_o", result, 'NR_LANES*4')
+emit("i", image, 'NR_LANES*4*NR_CLUSTERS')
+emit("f", gen_filter, 'NR_LANES*4*NR_CLUSTERS')
+emit("o", empty_o, 'NR_LANES*4*NR_CLUSTERS')
+emit("golden_o", result, 'NR_LANES*4*NR_CLUSTERS')
