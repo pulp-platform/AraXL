@@ -35,11 +35,11 @@ extern uint64_t M;
 extern uint64_t N;
 extern uint64_t P;
 
-extern int64_t a[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
-extern int64_t b[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
-extern int64_t c[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
+extern int64_t a[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern int64_t b[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
+extern int64_t c[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
 // Gold results
-extern int64_t g[] __attribute__((aligned(32 * NR_LANES), section(".l2")));
+extern int64_t g[] __attribute__((aligned(32 * NR_LANES * NR_CLUSTERS), section(".l2")));
 
 // Verify the matrix
 int verify_matrix(int64_t *result, int64_t *gold, size_t R, size_t C) {
@@ -71,20 +71,20 @@ int main() {
     printf("\n");
     printf("------------------------------------------------------------\n");
     printf("Calculating a (%d x %d) x (%d x %d) matrix multiplication...\n", s,
-           s, s, s);
+           N, N, P);
     printf("------------------------------------------------------------\n");
     printf("\n");
 
     // Matrices are initialized --> Start calculating
     printf("Calculating imatmul...\n");
     start_timer();
-    imatmul(c, a, b, s, s, s);
+    imatmul(c, a, b, s, N, P);
     stop_timer();
 
     // Metrics
     int64_t runtime = get_timer();
-    float performance = 2.0 * s * s * s / runtime;
-    float utilization = 100 * performance / (2.0 * NR_LANES);
+    float performance = 2.0 * s * N * P / runtime;
+    float utilization = 100 * performance / (2.0 * NR_LANES * NR_CLUSTERS);
 
     printf("The execution took %d cycles.\n", runtime);
     printf("The performance is %f OP/cycle (%f%% utilization).\n", performance,
@@ -94,7 +94,7 @@ int main() {
     if (s == M) {
       // Verify the result
       printf("Verifying result...\n");
-      int error = verify_matrix(c, g, s, s);
+      int error = verify_matrix(c, g, s, P);
       if (error != 0) {
         printf("Error code %d\n", error);
         printf("c[%d]=%d\n", error, c[error]);
