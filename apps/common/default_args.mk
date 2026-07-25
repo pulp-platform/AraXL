@@ -3,8 +3,8 @@
 # Matrix sizes
 def_args_imatmul     ?= "16 64 128"
 def_args_fmatmul     ?= "16 64 128"
-# Matrix size, filter size
-def_args_iconv2d     ?= "112 7"
+# Matrix rows, matrix cols, filter size
+def_args_iconv2d     ?= "112 112 7"
 def_args_fconv2d     ?= "64 64 7"
 def_args_fconv3d     ?= "112 7"
 # Vector size
