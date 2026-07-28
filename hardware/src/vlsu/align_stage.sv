@@ -23,8 +23,8 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   parameter  type                   axi_resp_t          = logic,
   parameter  type                   axi_addr_t          = logic [AxiAddrWidth-1:0],
   parameter  type                   axi_data_t          = logic [AxiDataWidth-1:0],
-  localparam int           unsigned NumStages           = $clog2(AxiDataBytes),
-  localparam int           unsigned AxiDataBytes        = AxiDataWidth/8
+  localparam int           unsigned AxiDataBytes        = AxiDataWidth/8,
+  localparam int           unsigned NumStages           = $clog2(AxiDataBytes)
 
 ) (
   // Clock and Reset
