@@ -123,18 +123,48 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   // This optimization IS floorplan dependent!
   localparam bit modulate_ring_cuts = 1;
 
-  // Function to check if an index is in a [NrCluster/2]-wide list
-  function automatic bit is_index_in_list(int index, int list[8]);
+  localparam int unsigned MaxNoRingCutEntries = 10;
+
+  // Function to check if an index is in the active no-cut list.
+  function automatic bit is_index_in_list(int index, int list[MaxNoRingCutEntries], int unsigned list_len);
     int found = 0;
-    for (int i = 0; i < NrClusters/2; i++) begin
+    for (int i = 0; i < list_len; i++) begin
       if (list[i] == index) found = 1;
     end
 
     return found;
   endfunction
 
-  localparam int idx_no_ring_cut_left[8] = '{1, 3, 5, 7, 9, 11, 13, 15};
-  localparam int idx_no_ring_cut_right[8] = '{0, 2, 4, 6, 8, 10, 12, 14};
+  // No-ring-cut profiles per supported NrClusters.
+  // The cuts are specified for 4, 8, and 16 clusters. For other cluster counts, no cuts are applied.
+  localparam int idx_no_ring_cut_left_16[MaxNoRingCutEntries]  = '{0, 1, 3, 6, 7, 8, 9, 10, 13, 15};
+  localparam int idx_no_ring_cut_right_16[MaxNoRingCutEntries] = '{0, 2, 5, 6, 7, 8, 9, 12, 14, 15};
+
+  localparam int idx_no_ring_cut_left_8[MaxNoRingCutEntries]   = '{0, 2, 5, 6, -1, -1, -1, -1, -1, -1};
+  localparam int idx_no_ring_cut_right_8[MaxNoRingCutEntries]  = '{1, 4, 5, 7, -1, -1, -1, -1, -1, -1};
+
+  localparam int idx_no_ring_cut_left_4[MaxNoRingCutEntries]   = '{1, 3, -1, -1, -1, -1, -1, -1, -1, -1};
+  localparam int idx_no_ring_cut_right_4[MaxNoRingCutEntries]  = '{0, 2, -1, -1, -1, -1, -1, -1, -1, -1};
+
+  function automatic bit bypass_ring_cut_left(int index);
+    bypass_ring_cut_left = 1'b0;
+    case (NrClusters)
+      16: bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_16, 10);
+      8:  bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_8, 4);
+      4:  bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_4, 2);
+      default: bypass_ring_cut_left = 1'b0;
+    endcase
+  endfunction
+
+  function automatic bit bypass_ring_cut_right(int index);
+    bypass_ring_cut_right = 1'b0;
+    case (NrClusters)
+      16: bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_16, 10);
+      8:  bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_8, 4);
+      4:  bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_4, 2);
+      default: bypass_ring_cut_right = 1'b0;
+    endcase
+  endfunction
 
   // Synchronization logic between clusters for indexed operations
   logic idx_completed_sync_all;
@@ -324,7 +354,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
       for (genvar cluster=0; cluster < NrClusters; cluster++) begin
         // Check if this cluster needs a cut on the left
-        if (is_index_in_list(cluster, idx_no_ring_cut_left) && (NrClusters==8 || NrClusters==16)) begin
+        if (bypass_ring_cut_left(cluster)) begin
           // Pass through
           assign ring_data_l_valid_cut[cluster] = ring_data_l_valid[cluster];
           assign ring_data_l_ready_cut[cluster == 0 ? NrClusters-1 : cluster - 1] = ring_data_l_ready[cluster == 0 ? NrClusters-1 : cluster - 1];
@@ -349,7 +379,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         end
 
         // Check if this cluster needs a cut on the right
-        if (is_index_in_list(cluster, idx_no_ring_cut_right) && (NrClusters==8 || NrClusters==16)) begin
+        if (bypass_ring_cut_right(cluster)) begin
           // Pass through
           assign ring_data_r_valid_cut[cluster] = ring_data_r_valid[cluster];
           assign ring_data_r_ready[cluster == NrClusters-1 ? 0 : cluster + 1] = ring_data_r_ready_cut[cluster == NrClusters-1 ? 0 : cluster + 1];

@@ -524,7 +524,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .system_axi_req_t  (system_req_t         ),
     .system_axi_resp_t (system_resp_t        ))
 `else
-  ara_group // For simulating PnR netlist
+  ara_system // For simulating PnR netlist
 `endif
   i_system (
     .clk_i        (clk_i                    ),
