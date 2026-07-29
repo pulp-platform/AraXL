@@ -1474,7 +1474,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.op             = ara_pkg::VCPOP;
                           ara_req_d.use_vs1        = 1'b0;
                           mask_instr_cnt_d         = 1;
-
+                          ara_req_d.vtype.vsew     = EW8;
+                          ara_req_d.eew_vd_op      = EW64;
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl             = (vl_q >> 3) + |vl_q[2:0];
                           if (vl_q == 0) begin
@@ -1513,7 +1514,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                           ara_req_d.op             = ara_pkg::VFIRST;
                           ara_req_d.use_vs1        = 1'b0;
                           mask_instr_cnt_d         = 1;
-
+                          ara_req_d.vtype.vsew     = EW8;
+                          ara_req_d.eew_vd_op      = EW64;
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl             = (vl_q >> 3) + |vl_q[2:0];
                           if (vl_q == 0) begin
@@ -1589,9 +1591,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       5'b00001: begin   
                         //VMSBF sets all bits before the idx found by VFIRST
                         if (mask_instr_cnt_q == 0) begin
-                          ara_req_d.op      = ara_pkg::VFIRST;
-                          ara_req_d.use_vs1 = 1'b0;
-
+                          ara_req_d.op                = ara_pkg::VFIRST;
+                          ara_req_d.use_vs1           = 1'b0;
+                          ara_req_d.vtype.vsew        = EW8;
+                          ara_req_d.eew_vd_op         = EW64;
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl                = (vl_q >> 3) + |vl_q[2:0];
                           if (vl_q == 0) begin                                        // If vl_q = 0, it will not participate during reduction
@@ -1663,7 +1666,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         if (mask_instr_cnt_q == 0) begin
                           ara_req_d.op                = ara_pkg::VFIRST;
                           ara_req_d.use_vs1           = 1'b0;
-
+                          ara_req_d.vtype.vsew        = EW8;
+                          ara_req_d.eew_vd_op         = EW64;
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl                = (vl_q >> 3) + |vl_q[2:0];
                           if (vl_q == 0) begin                                        // If vl_q = 0, it will not participate during reduction
@@ -1735,7 +1739,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                         if (mask_instr_cnt_q == 0) begin
                           ara_req_d.op                = ara_pkg::VFIRST;
                           ara_req_d.use_vs1           = 1'b0;
-
+                          ara_req_d.vtype.vsew        = EW8;
+                          ara_req_d.eew_vd_op         = EW64;
                           // We operate on ceil(vl/8) bytes
                           ara_req_d.vl                = (vl_q >> 3) + |vl_q[2:0];
                           if (vl_q == 0) begin                                        // If vl_q = 0, it will not participate during reduction
@@ -3723,9 +3728,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
         // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
         // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
-        reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op,
-                           ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op,
-                           ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew)};
+        // reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op,
+        //                    ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op,
+        //                    ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew)};
         // TODO: Reshuffling is currently not supported.
         
         // Prepare the information to reshuffle the vector registers during the next cycles
