@@ -20,24 +20,6 @@ static volatile uint64_t Mask[48] __attribute__((aligned(AXI_DWIDTH))) = {
     0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 };
 
-static volatile uint64_t loc_buf[48] __attribute__((aligned(AXI_DWIDTH))) = {
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
-};
-
-static volatile uint64_t xComp[48] __attribute__((aligned(AXI_DWIDTH))) = {
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
-    0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
-};
-
 double findIndex(double *CDF, int lengthCDF, double value)
 {
     double index = -1;
@@ -57,13 +39,8 @@ double findIndex(double *CDF, int lengthCDF, double value)
     return index;
 }
 
-
-
-
-
-void particleFilter(double *weights, double *CDF, double *u, uint64_t *locations, int Nparticles)
+void particleFilter(double *CDF, double *u, uint64_t *locations, int Nparticles)
 {
-    printf("Filter exec:\n");
     int x;
     int j;
 
@@ -78,7 +55,7 @@ void particleFilter(double *weights, double *CDF, double *u, uint64_t *locations
 
 }
 
-void particleFilter_vec(double *weights, double *CDF, double *u, uint64_t *locations, int Nparticles)
+void particleFilter_vec(double *CDF, double *u, uint64_t *locations, int Nparticles)
 {
     long int vector_complete;
     long int valid = 0;
@@ -92,14 +69,14 @@ void particleFilter_vec(double *weights, double *CDF, double *u, uint64_t *locat
         asm volatile ("vlm.v v2, (%0)"::"r"(&Mask[i]));                 // xMask, initally 0
         asm volatile ("vmv.v.x v3, %0" :: "r"(Nparticles-1));           // xArray, every lane has the maximum index as default value
         asm volatile ("vle64.v v4, (%0)"::"r"(&u[i]));                  // u, load the random numbers
-
+ 
         for(int j = 0; j < Nparticles; j++){    
             asm volatile("fld ft0, (%0)" :: "r"(&CDF[j]) : "ft0" );     // Load one value from the distribution
             asm volatile("vfmv.v.f v5, ft0");                           // Write this scalar value to all elements of the vector
             asm volatile ("vmfge.vv v6, v5, v4");                       // xComp: CDF[j] >= u[i] 
-            asm volatile ("vmxor.mm v6, v6, v2");                       // xComp | xMask 
-            asm volatile ("vfirst.m %[idx], v6" : [idx] "=r"(valid));   // check if there was an entrz where CDF >= u
-
+            asm volatile ("vmxor.mm v6, v2, v6");                       // xComp ^ xMask 
+            asm volatile ("vfirst.m %[idx], v6" : [idx] "=r"(valid));   // check if there was an entry where CDF >= u
+            
             if(valid != -1)
             {
                 asm volatile("vmv.v.x v7, %[j]" :: [j] "r"(j));
@@ -114,9 +91,6 @@ void particleFilter_vec(double *weights, double *CDF, double *u, uint64_t *locat
             }
         }
         asm volatile ("vse64.v v3, (%0)"::"r"(&locations[i]));          // locations 
-
         i = i + gvl;
     }
-
-
 }
