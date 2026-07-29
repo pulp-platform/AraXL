@@ -735,14 +735,21 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
             vtype  : pe_req.vtype,
             // Since this request goes outside of the lane, we might need to request an
             // extra operand regardless of whether it is valid in this lane or not.
-            vl     : (pe_req.vl / NrLanes / ELEN),
+            vl     : (pe_req.op inside{[VCPOP:VFIRST]}) ? (pe_req.vl / NrLanes) : (pe_req.vl / NrLanes / ELEN),
             vstart : vfu_operation_d.vstart,
             hazard : pe_req.hazard_vm,
             default: '0
           };
-          if ((operand_request_i[MaskM].vl * NrLanes * ELEN) != pe_req.vl) begin
-            operand_request_i[MaskM].vl += 1;
+          if (pe_req.op inside{[VCPOP:VFIRST]}) begin
+            if ((operand_request_i[MaskM].vl * NrLanes) != pe_req.vl) begin
+              operand_request_i[MaskM].vl += 1;
+            end
+          end else begin
+            if ((operand_request_i[MaskM].vl * NrLanes * ELEN) != pe_req.vl) begin
+              operand_request_i[MaskM].vl += 1;
+            end
           end
+
           operand_request_push[MaskM] = !pe_req.vm;
         end
         VFU_None: begin

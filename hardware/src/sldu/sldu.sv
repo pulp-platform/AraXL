@@ -415,8 +415,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       endcase
 
       if (!vinsn_commit_valid || (vinsn_commit_id_d != vinsn_commit_id_q)) begin
-        sldu_operand_cnt_d <= '0;
-        sldu_result_cnt_d  <= '0;      
+        sldu_operand_cnt_d = '0;
+        sldu_result_cnt_d  = '0;      
       end
     end
   end
@@ -1055,13 +1055,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                     issue_cnt_d += NrLanes * ($clog2(NrClusters) << EW64);
                     inter_cluser_issue_limit_d += NrLanes * ($clog2(NrClusters) << EW64);
                   end else begin
-                    issue_cnt_d += NrLanes * (($clog2(last_cluster_id) + 1) << EW64);
-                    inter_cluser_issue_limit_d += NrLanes * (($clog2(last_cluster_id) + 1) << EW64);
+                    issue_cnt_d += NrLanes * ((cluster_id_bits(last_cluster_id) + 1) << EW64);
+                    inter_cluser_issue_limit_d += NrLanes * ((cluster_id_bits(last_cluster_id) + 1) << EW64);
                   end
                 // Clusters with power of two id's 
                 end else if (cluster_id_i != 0 && ((cluster_id_i & (cluster_id_i - 1)) == '0) && (cluster_id_i != last_cluster_id)) begin
-                  issue_cnt_d += NrLanes * ($clog2(cluster_id_i) << EW64);
-                  inter_cluser_issue_limit_d += NrLanes * ($clog2(cluster_id_i) << EW64);
+                  issue_cnt_d += NrLanes * (cluster_id_bits(cluster_id_i) << EW64);
+                  inter_cluser_issue_limit_d += NrLanes * (cluster_id_bits(cluster_id_i) << EW64);
                 // Cover all the other even cluster id's (uneven id's never send packets during broadcasting)
                 end else if (cluster_id_i[0] == 0 && (cluster_id_i != last_cluster_id)) begin                
                   issue_cnt_d += NrLanes * (1  << EW64);
@@ -1614,6 +1614,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
             sldu_result_be_o[lane]  = result_queue_q[result_queue_read_pnt_q][lane].be;
           end
         endcase
+      end else begin
+        sldu_result_req_o[lane]   = '0;
+        sldu_result_addr_o[lane]  = '0;
+        sldu_result_id_o[lane]    = '0;
+        sldu_result_wdata_o[lane] = '0;
+        sldu_result_be_o[lane]    = '0;
       end
 
 
@@ -1681,12 +1687,12 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                 if (vinsn_commit.vl_cluster >= NrClusters * NrLanes) begin            // All clusters participate in broadcasting
                   broadcast_cnt_d = $clog2(NrClusters);
                 end else begin
-                  broadcast_cnt_d += $clog2(last_cluster_id);  
+                  broadcast_cnt_d += cluster_id_bits(last_cluster_id);  
                 end
               end else if (cluster_id_i != 0) begin
                 // Set the broadcast counter under the assumption that all clusters participate
                 if (cluster_id_i != 0 && ((cluster_id_i & (cluster_id_i - 1)) == '0)) begin   // cluster id's of power of two
-                  broadcast_cnt_d += $clog2(cluster_id_i);
+                  broadcast_cnt_d += cluster_id_bits(cluster_id_i);
                 end else if (cluster_id_i[2] == 1) begin
                   broadcast_cnt_d += 2;                                               // cluster id's of multiple of 4
                 end else if (cluster_id_i[0] == 0) begin
@@ -2189,6 +2195,17 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
   end: p_sldu
 
   //// Helper functions for handling ring data and slide operations ////
+
+  function automatic int unsigned cluster_id_bits(input id_cluster_t id);
+      cluster_id_bits = 1;
+      for (int i = $bits(id)-1; i >= 1; i--) begin
+          if (id[i]) begin
+              cluster_id_bits = i + 1;
+              return cluster_id_bits;
+          end
+      end
+  endfunction : cluster_id_bits
+
 
   // Function to merge ring data based on slide operation direction (VSLIDEDOWN vs VSLIDEUP)
   function automatic elen_t merge_ring_data_slide_by_op(elen_t new_data, elen_t prev_data, ara_op_e op, rvv_pkg::vew_e sew);

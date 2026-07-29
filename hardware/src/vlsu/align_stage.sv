@@ -494,26 +494,28 @@ always_comb begin
       axi_req_o.w.strb = '0;
       axi_req_o.w.data = '0;
       // Set the strb according to the vector length and element width
-      for (int i = 0; i < cluster_metadata_i.vl; i++) begin
-        unique case (cluster_metadata_i.vew)
-          EW8:  begin 
-            axi_req_o.w.strb[i]         = axi_req_i.w.strb[i];
-            axi_req_o.w.data[i*8 +: 8]  = axi_req_i.w.data[i*8 +: 8];
-          end
-          EW16: begin
-            axi_req_o.w.strb[i*2  +: 2]  = axi_req_i.w.strb[i*2  +: 2];
-            axi_req_o.w.data[i*16 +: 16] = axi_req_i.w.data[i*16 +: 16];
-          end
-          EW32: begin
-            axi_req_o.w.strb[i*4  +: 4]  = axi_req_i.w.strb[i*4  +: 4];
-            axi_req_o.w.data[i*32 +: 32] = axi_req_i.w.data[i*32 +: 32];
-          end
-          EW64: begin
-            axi_req_o.w.strb[i*8  +: 8]  = axi_req_i.w.strb[i*8  +: 8];
-            axi_req_o.w.data[i*64 +: 64] = axi_req_i.w.data[i*64 +: 64];
-          end
-          default: axi_req_o.w.strb = '0;
-        endcase
+      for (int i = 0; i < AxiDataWidth/8; i++) begin
+        if (i < cluster_metadata_i.vl && (i * (1 << int'(cluster_metadata_i.vew)) < AxiDataWidth/8)) begin
+          unique case (cluster_metadata_i.vew)
+            EW8:  begin 
+              axi_req_o.w.strb[i]         = axi_req_i.w.strb[i];
+              axi_req_o.w.data[i*8 +: 8]  = axi_req_i.w.data[i*8 +: 8];
+            end
+            EW16: begin
+              axi_req_o.w.strb[i*2  +: 2]  = axi_req_i.w.strb[i*2  +: 2];
+              axi_req_o.w.data[i*16 +: 16] = axi_req_i.w.data[i*16 +: 16];
+            end
+            EW32: begin
+              axi_req_o.w.strb[i*4  +: 4]  = axi_req_i.w.strb[i*4  +: 4];
+              axi_req_o.w.data[i*32 +: 32] = axi_req_i.w.data[i*32 +: 32];
+            end
+            EW64: begin
+              axi_req_o.w.strb[i*8  +: 8]  = axi_req_i.w.strb[i*8  +: 8];
+              axi_req_o.w.data[i*64 +: 64] = axi_req_i.w.data[i*64 +: 64];
+            end
+            default: axi_req_o.w.strb = '0;
+          endcase
+        end
       end
     end
   end

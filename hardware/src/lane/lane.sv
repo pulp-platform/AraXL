@@ -321,9 +321,8 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   elen_t [1:0] mask_result_broadcast;
 
   always_comb begin
-    if (pe_req_i.op == VCPOP) begin
-      mask_result_broadcast[0] = '0;
-    end else if (pe_req_i.op == VFIRST) begin
+    mask_result_broadcast[0] = '0;
+    if (pe_req_i.op == VFIRST) begin
       mask_result_broadcast[0] = {1'b0, {($bits(mask_result_broadcast[0])-1){1'b1}}};
     end
     mask_result_broadcast[1] = mask_result_scalar_i;

@@ -334,9 +334,9 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
   logic  [NrLanes*ELEN-1:0]              mask;
   logic  [NrLanes*ELEN-1:0]              vcpop_operand;
   logic  [NrLanes*ELEN-1:0]              vl_mask;
-  logic  [$clog2(DataWidth*NrLanes):0]   popcount;
+  logic  [$clog2(VcpopParallelism):0]    popcount;
   logic  [$clog2(VLEN):0]                popcount_d, popcount_q;
-  logic  [$clog2(DataWidth*NrLanes)-1:0] vfirst_count;
+  logic  [$clog2(VfirstParallelism)-1:0] vfirst_count;
   logic  [$clog2(VLEN)-1:0]              vfirst_count_d, vfirst_count_q;
   logic                                  vfirst_empty;
 
@@ -423,6 +423,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
     vl_mask             = '0;
     masku_operand_ready = '0;
     in_ready_threshold_d   = in_ready_threshold_q;
+    in_ready_cnt_clr    = '0;
 
     // Comparisons work on vtype.vsew from VALU or VMFPU
     bit_enable_shuffle_eew = vinsn_issue.op inside {[VMFEQ:VMSGTU], [VMSGT:VMSBC]}
@@ -781,8 +782,8 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
         [VCPOP:VFIRST] : begin
           vcpop_operand = (!vinsn_issue.vm) ? alu_operand_b_seq & bit_enable_mask : alu_operand_b_seq;
 
-          for (int i = 0; i < vinsn_issue.vl_org; i++) begin
-            vl_mask[i] = 1'b1;
+          for (int i = 0; i < (NrLanes*ELEN); i++) begin
+            vl_mask[i] = (i < (vinsn_issue.vl_org - ((iteration_count_q/VcpopParallelism) * VcpopParallelism)));
           end
           vcpop_operand &= vl_mask;
         end
