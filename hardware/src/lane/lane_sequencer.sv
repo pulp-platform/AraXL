@@ -656,7 +656,7 @@ module lane_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::
           operand_request_i[AluB] = '{
             id      : pe_req.id,
             vs      : pe_req.vs2,
-            eew     : pe_req.eew_vs2,
+            eew     : (pe_req.op inside{[VCPOP:VFIRST]}) ? EW8 : pe_req.eew_vs2,
             scale_vl: pe_req.scale_vl,
             vtype   : pe_req.vtype,
             vstart  : vfu_operation_d.vstart,

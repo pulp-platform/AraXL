@@ -1051,7 +1051,7 @@ module masku import ara_pkg::*; import rvv_pkg::*; #(
           // How many elements are we committing in total?
           // Since we are committing bits instead of bytes, we carry out the following calculation
           // with ceil(vl/8) instead.
-          automatic int element_cnt_all_lanes           = (ELENB * NrLanes) >> int'(vinsn_issue.vtype.vsew);
+          automatic int element_cnt_all_lanes           = (ELENB * NrLanes) >> int'(EW8);
           // How many elements are remaining to be committed? Carry out the calculation with
           // ceil(issue_cnt/8).
           `ifndef USE_EEW1

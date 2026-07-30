@@ -318,15 +318,25 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
   logic sldu_operand_opqueues_ready;
   logic sldu_addrgen_operand_opqueues_valid;
 
-  elen_t [1:0] mask_result_broadcast;
+  elen_t [1:0] mask_result_broadcast_d, mask_result_broadcast_q;
 
   always_comb begin
-    mask_result_broadcast[0] = '0;
-    if (pe_req_i.op == VFIRST) begin
-      mask_result_broadcast[0] = {1'b0, {($bits(mask_result_broadcast[0])-1){1'b1}}};
+    mask_result_broadcast_d = mask_result_broadcast_q;
+    if (pe_req_i.op == VCPOP) begin
+      mask_result_broadcast_d[0] = '0;
+    end else if (pe_req_i.op == VFIRST) begin
+      mask_result_broadcast_d[0] = {1'b0, {($bits(mask_result_broadcast_d[0])-1){1'b1}}};
     end
-    mask_result_broadcast[1] = mask_result_scalar_i;
+    mask_result_broadcast_d[1] = mask_result_scalar_i;
   end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin: p_result_broadcast_ff
+    if (!rst_ni) begin
+      mask_result_broadcast_q <= '0;
+    end else begin
+      mask_result_broadcast_q <= mask_result_broadcast_d;
+    end
+  end : p_result_broadcast_ff
 
   operand_queues_stage #(
     .NrLanes   (NrLanes   ),
@@ -433,7 +443,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_red_completed_i (sldu_red_completed_i                   ),
     // Interface with the operand queues
     // ALU
-    .alu_operand_i        (pe_req_i.is_mask_instr ? mask_result_broadcast : alu_operand), 
+    .alu_operand_i        (pe_req_i.is_mask_instr ? mask_result_broadcast_d : alu_operand), 
     .alu_operand_valid_i  (alu_operand_valid                      ),
     .alu_operand_ready_o  (alu_operand_ready                      ),
     // Multiplier/FPU
