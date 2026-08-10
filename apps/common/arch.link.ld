@@ -4,8 +4,14 @@
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 
+/* One L2 bank holds L2NumWords x (AxiDataWidth/8) bytes. L2NumWords is 2^20
+   (ara_soc.sv's parameter, also mirrored in ara_tb.sv); AxiDataWidth/8 equals
+   ALIGNMENT, substituted by align_sections.sh along with NRL2BANKS.
+   The top 2 KB is reserved: tc_sram decodes only $clog2(L2NumWords) index
+   bits, so the non-cacheable window at 0xBFFFF800 aliases onto exactly those
+   bytes and no section may be placed there. */
 MEMORY {
-  L2 : ORIGIN = 0x80000000, LENGTH = 0x02000000
+  L2 : ORIGIN = 0x80000000, LENGTH = NRL2BANKS * 1048576 * ALIGNMENT - 2048
 }
 
 /*

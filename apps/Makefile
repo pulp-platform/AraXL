@@ -34,6 +34,9 @@ include $(COMMON_DIR)/runtime.mk
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(wildcard $(APPS_DIR)/*/main.c))
 # Number of cores
 nr_cores ?= 1
+# Number of word-interleaved L2 banks. Must match hardware/Makefile's
+# nr_l2_banks, which defaults the same way: usable L2 scales with it.
+nr_l2_banks ?= $(nr_cores)
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(wildcard $(APPS_DIR)/*/main.c))
 # Don't automatically compile the benchmark app, which is only a wrapper around the other apps
@@ -61,7 +64,7 @@ all: $(BINARIES)
 linker_script: $(COMMON_DIR)/script/align_sections.sh $(ROOT_DIR)/../../config/$(config).mk
 	chmod +x $(COMMON_DIR)/script/align_sections.sh
 	rm -f $(COMMON_DIR)/link.ld && cp $(COMMON_DIR)/arch.link.ld $(COMMON_DIR)/link.ld
-	$(COMMON_DIR)/script/align_sections.sh $(nr_lanes) $(nr_clusters) $(COMMON_DIR)/link.ld
+	$(COMMON_DIR)/script/align_sections.sh $(nr_lanes) $(nr_clusters) $(nr_l2_banks) $(COMMON_DIR)/link.ld
 
 # Make all applications
 $(APPS): % : bin/% $(APPS_DIR)/Makefile $(shell find common -type f)

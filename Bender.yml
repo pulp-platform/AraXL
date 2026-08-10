@@ -75,6 +75,7 @@ sources:
     - hardware/src/axi_inval_filter.sv
     # Level 8
     - hardware/src/ara_system.sv
+    - hardware/src/l2_mem_interconnect.sv
     # Level 9
     - hardware/src/ara_soc.sv
 
