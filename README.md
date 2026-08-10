@@ -41,6 +41,8 @@ git submodule sync --recursive
 
 ## Toolchain
 
+### LLVM
+
 Ara requires a RISC-V LLVM toolchain capable of understanding the vector extension, version 1.0.
 
 To build this toolchain, run the following command in the project's root directory.
@@ -59,7 +61,7 @@ To build Spike, run the following command in the project's root directory.
 make riscv-isa-sim
 ```
 
-## Verilator
+### Verilator
 
 Ara requires an updated version of Verilator, for RTL simulations.
 
@@ -70,16 +72,27 @@ To build it, run the following command in the project's root directory.
 make verilator
 ```
 
-## Configuration
+## AraXL Configuration
 
-Ara's parameters are centralized in the `config` folder, which provides several configurations to the vector machine.
-Please check `config/README.md` for more details. This sets the number of lanes and the `VLEN` per Ara cluster.
+### Ara cluster
 
-By default the number of clusters is 2 and the number of lanes per clusters is 4 for an 8 lane AraXL configuration.
-
-To change the configuration set `nr_clusters=4` and `nr_lanes=4` when compiling applications or hardware.
-
+The configuration of an Ara cluster can be done by specifying either the `config` command line variable. The default is `config=4_lanes` and heavily tested Ara cluster configuration.
 Prepend `config=chosen_ara_configuration` to your Makefile commands, or export the `ARA_CONFIGURATION` variable, to chose a configuration other than the `default` one.
+
+### AraXL
+
+The number of such 4-lane clusters can be configured by setting `nr_clusters` make variable. By default it is 2 resulting in a default configuration of 8-lane AraXL.
+
+*Note:* The `nr_lanes` is usually set to 4 by default and is not changed while `nr_clusters=2/4/8/16` can be set to scale the total number of lanes. To change the configuration set `nr_clusters` when compiling applications or hardware as shown in the below examples.
+ 
+### 64-lane AraXL configuration
+
+To run the 64 lane configuration i.e. `nr_clusters=16` an additional patch to the AXI dependency is necessary to allow a 2048-bit AXI data width
+
+```bash
+cd hardware/deps/axi
+git apply ../../../patches/AraXL-64L.patch
+```
 
 ## Software
 
@@ -91,9 +104,9 @@ The `apps` folder contains example applications that work on Ara. Run the follow
 cd apps
 make bin/hello_world
 ```
-fmatmul example for 32 lane configuration
+fmatmul example for 16 lane configuration
 ```
-make bin/fmatmul nr_clusters=4 nr_lanes=4
+make bin/fmatmul nr_clusters=4 config=4_lanes
 ```
 
 ### SPIKE Simulation
@@ -155,7 +168,7 @@ To simulate the Ara system with ModelSim, go to the `hardware` folder, which con
 # Go to the hardware folder
 cd hardware
 # Only compile the hardware without running the simulation.
-make compile nr_clusters=4 nr_lanes=4
+make compile nr_clusters=4 config=4_lanes
 # Run the simulation with the *hello_world* binary loaded
 app=hello_world make sim
 # Run the simulation with the *some_binary* binary. This allows specifying the full path to the binary
@@ -210,7 +223,7 @@ To compile a program and generate its vector trace:
 
 ```bash
 cd apps
-make bin/${program}.ideal nr_clusters=4 nr_lanes=4
+make bin/${program}.ideal nr_clusters=4 config=4_lanes
 ```
 
 This command will generate the `ideal` binary to be loaded in the L2 memory for the simulation (data accessed by the vector code).
@@ -218,7 +231,7 @@ To run the system in Ideal Dispatcher mode:
 
 ```bash
 cd hardware
-make sim app=${program} ideal_dispatcher=1 nr_clusters=4 nr_lanes=4
+make sim app=${program} ideal_dispatcher=1 nr_clusters=4 config=4_lanes
 ```
 
 ### VCD Dumping
