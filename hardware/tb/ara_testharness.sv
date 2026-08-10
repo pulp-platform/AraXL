@@ -9,6 +9,8 @@
 
 module ara_testharness #(
     parameter int unsigned NrCores      = 0,
+    // Number of word-interleaved L2 banks. Must be a power of two.
+    parameter int unsigned NrL2Banks    = NrCores,
     // Ara-specific parameters
     parameter int unsigned NrLanes      = 0,
     parameter int unsigned NrClusters   = 0,
@@ -71,6 +73,7 @@ module ara_testharness #(
 
   ara_soc #(
     .NrCores     (NrCores      ),
+    .NrL2Banks   (NrL2Banks    ),
     .NrLanes     (NrLanes      ),
     .NrClusters  (NrClusters   ),
     .AxiAddrWidth(AxiAddrWidth ),

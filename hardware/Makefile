@@ -125,6 +125,11 @@ ifneq ($(nr_cores), 0)
 	bender_defs += --define NR_CORES=$(nr_cores)
 endif
 
+# Number of word-interleaved L2 banks (ara_soc's NrL2Banks). Must be a power of
+# two; independent of nr_cores, but defaults to one bank per core.
+nr_l2_banks ?= $(nr_cores)
+bender_defs += --define NR_L2_BANKS=$(nr_l2_banks)
+
 # Latency arguments for perf simulations
 mem_latency ?= 0
 ifneq ($(mem_latency), 0)
