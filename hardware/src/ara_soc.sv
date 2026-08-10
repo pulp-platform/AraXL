@@ -27,6 +27,9 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     parameter  int           unsigned AxiRespDelay = 200,
     // Main memory
     parameter  int           unsigned L2NumWords   = 2**20,
+    // Number of L2 banks the address space is word-interleaved across.
+    // Must be a power of two. Defaults to one bank per core.
+    parameter  int           unsigned NrL2Banks    = NrCores,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
     localparam type                   axi_strb_t   = logic [AxiDataWidth/8-1:0],
@@ -69,17 +72,20 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   //  Memory Regions  //
   //////////////////////
 
+  // First xBar right after ara_system
+  localparam int NONL2 = 0;
+  localparam int L2MEM = 1;
+  localparam int AMO   = 2;          // non-cacheable window, atomics path
+
+  localparam int NrAXISlavePre = AMO + 1;
+
+  // Second xBar
   localparam NrAXIMasters = NrCores; // Actually masters, but slaves on the crossbar
 
-  localparam int L2MEM_0 = 0;
-  localparam int L2MEM_1 = 1;
-  localparam int L2MEM_2 = 2;
-  localparam int L2MEM_3 = 3;  
-  localparam int UART = NrCores;
-  localparam int CTRL = NrCores + 1;
+  localparam int UART = 0;
+  localparam int CTRL = 1;
 
   localparam NrAXISlaves = CTRL + 1;
-  localparam NrL2Slaves = (NrCores > 0) ? NrCores : 1;
 
   // Memory Map
   // 1GByte of DDR (split between two chips on Genesys2)
@@ -87,13 +93,36 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   localparam logic [63:0] UARTLength = 64'h1000;
   localparam logic [63:0] CTRLLength = 64'h1000;
 
-  localparam logic [63:0] DRAMLengthPerCore = DRAMLength / NrCores;
-
   typedef enum logic [63:0] {
     DRAMBase = 64'h8000_0000,
     UARTBase = 64'hC000_0000,
     CTRLBase = 64'hD000_0000
   } soc_bus_start_e;
+
+  ////////////////////////////
+  //  L2 word interleaving  //
+  ////////////////////////////
+
+  // Non-cacheable window at the top of DRAM (see apps/common/arch.link.ld).
+  localparam logic [63:0] AMOLength = 64'h800;
+  localparam logic [63:0] AMOBase   = DRAMBase + DRAMLength - AMOLength;
+
+  // L2 is one contiguous address range, word-interleaved across NrL2Banks
+  // ara_tb.sv's ELF loader must reproduce this mapping exactly.
+  localparam int unsigned L2WordOffset   = $clog2(AxiDataWidth/8);
+  localparam int unsigned L2BankIdxWidth = $clog2(NrL2Banks);   // 0 when NrL2Banks == 1
+  localparam int unsigned L2BankSelW     = (L2BankIdxWidth == 0) ? 1 : L2BankIdxWidth;
+  localparam int unsigned L2IndexLow     = L2WordOffset + L2BankIdxWidth;
+
+  // Interconnect requester ports: one per core, plus the shared atomics path.
+  localparam int unsigned NrL2Req  = NrCores + 1;
+  localparam int unsigned L2AmoReq = NrCores;
+
+  // Bank read latency. tc_sram and the interconnect's response pipeline MUST
+  // agree: the interconnect steers read data home by replaying the winning
+  // requester index after exactly this many cycles, so if the two diverge the
+  // data lands on the wrong requester and no assertion fires.
+  localparam int unsigned L2Latency = 1;
 
   ///////////
   //  AXI  //
@@ -136,11 +165,22 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   system_req_t  [NrAXIMasters-1:0] system_axi_req;
   system_resp_t [NrAXIMasters-1:0] system_axi_resp;
 
-  soc_wide_req_t    [NrAXISlaves-1:0] periph_wide_axi_req;
-  soc_wide_req_t    [NrL2Slaves-1:0 ] periph_wide_axi_req_amo;
+  // The Buses for the first xbar which is right after each ara_system
+  system_req_t  [NrAXIMasters-1:0] system_axi_req_pre;
+  system_resp_t [NrAXIMasters-1:0] system_axi_resp_pre;
+  system_req_t  [NrAXIMasters-1:0][NrAXISlavePre-1:0] system_axi_req_bifur;
+  system_resp_t [NrAXIMasters-1:0][NrAXISlavePre-1:0] system_axi_resp_bifur;
 
+  // Atomics path: every core's AMO branch is gathered here and muxed onto one
+  // port, so that a single axi_riscv_atomics adapter sees all cores' atomic
+  // traffic.
+  system_req_t  [NrCores-1:0] amo_slv_req;
+  system_resp_t [NrCores-1:0] amo_slv_resp;
+  soc_wide_req_t              amo_axi_req,  amo_axi_req_flt;
+  soc_wide_resp_t             amo_axi_resp, amo_axi_resp_flt;
+
+  soc_wide_req_t    [NrAXISlaves-1:0] periph_wide_axi_req;
   soc_wide_resp_t   [NrAXISlaves-1:0] periph_wide_axi_resp;
-  soc_wide_resp_t   [NrL2Slaves-1:0 ] periph_wide_axi_resp_amo;
 
   soc_narrow_req_t  [NrAXISlaves-1:0] periph_narrow_axi_req;
   soc_narrow_resp_t [NrAXISlaves-1:0] periph_narrow_axi_resp;
@@ -167,29 +207,10 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   axi_pkg::xbar_rule_64_t [NrAXISlaves-1:0] routing_rules;
 
-if (NrCores == 2) begin
-    assign routing_rules = '{
-      '{idx: CTRL,    start_addr: CTRLBase,                     end_addr: CTRLBase + CTRLLength         },
-      '{idx: UART,    start_addr: UARTBase,                     end_addr: UARTBase + UARTLength         },
-      '{idx: L2MEM_0 ,start_addr: DRAMBase,                     end_addr: DRAMBase + DRAMLengthPerCore  },
-      '{idx: L2MEM_1, start_addr: DRAMBase + DRAMLengthPerCore, end_addr: DRAMBase + 2*DRAMLengthPerCore}
-    };
-end else if (NrCores == 4) begin
-    assign routing_rules = '{
-      '{idx: CTRL,    start_addr: CTRLBase,                       end_addr: CTRLBase + CTRLLength         },
-      '{idx: UART,    start_addr: UARTBase,                       end_addr: UARTBase + UARTLength         },
-      '{idx: L2MEM_0 ,start_addr: DRAMBase,                       end_addr: DRAMBase + DRAMLengthPerCore  },
-      '{idx: L2MEM_1, start_addr: DRAMBase + DRAMLengthPerCore,   end_addr: DRAMBase + 2*DRAMLengthPerCore},
-      '{idx: L2MEM_2, start_addr: DRAMBase + 2*DRAMLengthPerCore, end_addr: DRAMBase + 3*DRAMLengthPerCore},
-      '{idx: L2MEM_3, start_addr: DRAMBase + 3*DRAMLengthPerCore, end_addr: DRAMBase + 4*DRAMLengthPerCore}
-    };
-end else begin
-    assign routing_rules = '{
-      '{idx: CTRL,     start_addr: CTRLBase,                  end_addr: CTRLBase + CTRLLength},
-      '{idx: UART,     start_addr: UARTBase,                  end_addr: UARTBase + UARTLength},
-      '{idx: L2MEM_0 , start_addr: DRAMBase,                  end_addr: DRAMBase + DRAMLength}
-    };
-end
+  assign routing_rules = '{
+    '{idx: CTRL,    start_addr: CTRLBase,                     end_addr: CTRLBase + CTRLLength         },
+    '{idx: UART,    start_addr: UARTBase,                     end_addr: UARTBase + UARTLength         }
+  };
 
   axi_xbar #(
     .Cfg          (XBarCfg                ),
@@ -224,91 +245,207 @@ end
   //  L2  //
   //////////
 
-  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_l2_atop_filter
+  // Outstanding memory requests per requester. Must cover the interconnect
+  // round trip (arbitration + SRAM latency), not just the SRAM latency: the
+  // axi_to_mem default of 1 would throttle the bank port.
+  localparam int unsigned L2BufDepth = 4;
 
-    // Module to handle riscv atomics on L2
-    axi_riscv_atomics_structs #(
-      .AxiAddrWidth    (AxiAddrWidth  ), 
-      .AxiDataWidth    (AxiDataWidth  ),
-      .AxiIdWidth      (AxiSocIdWidth ),
-      .AxiUserWidth    (AxiUserWidth  ),
-      .AxiMaxReadTxns  (8             ),
-      .AxiMaxWriteTxns (8             ),
-      .RiscvWordWidth  (64            ),
-      .axi_req_t       (soc_wide_req_t),
-      .axi_rsp_t       (soc_wide_resp_t)
-    ) i_axi_riscv_atomics_wrap (
-      .clk_i         (clk_i                        ),
-      .rst_ni        (rst_ni                       ),
-      .axi_slv_req_i (periph_wide_axi_req[i]       ),
-      .axi_slv_rsp_o (periph_wide_axi_resp[i]      ),
-      .axi_mst_req_o (periph_wide_axi_req_amo[i]   ),
-      .axi_mst_rsp_i (periph_wide_axi_resp_amo[i]  )
-    );
-  end
+  // Requester side of the L2 interconnect: one port per core, plus the shared
+  // atomics path at index L2AmoReq.
+  logic [NrL2Req-1:0]                       l2r_req;
+  logic [NrL2Req-1:0]                       l2r_gnt;
+  logic [NrL2Req-1:0]                       l2r_we;
+  logic [NrL2Req-1:0][AxiAddrWidth-1:0]     l2r_addr;
+  logic [NrL2Req-1:0][AxiDataWidth/8-1:0]   l2r_strb;
+  logic [NrL2Req-1:0][AxiDataWidth-1:0]     l2r_wdata;
+  logic [NrL2Req-1:0][AxiDataWidth-1:0]     l2r_rdata;
+  logic [NrL2Req-1:0]                       l2r_rvalid;
 
-  logic [NrL2Slaves-1:0]                      l2_req;
-  logic [NrL2Slaves-1:0]                      l2_we;
-  logic [NrL2Slaves-1:0][AxiAddrWidth-1:0]    l2_addr;
-  logic [NrL2Slaves-1:0][AxiDataWidth/8-1:0]  l2_be;
-  logic [NrL2Slaves-1:0][AxiDataWidth-1:0]    l2_wdata;
-  logic [NrL2Slaves-1:0][AxiDataWidth-1:0]    l2_rdata;
-  logic [NrL2Slaves-1:0]                      l2_rvalid;
+  // Bank side of the L2 interconnect. bank_addr is already a word index with
+  // the bank-select bits removed.
+  logic [NrL2Banks-1:0]                     l2b_req;
+  logic [NrL2Banks-1:0]                     l2b_we;
+  logic [NrL2Banks-1:0][AxiAddrWidth-1:0]   l2b_addr;
+  logic [NrL2Banks-1:0][AxiDataWidth/8-1:0] l2b_strb;
+  logic [NrL2Banks-1:0][AxiDataWidth-1:0]   l2b_wdata;
+  logic [NrL2Banks-1:0][AxiDataWidth-1:0]   l2b_rdata;
 
-  // Generate NrL2Slaves instances of the L2 memory, and connect them to the crossbar through an AXI-to-memory adapter
-  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_axi_to_mem
+  // One axi_to_mem per core: turns that core's AXI bursts into one memory
+  // request per AxiDataWidth word, which the interconnect then arbitrates word
+  // by word. This is what makes per-word QoS fall out for free -- no burst can
+  // occupy a bank for longer than a single cycle.
+  for (genvar c = 0; c < NrCores; c++) begin : gen_core_axi_to_mem
     axi_to_mem #(
-      .AddrWidth (AxiAddrWidth   ),
-      .DataWidth (AxiDataWidth   ),
-      .IdWidth   (AxiSocIdWidth  ),
-      .NumBanks  (1              ),
-      .axi_req_t (soc_wide_req_t ),
-      .axi_resp_t(soc_wide_resp_t)
+      .AddrWidth (AxiAddrWidth    ),
+      .DataWidth (AxiDataWidth    ),
+      .IdWidth   (AxiSystemIdWidth),
+      .NumBanks  (1               ),
+      .BufDepth  (L2BufDepth      ),
+      .axi_req_t (system_req_t    ),
+      .axi_resp_t(system_resp_t   )
     ) i_axi_to_mem (
       .clk_i       (clk_i                            ),
       .rst_ni      (rst_ni                           ),
-      .axi_req_i   (periph_wide_axi_req_amo[i]       ),
-      .axi_resp_o  (periph_wide_axi_resp_amo[i]      ),
-      .mem_req_o   (l2_req[i]                        ),
-      .mem_gnt_i   (l2_req[i]                        ), // Always available
-      .mem_we_o    (l2_we[i]                         ),
-      .mem_addr_o  (l2_addr[i]                       ),
-      .mem_strb_o  (l2_be[i]                         ),
-      .mem_wdata_o (l2_wdata[i]                      ),
-      .mem_rdata_i (l2_rdata[i]                      ),
-      .mem_rvalid_i(l2_rvalid[i]                     ),
-      .mem_atop_o  (/* Unused */                     ),
+      .axi_req_i   (system_axi_req_bifur [c][L2MEM]  ),
+      .axi_resp_o  (system_axi_resp_bifur[c][L2MEM]  ),
+      .mem_req_o   (l2r_req   [c]                    ),
+      .mem_gnt_i   (l2r_gnt   [c]                    ),
+      .mem_we_o    (l2r_we    [c]                    ),
+      .mem_addr_o  (l2r_addr  [c]                    ),
+      .mem_strb_o  (l2r_strb    [c]                    ),
+      .mem_wdata_o (l2r_wdata [c]                    ),
+      .mem_rdata_i (l2r_rdata [c]                    ),
+      .mem_rvalid_i(l2r_rvalid[c]                    ),
+      .mem_atop_o  (/* ATOPs filtered upstream */    ),
       .busy_o      (/* Unused */                     )
     );
   end
 
+  ////////////////////
+  //  Atomics path  //
+  ////////////////////
+
+  // All cores' AMO branches converge on one adapter. Putting the adapter per
+  // core instead would let two cores each run their own read-modify-write on
+  // the same address, silently breaking sync_barrier().
+  for (genvar c = 0; c < NrCores; c++) begin : gen_amo_gather
+    assign amo_slv_req[c]                = system_axi_req_bifur[c][AMO];
+    assign system_axi_resp_bifur[c][AMO] = amo_slv_resp[c];
+  end
+
+  axi_mux #(
+    .SlvAxiIDWidth(AxiSystemIdWidth  ),
+    .slv_aw_chan_t(system_aw_chan_t  ),
+    .mst_aw_chan_t(soc_wide_aw_chan_t),
+    .w_chan_t     (system_w_chan_t   ),
+    .slv_b_chan_t (system_b_chan_t   ),
+    .mst_b_chan_t (soc_wide_b_chan_t ),
+    .slv_ar_chan_t(system_ar_chan_t  ),
+    .mst_ar_chan_t(soc_wide_ar_chan_t),
+    .slv_r_chan_t (system_r_chan_t   ),
+    .mst_r_chan_t (soc_wide_r_chan_t ),
+    .slv_req_t    (system_req_t      ),
+    .slv_resp_t   (system_resp_t     ),
+    .mst_req_t    (soc_wide_req_t    ),
+    .mst_resp_t   (soc_wide_resp_t   ),
+    .NoSlvPorts   (NrCores           ),
+    .SpillAw      (1'b1              ),
+    .SpillW       (1'b1              ),
+    .SpillB       (1'b1              ),
+    .SpillAr      (1'b1              ),
+    .SpillR       (1'b1              )
+  ) i_amo_mux (
+    .clk_i      (clk_i       ),
+    .rst_ni     (rst_ni      ),
+    .test_i     (1'b0        ),
+    .slv_reqs_i (amo_slv_req ),
+    .slv_resps_o(amo_slv_resp),
+    .mst_req_o  (amo_axi_req ),
+    .mst_resp_i (amo_axi_resp)
+  );
+
+  axi_riscv_atomics_structs #(
+    .AxiAddrWidth    (AxiAddrWidth   ),
+    .AxiDataWidth    (AxiDataWidth   ),
+    .AxiIdWidth      (AxiSocIdWidth  ),
+    .AxiUserWidth    (AxiUserWidth   ),
+    .AxiMaxReadTxns  (8              ),
+    .AxiMaxWriteTxns (8              ),
+    .RiscvWordWidth  (64             ),
+    .axi_req_t       (soc_wide_req_t ),
+    .axi_rsp_t       (soc_wide_resp_t)
+  ) i_axi_riscv_atomics_wrap (
+    .clk_i        (clk_i           ),
+    .rst_ni       (rst_ni          ),
+    .axi_slv_req_i(amo_axi_req     ),
+    .axi_slv_rsp_o(amo_axi_resp    ),
+    .axi_mst_req_o(amo_axi_req_flt ),
+    .axi_mst_rsp_i(amo_axi_resp_flt)
+  );
+
+  axi_to_mem #(
+    .AddrWidth (AxiAddrWidth   ),
+    .DataWidth (AxiDataWidth   ),
+    .IdWidth   (AxiSocIdWidth  ),
+    .NumBanks  (1              ),
+    .BufDepth  (L2BufDepth     ),
+    .axi_req_t (soc_wide_req_t ),
+    .axi_resp_t(soc_wide_resp_t)
+  ) i_amo_axi_to_mem (
+    .clk_i       (clk_i                              ),
+    .rst_ni      (rst_ni                             ),
+    .axi_req_i   (amo_axi_req_flt                    ),
+    .axi_resp_o  (amo_axi_resp_flt                   ),
+    .mem_req_o   (l2r_req   [L2AmoReq]               ),
+    .mem_gnt_i   (l2r_gnt   [L2AmoReq]               ),
+    .mem_we_o    (l2r_we    [L2AmoReq]               ),
+    .mem_addr_o  (l2r_addr  [L2AmoReq]               ),
+    .mem_strb_o  (l2r_strb    [L2AmoReq]               ),
+    .mem_wdata_o (l2r_wdata [L2AmoReq]               ),
+    .mem_rdata_i (l2r_rdata [L2AmoReq]               ),
+    .mem_rvalid_i(l2r_rvalid[L2AmoReq]               ),
+    .mem_atop_o  (/* resolved by the adapter above */),
+    .busy_o      (/* Unused */                       )
+  );
+
+  /////////////////////////
+  //  L2 interconnect    //
+  /////////////////////////
+
+  // Word-interleaved, fixed-latency. Because each requester's mem port is a
+  // single in-order req/gnt channel and every bank has the same latency,
+  // grant order == issue order == response order: no reorder buffer needed.
+  // The mapping is derived inside the module from DataWidth and NoMstPorts, so
+  // it cannot be mis-parameterized from here. L2WordOffset / L2BankIdxWidth /
+  // L2IndexLow above exist for gen_l2_mem's address slice and for ara_tb.sv's
+  // ELF loader, which must reproduce the same mapping.
+  l2_mem_interconnect #(
+    .NoSlvPorts(NrL2Req     ),
+    .NoMstPorts(NrL2Banks   ),
+    .AddrWidth (AxiAddrWidth),
+    .DataWidth (AxiDataWidth),
+    .Latency   (L2Latency   )
+  ) i_l2_mem_interconnect (
+    .clk_i             (clk_i     ),
+    .rst_ni            (rst_ni    ),
+    .slv_ports_req_i   (l2r_req   ),
+    .slv_ports_gnt_o   (l2r_gnt   ),
+    .slv_ports_we_i    (l2r_we    ),
+    .slv_ports_addr_i  (l2r_addr  ),
+    .slv_ports_strb_i  (l2r_strb  ),
+    .slv_ports_wdata_i (l2r_wdata ),
+    .slv_ports_rdata_o (l2r_rdata ),
+    .slv_ports_rvalid_o(l2r_rvalid),
+    .mst_ports_req_o   (l2b_req   ),
+    .mst_ports_we_o    (l2b_we    ),
+    .mst_ports_addr_o  (l2b_addr  ),
+    .mst_ports_strb_o  (l2b_strb  ),
+    .mst_ports_wdata_o (l2b_wdata ),
+    .mst_ports_rdata_i (l2b_rdata )
+  );
+
 `ifndef SPYGLASS
-  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_l2_mem
+  for (genvar b = 0; b < NrL2Banks; b++) begin : gen_l2_mem
     tc_sram #(
       .NumWords (L2NumWords  ),
       .NumPorts (1           ),
       .DataWidth(AxiDataWidth),
       .SimInit("zeros"),
-      .Latency(1)
+      .Latency(L2Latency)
     ) i_dram (
-      .clk_i  (clk_i                                                                      ),
-      .rst_ni (rst_ni                                                                     ),
-      .req_i  (l2_req[i]                                                                  ),
-      .we_i   (l2_we[i]                                                                   ),
-      .addr_i (l2_addr[i][$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8):$clog2(AxiDataWidth/8)]),
-      .wdata_i(l2_wdata[i]                                                                ),
-      .be_i   (l2_be[i]                                                                   ),
-      .rdata_o(l2_rdata[i]                                                                )
+      .clk_i  (clk_i                               ),
+      .rst_ni (rst_ni                              ),
+      .req_i  (l2b_req  [b]                        ),
+      .we_i   (l2b_we   [b]                        ),
+      .addr_i (l2b_addr [b][$clog2(L2NumWords)-1:0]),
+      .wdata_i(l2b_wdata[b]                        ),
+      .be_i   (l2b_strb   [b]                        ),
+      .rdata_o(l2b_rdata[b]                        )
     );
   end
 `else
-  assign l2_rdata = '{default: '0};
+  assign l2b_rdata = '{default: '0};
 `endif
-
-  // One-cycle latency
-  for (genvar i = 0; i < NrL2Slaves; i++) begin : gen_l2_rvalid
-    `FF(l2_rvalid[i], l2_req[i], 1'b0);
-  end
 
   ////////////
   //  UART  //
@@ -604,15 +741,14 @@ for (genvar hart_id = 0; hart_id < NrCores; hart_id++) begin : gen_ara_system
       .scan_data_i  (1'b0                     ),
       .scan_data_o  (/* Unconnected */        ),
   `ifndef TARGET_GATESIM
-      .axi_req_o    (system_axi_req           [hart_id]    ),
-      .axi_resp_i   (system_axi_resp          [hart_id]    )
+      .axi_req_o    (system_axi_req_pre       [hart_id]    ),
+      .axi_resp_i   (system_axi_resp_pre      [hart_id]    )
     );
   `else
       .axi_req_o    (system_axi_req_spill     [hart_id]    ),
       .axi_resp_i   (system_axi_resp_spill_del[hart_id]    )
     );
   `endif
-
 
   `ifdef TARGET_GATESIM
     assign #(AxiRespDelay*1ps) system_axi_resp_spill_del[hart_id] = system_axi_resp_spill[hart_id];
@@ -630,15 +766,92 @@ for (genvar hart_id = 0; hart_id < NrCores; hart_id++) begin : gen_ara_system
       .rst_ni      (rst_ni),
       .slv_req_i   (system_axi_req_spill [hart_id]),
       .slv_resp_o  (system_axi_resp_spill[hart_id]),
-      .mst_req_o   (system_axi_req       [hart_id]),
-      .mst_resp_i  (system_axi_resp      [hart_id])
+      .mst_req_o   (system_axi_req_pre   [hart_id]),
+      .mst_resp_i  (system_axi_resp_pre  [hart_id])
     );
   `endif
-  end
+
+  ////////////////////////////////
+  //  Crossbar (L2 and non-L2)  //
+  ////////////////////////////////
+
+  localparam axi_pkg::xbar_cfg_t XBarPreCfg = '{
+    NoSlvPorts        : 1,
+    NoMstPorts        : NrAXISlavePre,
+    MaxMstTrans       : 4,
+    MaxSlvTrans       : 4,
+    FallThrough       : 1'b0,
+    LatencyMode       : axi_pkg::CUT_MST_PORTS,
+    PipelineStages    : 0,
+    AxiIdWidthSlvPorts: AxiSystemIdWidth,
+    AxiIdUsedSlvPorts : AxiSystemIdWidth,
+    UniqueIds         : 1'b0,
+    AxiAddrWidth      : AxiAddrWidth,
+    AxiDataWidth      : AxiWideDataWidth,
+    NoAddrRules       : 2
+  };
+
+  axi_pkg::xbar_rule_64_t [1:0] routing_rules_pre;
+
+  // The two DRAM rules must not overlap. The atomics window is carved off the
+  // top of DRAM so that every AMO converges on the single shared
+  // axi_riscv_atomics adapter; the rest of DRAM goes to the word-interleaved
+  // L2. Anything matching neither rule (UART, CTRL) falls through to NONL2 via
+  // en_default_mst_port_i below.
+  assign routing_rules_pre = '{
+      '{idx: AMO,     start_addr: AMOBase,  end_addr: AMOBase + AMOLength},
+      '{idx: L2MEM,   start_addr: DRAMBase, end_addr: AMOBase            }
+  };
+
+  axi_xbar #(
+    .Cfg          (XBarPreCfg                ),
+    .slv_aw_chan_t(system_aw_chan_t       ),
+    .mst_aw_chan_t(system_aw_chan_t     ),
+    .w_chan_t     (system_w_chan_t        ),
+    .slv_b_chan_t (system_b_chan_t        ),
+    .mst_b_chan_t (system_b_chan_t      ),
+    .slv_ar_chan_t(system_ar_chan_t       ),
+    .mst_ar_chan_t(system_ar_chan_t     ),
+    .slv_r_chan_t (system_r_chan_t        ),
+    .mst_r_chan_t (system_r_chan_t      ),
+    .slv_req_t    (system_req_t           ),
+    .slv_resp_t   (system_resp_t          ),
+    .mst_req_t    (system_req_t         ),
+    .mst_resp_t   (system_resp_t        ),
+    .rule_t       (axi_pkg::xbar_rule_64_t)
+  ) i_pre_xbar (
+    .clk_i                (clk_i                   ),
+    .rst_ni               (rst_ni                  ),
+    .test_i               (1'b0                    ),
+    .slv_ports_req_i      (system_axi_req_pre[hart_id]          ),
+    .slv_ports_resp_o     (system_axi_resp_pre[hart_id]         ),
+    .mst_ports_req_o      (system_axi_req_bifur[hart_id]     ),
+    .mst_ports_resp_i     (system_axi_resp_bifur[hart_id]    ),
+    .addr_map_i           (routing_rules_pre           ),
+    .en_default_mst_port_i('1                      ),
+    .default_mst_port_i   ('0                      )
+  );
+
+  // Wire req/resp to/from non-L2 region
+  assign system_axi_req[hart_id]                = system_axi_req_bifur[hart_id][NONL2];
+  assign system_axi_resp_bifur[hart_id][NONL2]  = system_axi_resp[hart_id];
+
+  ////////////////////////////////
+  //  Crossbar with address scrambling (among L2 Mem) (TODO)   //
+  ////////////////////////////////
+
+ 
+end
 
   //////////////////
   //  Assertions  //
   //////////////////
+
+  if (NrCores == 0 || (NrCores & (NrCores - 1)) != 0)
+    $error("[ara_soc] NrCores must be a power of two.");
+
+  if (NrL2Banks == 0 || (NrL2Banks & (NrL2Banks - 1)) != 0)
+    $error("[ara_soc] NrL2Banks must be a power of two.");
 
   if (NrLanes == 0)
     $error("[ara_soc] Ara needs to have at least one lane.");

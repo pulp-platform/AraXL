@@ -41,6 +41,17 @@ module ara_tb;
   localparam NrClusters = 0;
   `endif
 
+  `ifdef NR_L2_BANKS
+  localparam NrL2Banks = `NR_L2_BANKS;
+  `else
+  localparam NrL2Banks = (NrCores > 0) ? NrCores : 1;
+  `endif
+  // Must track ara_soc's L2NumWords parameter: the ELF loader below mirrors
+  // tc_sram's index truncation, so if the two drift apart the aliasing
+  // warning stops matching what the hardware actually does.
+  localparam L2NumWords     = 2**20;
+  localparam L2BankIdxWidth = $clog2(NrL2Banks);
+
   localparam ClockPeriod  = 1ns;
   // Axi response delay [ps]
   localparam int unsigned AxiRespDelay = 200;
@@ -91,6 +102,7 @@ module ara_tb;
   `ifndef VERILATOR
   ara_testharness #(
     .NrCores     (NrCores         ),
+    .NrL2Banks   (NrL2Banks       ),
     .NrLanes     (NrLanes         ),
     .NrClusters  (NrClusters      ),
     .AxiAddrWidth(AxiAddrWidth    ),
@@ -110,6 +122,17 @@ module ara_tb;
 
   typedef logic [AxiAddrWidth-1:0] addr_t;
   typedef logic [AxiWideDataWidth-1:0] data_t;
+
+  // The ELF image, keyed by the ABSOLUTE byte address of each AxiWideBeWidth
+  // word. Collected here rather than poked directly because the bank a word
+  // belongs to is only known at run time, while a generate-block index must be
+  // an elaboration-time constant -- see gen_l2_preload below.
+  data_t mem_image [longint unsigned];
+  // Sequences the ELF reader against the per-bank preloaders: initial blocks
+  // have no defined order at time 0, and iterating an empty mem_image would
+  // preload nothing without complaining. Level-sensitive `wait`, not an event,
+  // so a preloader scheduled after the reader still proceeds instead of hanging.
+  bit image_ready = 1'b0;
 
   initial begin : dram_init
     automatic data_t mem_row;
@@ -134,25 +157,58 @@ module ara_tb;
         $display("Loading section %x of length %x", address, length);
         buffer = new[nwords * AxiWideBeWidth];
         void'(read_section(address, buffer));
-        // Initializing memories
+        // Collect the section into the image
         for (int w = 0; w < nwords; w++) begin
+          automatic longint unsigned byte_addr = address + (w << AxiWideByteOffset);
           mem_row = '0;
           for (int b = 0; b < AxiWideBeWidth; b++) begin
             mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
           end
-          if (address >= DRAMAddrBase && address < DRAMAddrBase + DRAMLength)
-            // This requires the sections to be aligned to AxiWideByteOffset,
-            // otherwise, they can be over-written.
-            dut.i_ara_soc.gen_l2_mem[0].i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
+          // This requires the sections to be aligned to AxiWideByteOffset,
+          // otherwise, they can be over-written.
+          if (byte_addr >= DRAMAddrBase && byte_addr < DRAMAddrBase + DRAMLength)
+            mem_image[byte_addr] = mem_row;
           else
-            $display("Cannot initialize address %x, which doesn't fall into the L2 region.", address);
+            $display("Cannot initialize address %x, which doesn't fall into the L2 region.", byte_addr);
         end
       end
     end else begin
       $error("Expecting a firmware to run, none was provided!");
       $finish;
     end
+
+    image_ready = 1'b1;
   end : dram_init
+
+  // Distribute the image across the word-interleaved banks. This MUST mirror
+  // ara_soc.sv's mapping exactly, and on the ABSOLUTE address: axi_to_mem's
+  // mem_addr_o is the full AXI address, so that is what the interconnect
+  // decodes. Do not subtract DRAMAddrBase here -- today it would make no
+  // difference, but only because (DRAMAddrBase >> IndexLow) % L2NumWords == 0.
+  //   bank  = addr[AxiWideByteOffset +: L2BankIdxWidth]
+  //   index = addr[63 : AxiWideByteOffset + L2BankIdxWidth]
+  for (genvar b = 0; b < NrL2Banks; b++) begin : gen_l2_preload
+    initial begin
+      wait (image_ready);
+      foreach (mem_image[a]) begin
+        if (((a >> AxiWideByteOffset) & (NrL2Banks - 1)) == b) begin
+          automatic longint unsigned idx = a >> (AxiWideByteOffset + L2BankIdxWidth);
+          // tc_sram decodes only $clog2(L2NumWords) index bits, so `idx % ...`
+          // below mirrors the hardware truncation exactly. Warn only when the
+          // address is genuinely past the end of physical memory, since that is
+          // the case where two different addresses share a word. Note idx alone
+          // cannot be tested against L2NumWords: the absolute address carries
+          // DRAMAddrBase, an exact multiple of L2NumWords once shifted, so idx
+          // exceeds L2NumWords for every DRAM address while still truncating
+          // to the right place.
+          if ((a - DRAMAddrBase) >= NrL2Banks * L2NumWords * AxiWideBeWidth)
+            $warning("Address %x is past L2 capacity (%0d B); it aliases onto bank %0d index %0d",
+                     a, NrL2Banks * L2NumWords * AxiWideBeWidth, b, idx % L2NumWords);
+          dut.i_ara_soc.gen_l2_mem[b].i_dram.init_val[idx % L2NumWords] = mem_image[a];
+        end
+      end
+    end
+  end
 
 `ifndef TARGET_GATESIM
 
