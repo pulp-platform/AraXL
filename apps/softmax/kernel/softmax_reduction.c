@@ -19,7 +19,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <riscv_vector.h>
-#include "../softmax/lib/exp.h"
+
+// To use exp from rivec
+#include "common/vector_defines.h"
 
 // Code implementing softmax with stripmining
 // Assumes row major order for input
@@ -79,7 +81,7 @@ for (; avl > 0; avl-= vl) {
     vfloat64m1_t buf_b = __riscv_vfsub_vf_f64m1(buf_a, max, vl);
     
     // Find exp
-    vfloat64m1_t buf_c = __exp_1xf64(buf_b, vl);
+    vfloat64m1_t buf_c = _MM_EXP_f64(buf_b, vl);
 
     buf_d = __riscv_vfadd_vv_f64m1(buf_c, buf_d, vl);
     __riscv_vse64_v_f64m1(i1_, buf_c, vl);
@@ -115,4 +117,3 @@ os += innerSize;
 }
 
 }
-
