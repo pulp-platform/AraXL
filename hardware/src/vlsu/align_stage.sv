@@ -160,7 +160,6 @@ assign axi_req_o.ar_valid = axi_req_i.ar_valid && axi_resp_o.ar_ready;
 assign axi_req_o.b_ready = axi_req_i.b_ready;
 
 assign axi_req_o.r_ready  = axi_req_cut_ready[0];
-assign axi_req_cut_ready[NumStages] = axi_req_i.r_ready;
 
 // Resp channel assignments
 assign axi_resp_o.ar_ready = axi_resp_i.ar_ready && !tracker_full; 
@@ -256,9 +255,11 @@ always_comb begin
   axi_resp_o.r_valid    = 1'b0;
   axi_resp_o.r          = axi_resp_i_cut[NumStages].r;
   axi_resp_o.r.last     = 1'b0;
+
+  axi_req_cut_ready[NumStages] = axi_req_i.r_ready;
   
   // For a valid handshake assign to buffer to be used later
-  if (axi_resp_i_cut[NumStages].r_valid && axi_req_cut_ready[NumStages]) begin
+  if (axi_resp_i_cut[NumStages].r_valid && axi_req_i.r_ready) begin
     // Buffer data in this cycle
     data_d = axi_resp_i_cut[NumStages].r.data;
     data_valid_d     = 1'b1;
@@ -269,7 +270,7 @@ always_comb begin
 
   if (!(tracker_q[rd_resp_pnt_q[NumStages-1]].op inside {VLXE, VLSE})) begin
     // Combine the previous data and the current data packets using byte enable
-    if (data_valid_q && axi_req_cut_ready[NumStages]) begin
+    if (data_valid_q && axi_req_i.r_ready) begin
       // Number of elements in a single AXI transaction
       automatic vlen_t axi_valid_el = AxiDataBytes >> tracker_q[rd_resp_pnt_q_del[NumStages-1]].vew;
 
@@ -300,6 +301,13 @@ always_comb begin
           // If the current data is not misaligned and we have a valid data
           // Set valid data for the next subsequent load to avoid bubble
           data_valid_d = be_final_d[AxiDataBytes-1] & axi_resp_i_cut[NumStages].r_valid;
+
+          // If misaligned but we already have a response for the next request,
+          // stall it for 1 cycle
+          if (!be_final_d[AxiDataBytes-1] & !axi_resp_i_cut[NumStages].r.last) begin
+            axi_req_cut_ready[NumStages] = 1'b0;
+          end
+
           last_d = 1'b0;
         end
       end
