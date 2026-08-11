@@ -603,8 +603,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   // For performance simulations to understand impact of cva6 latency
   `ifdef ADD_CVA6_LATENCY
 
-    accelerator_req_t req_cut_i, req_cut_o;
-    accelerator_resp_t resp_cut_i, resp_cut_o;
+    cva6_to_acc_t req_cut_i, req_cut_o;
+    acc_to_cva6_t resp_cut_i, resp_cut_o;
 
     cva6_cut # (
       .NrCuts            (`CVA6_LATENCY        ),
