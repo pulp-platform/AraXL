@@ -34,6 +34,7 @@
 */
 
 #include "exp.h"
+#include "common/vector_defines.h"
 
 void exp_1xf64_bmark(double *exponents, double *results, size_t len) {
 
@@ -50,7 +51,7 @@ void exp_1xf64_bmark(double *exponents, double *results, size_t len) {
     // Load vector
     exp_vec = __riscv_vle64_v_f64m1(exponents, vl);
     // Compute
-    res_vec = __exp_1xf64(exp_vec, vl);
+    res_vec = _MM_EXP_f64(exp_vec, vl);
     // Store
     __riscv_vse64_v_f64m1(results, res_vec, vl);
     // Bump pointers
@@ -78,7 +79,7 @@ void exp_2xf32_bmark(float *exponents, float *results, size_t len) {
     // Load vector
     exp_vec = __riscv_vle32_v_f32m1(exponents, vl);
     // Compute
-    res_vec = __exp_2xf32(exp_vec, vl);
+    res_vec = _MM_EXP_f32(exp_vec, vl);
     // Store
     __riscv_vse32_v_f32m1(results, res_vec, vl);
     // Bump pointers
