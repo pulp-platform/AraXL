@@ -261,6 +261,7 @@ logic [NumBuffers-1:0] wr_buffer_completed_d, wr_buffer_completed_q;
 vlen_cluster_t vl_idx_cluster_d, vl_idx_cluster_q;
 
 logic pending_resp;
+logic buffer_ld_resp_accepted;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
@@ -548,6 +549,7 @@ always_comb begin
   rdbuf_pnt_d = rdbuf_pnt_q;
   shift_d = shift_q;
   r_ready_buf = r_ready_buf_q;
+  buffer_ld_resp_accepted = 1'b0;
 
   rd_cluster_completed_d = rd_cluster_completed_q;
   rd_buffer_completed_d = rd_buffer_completed_q;
@@ -564,12 +566,13 @@ always_comb begin
     // If have a valid handshake on response add to the buffer
     // If have a valid response from L2 after aligning buffer it first pointed by rdbuf_pnt_q
     // Set we have a valid data
-    if (axi_resp_i[0].r_valid && r_ready_buf_q) begin
+    if (axi_resp_i[0].r_valid & r_ready_buf_q & (&r_ready_i)) begin
       for (int c=0; c<NrClusters; c++) begin
         buf_d[rdbuf_pnt_q][c] = axi_resp_i[c].r;
       end
       buf_valid_d[rdbuf_pnt_q] = 1'b1;
       rdbuf_pnt_d = (rdbuf_pnt_q == 1'b1) ? 1'b0 : 1'b1;
+      buffer_ld_resp_accepted = 1'b1;
     end
 
     // Assign data in buffer to the output
@@ -685,6 +688,7 @@ always_comb begin
       for (int i=0; i <NumStages; i++) begin
         rd_issue_pnt_d[i] = rd_issue_pnt_q[i] + 1;
       end
+      buffer_ld_resp_accepted = 1'b1;
     end
   end
 
@@ -896,7 +900,7 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_req_o[c].b_ready = axi_req_i[c].b_ready;
   
   // Reads
-  assign axi_req_o[c].r_ready = ((rd_datapath == BUFFER) ? ((rd_op inside {VLXE, VLSE}) ? axi_req_i[c].r_ready : r_ready_buf_q) : r_ready[0] ) & ~pending_resp;
+  assign axi_req_o[c].r_ready = ((rd_datapath == BUFFER) ? buffer_ld_resp_accepted : r_ready[0] ) & ~pending_resp;
   assign r_ready_i[c] = axi_req_i[c].r_ready;           // From input request, get ready inputs to stream fork
 
   // Writes
