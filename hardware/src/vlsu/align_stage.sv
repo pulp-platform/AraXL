@@ -311,6 +311,9 @@ always_comb begin
           last_d = 1'b0;
         end
       end
+    end else if (data_valid_q & !axi_req_i.r_ready) begin
+      // Maintain the delayed pointer in the case data cannot be sent out
+      rd_resp_pnt_d_del[NumStages-1] = rd_resp_pnt_q_del[NumStages-1];
     end
   end else begin
     // Indexed operation
