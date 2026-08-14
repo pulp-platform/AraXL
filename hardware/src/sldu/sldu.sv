@@ -963,8 +963,11 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               eff_stride = vinsn_issue_q.stride - (vrf_pnt_d * ((8 * NrLanes) << num_clusters_i));
               if (vinsn_issue_q.vl == 0 || eff_stride == 0) begin
                 n_ring_out_d = 0;
-              end else if ((vinsn_issue_q.vl != 0) && (vinsn_issue_q.vl < NrLanes)) begin
+              end else if ((vinsn_issue_q.vl != 0) && (vinsn_issue_q.vl <= NrLanes)) begin
                 n_ring_out_d = 1;
+                if (cluster_id_i == last_cluster_id && vinsn_issue_q.use_scalar_op == 1'b0) begin
+                  n_ring_out_d -= 1;
+                end
               end else begin
                 n_ring_out_d = vinsn_issue_q.vl/NrLanes;
                 if ((vinsn_issue_q.vl % NrLanes) == 0 && cluster_id_i == last_cluster_id) begin
@@ -1014,7 +1017,19 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               if (eff_elem_stride == 0) begin
                 n_ring_out_d = 0;
               end else begin
-                n_ring_out_d = vinsn_issue_q.vl / NrLanes;
+                if (vinsn_issue_q.use_scalar_op == 1'b1 && (vinsn_issue_q.vl_cluster > NrLanes || (vinsn_issue_q.vl_cluster % NrLanes == 0))) begin
+                  if (vinsn_issue_q.vl >= NrLanes) begin
+                    n_ring_out_d = (vinsn_issue_q.vl + NrLanes - 1) / NrLanes;
+                  end else begin
+                    if (cluster_id_i == 0 && vinsn_issue_q.vl_cluster <= NrLanes * NrClusters) begin
+                      n_ring_out_d = 0;
+                    end else begin
+                      n_ring_out_d = 1;
+                    end
+                  end
+                end else begin
+                  n_ring_out_d = vinsn_issue_q.vl / NrLanes;
+                end
               end   
               n_ring_out_init_d = n_ring_out_d;
 
@@ -1571,7 +1586,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                       sldu_result_be_o[lane][b] = 1'b0;
                   end else begin
                     // Necessary to cover vl < lanes x cluster
-                    if (lane >= vinsn_commit.vl_cluster % (NrLanes * NrClusters) - (cluster_id_i * NrLanes) && vinsn_commit.vl_cluster < (NrLanes * NrClusters)) begin
+                    if (lane >= vinsn_commit.vl_cluster % (NrLanes * NrClusters) - (cluster_id_i * NrLanes) && 
+                    ((vinsn_commit.vl_cluster < (NrLanes * NrClusters)) || (lane > (vinsn_commit.vl_cluster - vinsn_commit.tot_slide - (cluster_id_i * NrLanes))))) begin
                       for (int unsigned b = 0; b < 8; b++)
                         sldu_result_be_o[lane][b] = 1'b0;
                     end else begin
@@ -1933,7 +1949,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                   end else if (vinsn_ring.vl_cluster <= (cluster_id_i+1) * NrLanes) begin
                     // If we small number of elements, we don't receive a ring packet, but we can still generate the last data using the scalar operand
                     result_queue_d[result_queue_write_pnt_ring_q][last_lane_id].wdata = write_scalar_to_result(result_queue_d[result_queue_write_pnt_ring_q][last_lane_id].wdata, last_elem_offset, scalar_op, sew);
-                    finish_last_result = 1'b1;
+                    if (vinsn_ring.vl_cluster <= NrLanes) begin
+                      finish_last_result = 1'b1;
+                    end
                   end
                 end
               end
@@ -2040,7 +2058,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           //n_ring_in_d = stride >> ring_vinsn.vtype.vsew;
           //n_ring_in_d = n_ring_in_d > NrLanes ? NrLanes : n_ring_in_d;
 
-          if (ring_vinsn.vl == 0 || stride == 0) begin
+          if (ring_vinsn.vl == 0 || stride == 0 || (cluster_id_i == 0 && ring_vinsn.vl_cluster <= (NrLanes * NrClusters) && ring_vinsn.use_scalar_op == 1'b0)) begin
             n_ring_in_d = 0;
           end else if ((ring_vinsn.vl != 0) && (ring_vinsn.vl < NrLanes)) begin
             n_ring_in_d = 1;
@@ -2149,12 +2167,19 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
         //n_ring_in_d = stride >> vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vtype.vsew;
         //n_ring_in_d = n_ring_in_d > NrLanes ? NrLanes : n_ring_in_d;
 
-        if (vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl == 0 || stride == 0) begin
+        if (vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl == 0 || stride == 0 || (cluster_id_i == 0 && vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl_cluster <= (NrLanes * NrClusters) && vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].use_scalar_op == 1'b0)) begin
           n_ring_in_d = 0;
         end else if ((vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl != 0) && (vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl < NrLanes)) begin
           n_ring_in_d = 1;
         end else begin
-          n_ring_in_d = (vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl + 3) / NrLanes;
+          if (cluster_id_i == last_cluster_id && vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].use_scalar_op == 1'b1) begin
+            n_ring_in_d = vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl_cluster / (NrLanes * NrClusters);
+            if (vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl_cluster % (NrLanes * NrClusters) != 0) begin
+              n_ring_in_d += 1;
+            end
+          end else begin
+            n_ring_in_d = (vinsn_queue_d.vinsn[vinsn_queue_q.ring_pnt].vl + NrLanes - 1) / NrLanes;
+          end
         end
 
         n_ring_in_init_d = n_ring_in_d;
@@ -2186,9 +2211,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       end
       ring_packets_need_d = ring_packets_expect_d;
     end else if (vinsn_commit.op == VSLIDEDOWN) begin
-      ring_packets_expect_d = (vinsn_commit.vl + 3) / NrLanes;
-      if (cluster_id_i == last_cluster_id) begin
-        ring_packets_expect_d -= 1;
+      if (vinsn_commit.vl_cluster <= (NrLanes * NrClusters)) begin
+        ring_packets_expect_d = 1;
+      end else begin
+        ring_packets_expect_d = (vinsn_commit.vl + 3) / NrLanes;
+        if (cluster_id_i == last_cluster_id) begin
+          ring_packets_expect_d -= 1;
+        end
       end
       ring_packets_need_d = ring_packets_expect_d;
     end
