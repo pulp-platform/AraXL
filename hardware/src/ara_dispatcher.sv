@@ -526,8 +526,13 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                     automatic int unsigned vl_rem = vl_tot & ((1 << num_clusters_i << $clog2(NrLanes)) - 1);
                     automatic int unsigned vl_base = (vl_tot & ('1 << (num_clusters_i + $clog2(NrLanes)))) >> num_clusters_i;
                     automatic int unsigned vl_rem_diff = vl_rem - (cluster_id_i * NrLanes);
-                    vl_d = ((vl_tot >> num_clusters_i) >= vlmax) ? vlmax : vl_base;
-                    vl_d += (vl_rem >= (cluster_id_i+1) * NrLanes) ? NrLanes : (vl_rem >= (cluster_id_i * NrLanes)) ? vl_rem_diff : '0;
+                    if ((vl_tot >> num_clusters_i) >= vlmax) begin
+                      vl_d = vlmax;
+                    end else begin
+                      vl_d = vl_base;
+                      vl_d += (vl_rem >= (cluster_id_i+1) * NrLanes) ? NrLanes :
+                              (vl_rem >= (cluster_id_i * NrLanes)) ? vl_rem_diff : '0;
+                    end
                     vl_cluster_d = (vl_tot >= vlmax_cluster) ? vlmax_cluster : vl_tot;
                   end else begin // vsetvl || vsetvli
                     if (insn.vsetvl_type.rs1 == '0 && insn.vsetvl_type.rd == '0) begin
@@ -544,9 +549,16 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                       automatic int unsigned vl_rem = vl_tot & ((1 << num_clusters_i << $clog2(NrLanes)) - 1);
                       automatic int unsigned vl_base = (vl_tot & ('1 << (num_clusters_i + $clog2(NrLanes)))) >> num_clusters_i;
                       automatic int unsigned vl_rem_diff = vl_rem - (cluster_id_i * NrLanes);
-                      vl_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_cluster_d)]) || (vl_tot >= vlmax_cluster)) ? vlmax : vl_base;
-                      vl_d += (vl_rem >= (cluster_id_i+1) * NrLanes) ? NrLanes : (vl_rem >= (cluster_id_i * NrLanes)) ? vl_rem_diff : '0;
-                      vl_cluster_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_cluster_d)]) || (vl_tot >= vlmax_cluster)) ? vlmax_cluster : vlen_cluster_t'(acc_req_i.rs1);
+                      if ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_cluster_d)]) ||
+                          (vl_tot >= vlmax_cluster)) begin
+                        vl_d = vlmax;
+                      end else begin
+                        vl_d = vl_base;
+                        vl_d += (vl_rem >= (cluster_id_i+1) * NrLanes) ? NrLanes :
+                                (vl_rem >= (cluster_id_i * NrLanes)) ? vl_rem_diff : '0;
+                      end
+                      vl_cluster_d = ((|acc_req_i.rs1[$bits(acc_req_i.rs1)-1:$bits(vl_cluster_d)]) ||
+                                      (vl_tot >= vlmax_cluster)) ? vlmax_cluster : vlen_cluster_t'(acc_req_i.rs1);
                     end
                   end
                 end
