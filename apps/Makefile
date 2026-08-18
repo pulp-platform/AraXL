@@ -30,6 +30,7 @@ include $(COMMON_DIR)/default_args.mk
 nr_clusters ?= 2
 
 include $(COMMON_DIR)/runtime.mk
+include rivec.mk
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(wildcard $(APPS_DIR)/*/main.c))
 
@@ -51,7 +52,7 @@ bin/fft:  ENV_DEFINES += -DFFT_SAMPLES=$(subst ",,$(firstword $(def_args_fft)))
 bin/fft%: ENV_DEFINES += -DFFT_SAMPLES=$(subst ",,$(firstword $(def_args_fft)))
 endif
 
-all: $(BINARIES)
+all: apps_binaries riscv_tests rivec_binaries
 
 # Pre-process the linker-script to correclty align the sections
 .PHONY: linker_script
@@ -62,7 +63,9 @@ linker_script: $(COMMON_DIR)/script/align_sections.sh $(ROOT_DIR)/../../config/$
 
 # Make all applications
 $(APPS): % : bin/% $(APPS_DIR)/Makefile $(shell find common -type f)
-.PHONY: $(BINARIES)
+.PHONY: apps_binaries
+
+apps_binaries: $(BINARIES)
 
 # Patch spike crt0 to enable vector extension before execution
 .PHONY: patch-spike-crt0
@@ -113,8 +116,6 @@ bin/$1: $1/data.S.o $(addsuffix .o, $(shell find $(1) -name "*.c" -o -name "*.S"
 	$$(RISCV_STRIP) $$@ -S --strip-unneeded
 endef
 $(foreach app,$(APPS),$(eval $(call app_compile_template,$(app))))
-
-include rivec.mk
 
 # Make the RISC-V tests
 riscv_tests: $(CVA6_BINARIES) $(ARA_BINARIES)
@@ -174,8 +175,8 @@ riscv_tests_spike_clean:
 	make -C riscv-tests/isa clean
 
 # Compile Standardized RISC-V tests
-.PHONY: riscv_tests_compile
-riscv_tests_compile:
+.PHONY: riscv_tests_standard
+riscv_tests_standard:
 	cd riscv-tests && \
 	make benchmarks && make isa -i
 
