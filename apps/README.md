@@ -3,6 +3,15 @@
 This folder contains the benchmarks, programs, and tests ready to be run on AraXL.
 All software sources are licensed under [Apache 2.0](../LICENSE.sw).
 
+1) Synthetic benchmarks such as `fmatmul`, `fconv2d` in this `apps/` folder
+2) Custom RISC-V tests in `rvv-tests/`
+3) RiVEC benchmarks as a git submodule `riscv-vectorized-benchmark-suite/` modified to run on the araxl baremetal environment
+
+To compile all tests and benchmarks
+```bash
+make all nr_clusters=2
+```
+
 SW utilities and benchmarks for AraXL using external contributions,
 * `RiVEC` - Use of the RISC-V VECTOR intrinsics mapping `common/rivec/vector_defines.h` and benchmarks `apps/cos`, `apps/log`, `apps/exp` by Cristóbal Ramírez Lazo, "Barcelona 2019" under [license](common/rivec/LICENSE)
 * `print` - `common/printf.c`, `common/printf.h` Print primitives for embedded systems under the MIT License (MIT)
@@ -44,7 +53,7 @@ Example:
 
 ```bash
 cd apps
-make bin/fconv2d OUT_MTX_SIZE=112 F_SIZE=7
+make bin/fconv2d def_args_fconv2d="64 64 7"
 ```
 
 ### Standard RISC-V tests
@@ -52,7 +61,7 @@ make bin/fconv2d OUT_MTX_SIZE=112 F_SIZE=7
 To compile the standardized riscv tests from https://github.com/riscv/riscv-tests
 ```bash
 cd apps
-make riscv_tests_compile
+make riscv_tests_standard
 ```
 
 ### RISC-V vector tests

@@ -189,7 +189,7 @@ riscv_unit_tests:
 	autoconf && \
 	./configure target_alias=${GCC_INSTALL_DIR}/bin/riscv64-unknown-elf --prefix=${RISCV_TESTS_INSTALL_DIR}/target && \
 	cd env/p && git apply ../../../patches/eoc.patch &&\
-	cd ../../../ && make riscv_tests_compile))
+	cd ../../../ && make riscv_tests_standard))
 
 # Helper targets
 .PHONY: clean
