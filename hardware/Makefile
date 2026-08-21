@@ -154,8 +154,12 @@ ifneq ($(ring_latency), 0)
 	bender_defs += --define ADD_RING_LATENCY=1 --define RING_LATENCY=$(ring_latency)
 endif
 
-# By default tracing enabled
+# Per-lane MFPU/VLDU/VSTU CSV traces. Opt in with perfetto=1; they cost
+# simulation time and disk on large runs.
+perfetto ?= 0
+ifeq ($(perfetto), 1)
 bender_defs += --define PERFETTO_TRACE
+endif
 
 # Swap the ideal tc_sram L2 for the DRAMSys-backed model
 ifeq ($(use_dramsys), 1)
