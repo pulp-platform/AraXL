@@ -1,0 +1,10 @@
+# Bender and checked-out hardware IPs
+/.bender/
+/hardware/deps/
+/hardware/bender
+
+# Locally built toolchains (LLVM, GCC, spike, verilator)
+/install/
+
+# Profiling output
+gmon.out
