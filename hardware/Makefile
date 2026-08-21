@@ -202,7 +202,12 @@ $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so: $(BENDER)
 # Patches
 .PHONY: apply-patches
 apply-patches: patches
-	cd deps/tech_cells_generic && git apply ../../patches/0001-tech-cells-generic-sram.patch
+	cd deps/tech_cells_generic && \
+		(git apply --reverse --check ../../patches/0001-tech-cells-generic-sram.patch 2>/dev/null || \
+		 git apply ../../patches/0001-tech-cells-generic-sram.patch)
+	cd deps/axi && \
+		(git apply --reverse --check ../../../patches/AraXL-64L.patch 2>/dev/null || \
+		 git apply ../../../patches/AraXL-64L.patch)
 
 # Library
 .PHONY: lib
