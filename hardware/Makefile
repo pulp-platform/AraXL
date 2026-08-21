@@ -8,7 +8,8 @@ SHELL = /usr/bin/env bash
 ROOT_DIR := $(patsubst %/,%, $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 ARA_DIR := $(shell git rev-parse --show-toplevel 2>/dev/null || echo $$ARA_DIR)
 INSTALL_DIR := $(abspath $(ROOT_DIR)/../install)
-VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
+VERILATOR_INCLUDE ?= $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
+ISA_SIM_INCLUDE   ?= $(INSTALL_DIR)/riscv-isa-sim/include
 
 BENDER         := $(ROOT_DIR)/../hardware/bender
 BENDER_VERSION := 0.29.1
@@ -104,7 +105,7 @@ else
 endif
 endif
 ifdef preload
-	questa_args += +PRELOAD=$(preload)
+	questa_args += +PRELOAD=$(abspath $(subst ",,$(preload)))
 endif
 questa_args += -sv_lib $(dpi_library)/ara_dpi -work $(library) -voptargs=+acc
 questa_args += -suppress vsim-3009 -suppress vopt-7033
@@ -353,7 +354,7 @@ dpi: $(buildpath)/$(dpi_library)/ara_dpi.so
 
 $(buildpath)/$(dpi_library)/%.o: tb/dpi/%.cc
 	mkdir -p $(buildpath)/$(dpi_library)
-	$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(VERILATOR_INCLUDE) -I$(INSTALL_DIR)/riscv-isa-sim/include -o $@
+	$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(VERILATOR_INCLUDE) -I$(ISA_SIM_INCLUDE) -o $@
 
 $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 	mkdir -p $(buildpath)/$(dpi_library)
