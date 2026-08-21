@@ -13,6 +13,17 @@ VERILATOR_INCLUDE := $(INSTALL_DIR)/verilator/share/verilator/include/vltstd
 BENDER         := $(ROOT_DIR)/../hardware/bender
 BENDER_VERSION := 0.29.1
 
+# DRAMSys main-memory model (optional; enable with use_dramsys=1).
+use_dramsys        ?= 0
+CMAKE              ?= cmake
+DRAM_RTL_SIM_ROOT  ?= $(ROOT_DIR)/deps/dram_rtl_sim
+DRAMSYS_ROOT       ?= $(DRAM_RTL_SIM_ROOT)/dramsys_lib/DRAMSys
+DRAMSYS_BUILD_DIR  ?= $(DRAMSYS_ROOT)/build
+DRAMSYS_RES        ?= $(DRAMSYS_ROOT)/configs
+dram_type          ?= DDR4
+DRAMSYS_CC         ?= /usr/bin/gcc
+DRAMSYS_CXX        ?= /usr/bin/g++
+
 # Choose Ara's configuration
 ifndef config
 	ifdef ARA_CONFIGURATION
@@ -98,11 +109,25 @@ endif
 questa_args += -sv_lib $(dpi_library)/ara_dpi -work $(library) -voptargs=+acc
 questa_args += -suppress vsim-3009 -suppress vopt-7033
 
+ifeq ($(use_dramsys), 1)
+	questa_args += -sv_lib $(DRAMSYS_BUILD_DIR)/lib/libsystemc
+	questa_args += -sv_lib $(DRAMSYS_BUILD_DIR)/lib/libDRAMSys_Simulator
+	questa_args += +DRAMSYS_RES=$(DRAMSYS_RES)
+ifdef preload
+	questa_args += +ONE_DRAM_PRELOAD=$(abspath $(subst ",,$(preload)))
+endif
+	export LD_LIBRARY_PATH := $(DRAMSYS_BUILD_DIR)/lib:$(LD_LIBRARY_PATH)
+endif
+
 # DPI source files
 dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cc))
 
 vlog_args += -suppress vlog-2583 -suppress vlog-13314 -suppress vlog-13233
 vlog_args += -work $(library)
+# DRAMSys' dram_sim_engine requires a defined timescale
+ifeq ($(use_dramsys), 1)
+	vlog_args += -timescale 1ns/1ps
+endif
 
 # Bender
 # Defines
@@ -115,21 +140,26 @@ endif
 # Latency arguments for perf simulations
 mem_latency ?= 0
 ifneq ($(mem_latency), 0)
-	bender_defs += --define ADD_MEM_LATENCY=1 --define MEM_LATENCY=$(mem_latency) 
+	bender_defs += --define ADD_MEM_LATENCY=1 --define MEM_LATENCY=$(mem_latency)
 endif
 
 cva6_latency ?= 0
 ifneq ($(cva6_latency), 0)
-	bender_defs += --define ADD_CVA6_LATENCY=1 --define CVA6_LATENCY=$(cva6_latency) 
+	bender_defs += --define ADD_CVA6_LATENCY=1 --define CVA6_LATENCY=$(cva6_latency)
 endif
 
 ring_latency ?= 0
 ifneq ($(ring_latency), 0)
-	bender_defs += --define ADD_RING_LATENCY=1 --define RING_LATENCY=$(ring_latency) 
+	bender_defs += --define ADD_RING_LATENCY=1 --define RING_LATENCY=$(ring_latency)
 endif
 
 # By default tracing enabled
 bender_defs += --define PERFETTO_TRACE
+
+# Swap the ideal tc_sram L2 for the DRAMSys-backed model
+ifeq ($(use_dramsys), 1)
+	bender_defs += --define USE_DRAMSYS=1
+endif
 
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 
@@ -161,6 +191,13 @@ update: $(BENDER) $(ROOT_DIR)/../Bender.yml
 
 checkout: $(BENDER)
 	$(BENDER) checkout
+
+
+.PHONY: dramsys
+dramsys: $(DRAMSYS_BUILD_DIR)/lib/libsystemc.so
+$(DRAMSYS_BUILD_DIR)/lib/libsystemc.so: $(BENDER)
+	CC=$(DRAMSYS_CC) CXX=$(DRAMSYS_CXX) $(MAKE) -f $(DRAM_RTL_SIM_ROOT)/dram_rtl_sim.mk dramsys \
+		BENDER=$(BENDER) CMAKE=$(CMAKE) DRAM_RTL_SIM_ROOT=$(DRAM_RTL_SIM_ROOT)
 
 # Patches
 .PHONY: apply-patches

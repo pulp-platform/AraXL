@@ -90,6 +90,9 @@ module ara_tb;
     .AxiDataWidth(AxiWideDataWidth),
     .ClusterAxiDataWidth(ClusterAxiDataWidth),
     .AxiRespDelay(AxiRespDelay    )
+`ifndef SYNTHESIS
+    ,.DramClkPeriod(ClockPeriod    )
+`endif
   ) dut (
     .clk_i (clk  ),
     .rst_ni(rst_n),
@@ -104,6 +107,7 @@ module ara_tb;
   typedef logic [AxiAddrWidth-1:0] addr_t;
   typedef logic [AxiWideDataWidth-1:0] data_t;
 
+`ifndef USE_DRAMSYS
   initial begin : dram_init
     automatic data_t mem_row;
     byte buffer [];
@@ -136,7 +140,7 @@ module ara_tb;
           if (address >= DRAMAddrBase && address < DRAMAddrBase + DRAMLength)
             // This requires the sections to be aligned to AxiWideByteOffset,
             // otherwise, they can be over-written.
-            dut.i_ara_soc.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
+            dut.i_ara_soc.gen_tc_sram.i_dram.init_val[(address - DRAMAddrBase + (w << AxiWideByteOffset)) >> AxiWideByteOffset] = mem_row;
           else
             $display("Cannot initialize address %x, which doesn't fall into the L2 region.", address);
         end
@@ -146,6 +150,7 @@ module ara_tb;
       $finish;
     end
   end : dram_init
+`endif
 
 `ifndef TARGET_GATESIM
 

@@ -39,6 +39,13 @@ packages:
     source:
       Git: https://github.com/pulp-platform/common_verification.git
     dependencies: []
+  dram_rtl_sim:
+    revision: a764d5200a19cdd72a5237cbfb16985515a3058d
+    version: 0.1.2
+    source:
+      Git: https://github.com/pulp-platform/dram_rtl_sim.git
+    dependencies:
+    - axi
   fpnew:
     revision: 3116391bf66660f806b45e212b9949c528b4e270
     version: 0.7.0

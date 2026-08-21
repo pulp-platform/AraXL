@@ -26,6 +26,11 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     parameter  int           unsigned AxiRespDelay = 200,
     // Main memory
     parameter  int           unsigned L2NumWords   = 2**20,
+`ifndef SYNTHESIS
+    // Must equal the system clock period and be an integer number of ns:
+    // dram_sim_engine steps DRAMSys by int'(DramClkPeriod/1ns) per clock edge.
+    parameter  time                   DramClkPeriod = 1ns,
+`endif
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
     localparam type                   axi_strb_t   = logic [AxiDataWidth/8-1:0],
@@ -192,6 +197,22 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   //  L2  //
   //////////
 
+  // Main memory model select. By default the L2 is an ideal single-cycle
+  // tc_sram. Defining USE_DRAMSYS swaps it for a DRAMSys-backed model
+  // (`axi_dram_sim`), which internally downsizes the wide L2 AXI to a fixed
+  // 512-bit DRAM port and drives a SystemC DRAM timing simulation over DPI.
+`ifdef USE_DRAMSYS
+  localparam bit UseDramSys = 1'b1;
+`else
+  localparam bit UseDramSys = 1'b0;
+`endif
+  // DRAM flavour selects the DRAMSys JSON config (DDR4/DDR3/HBM2/LPDDR4).
+`ifdef DRAMSYS_TYPE
+  localparam DRAMType = `DRAMSYS_TYPE;
+`else
+  localparam DRAMType = "DDR4";
+`endif
+
   // The L2 memory does not support atomics
 
   soc_wide_req_t  l2mem_wide_axi_req_wo_atomics;
@@ -210,64 +231,94 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .mst_resp_i(l2mem_wide_axi_resp_wo_atomics)
   );
 
-  logic                      l2_req;
-  logic                      l2_we;
-  logic [AxiAddrWidth-1:0]   l2_addr;
-  logic [AxiDataWidth/8-1:0] l2_be;
-  logic [AxiDataWidth-1:0]   l2_wdata;
-  logic [AxiDataWidth-1:0]   l2_rdata;
-  logic                      l2_rvalid, l2_rvalid_1;
+  if (UseDramSys) begin : gen_dramsys
 
-  axi_to_mem #(
-    .AddrWidth (AxiAddrWidth   ),
-    .DataWidth (AxiDataWidth   ),
-    .IdWidth   (AxiSocIdWidth  ),
-    .NumBanks  (1              ),
-    .axi_req_t (soc_wide_req_t ),
-    .axi_resp_t(soc_wide_resp_t)
-  ) i_axi_to_mem (
-    .clk_i       (clk_i                         ),
-    .rst_ni      (rst_ni                        ),
-    .axi_req_i   (l2mem_wide_axi_req_wo_atomics ),
-    .axi_resp_o  (l2mem_wide_axi_resp_wo_atomics),
-    .mem_req_o   (l2_req                        ),
-    .mem_gnt_i   (l2_req                        ), // Always available
-    .mem_we_o    (l2_we                         ),
-    .mem_addr_o  (l2_addr                       ),
-    .mem_strb_o  (l2_be                         ),
-    .mem_wdata_o (l2_wdata                      ),
-    .mem_rdata_i (l2_rdata                      ),
-    .mem_rvalid_i(l2_rvalid                     ),
-    .mem_atop_o  (/* Unused */                  ),
-    .busy_o      (/* Unused */                  )
-  );
+    dram_sim_engine #(
+      .ClkPeriod (DramClkPeriod)
+    ) i_dram_sim_engine (
+      .clk_i  (clk_i ),
+      .rst_ni (rst_ni)
+    );
+
+    // Wide L2 AXI in, internal 512-bit downsizer + DRAMSys DPI bridge.
+    axi_dram_sim #(
+      .AxiAddrWidth (AxiAddrWidth      ),
+      .AxiDataWidth (AxiDataWidth      ),
+      .AxiIdWidth   (AxiSocIdWidth     ),
+      .AxiUserWidth (AxiUserWidth      ),
+      .BASE         (DRAMBase          ),
+      .DRAMType     (DRAMType          ),
+      .CustomerDRAM ("none"            ),
+      .axi_req_t    (soc_wide_req_t    ),
+      .axi_resp_t   (soc_wide_resp_t   ),
+      .axi_ar_t     (soc_wide_ar_chan_t),
+      .axi_r_t      (soc_wide_r_chan_t ),
+      .axi_aw_t     (soc_wide_aw_chan_t),
+      .axi_w_t      (soc_wide_w_chan_t ),
+      .axi_b_t      (soc_wide_b_chan_t )
+    ) i_axi_dram_sim (
+      .clk_i      (clk_i                         ),
+      .rst_ni     (rst_ni                        ),
+      .axi_req_i  (l2mem_wide_axi_req_wo_atomics ),
+      .axi_resp_o (l2mem_wide_axi_resp_wo_atomics)
+    );
+  end else begin : gen_tc_sram
+    logic                      l2_req;
+    logic                      l2_we;
+    logic [AxiAddrWidth-1:0]   l2_addr;
+    logic [AxiDataWidth/8-1:0] l2_be;
+    logic [AxiDataWidth-1:0]   l2_wdata;
+    logic [AxiDataWidth-1:0]   l2_rdata;
+    logic                      l2_rvalid;
+
+    axi_to_mem #(
+      .AddrWidth (AxiAddrWidth   ),
+      .DataWidth (AxiDataWidth   ),
+      .IdWidth   (AxiSocIdWidth  ),
+      .NumBanks  (1              ),
+      .axi_req_t (soc_wide_req_t ),
+      .axi_resp_t(soc_wide_resp_t)
+    ) i_axi_to_mem (
+      .clk_i       (clk_i                         ),
+      .rst_ni      (rst_ni                        ),
+      .axi_req_i   (l2mem_wide_axi_req_wo_atomics ),
+      .axi_resp_o  (l2mem_wide_axi_resp_wo_atomics),
+      .mem_req_o   (l2_req                        ),
+      .mem_gnt_i   (l2_req                        ), // Always available
+      .mem_we_o    (l2_we                         ),
+      .mem_addr_o  (l2_addr                       ),
+      .mem_strb_o  (l2_be                         ),
+      .mem_wdata_o (l2_wdata                      ),
+      .mem_rdata_i (l2_rdata                      ),
+      .mem_rvalid_i(l2_rvalid                     ),
+      .mem_atop_o  (/* Unused */                  ),
+      .busy_o      (/* Unused */                  )
+    );
 
 `ifndef SPYGLASS
-  tc_sram #(
-    .NumWords (L2NumWords  ),
-    .NumPorts (1           ),
-    .DataWidth(AxiDataWidth),
-    .SimInit("random"),
-    .Latency(1)
-  ) i_dram (
-    .clk_i  (clk_i                                                                      ),
-    .rst_ni (rst_ni                                                                     ),
-    .req_i  (l2_req                                                                     ),
-    .we_i   (l2_we                                                                      ),
-    .addr_i (l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8):$clog2(AxiDataWidth/8)]),
-    .wdata_i(l2_wdata                                                                   ),
-    .be_i   (l2_be                                                                      ),
-    .rdata_o(l2_rdata                                                                   )
-  );
+    tc_sram #(
+      .NumWords (L2NumWords  ),
+      .NumPorts (1           ),
+      .DataWidth(AxiDataWidth),
+      .SimInit("random"),
+      .Latency(1)
+    ) i_dram (
+      .clk_i  (clk_i                                                                      ),
+      .rst_ni (rst_ni                                                                     ),
+      .req_i  (l2_req                                                                     ),
+      .we_i   (l2_we                                                                      ),
+      .addr_i (l2_addr[$clog2(L2NumWords)-1+$clog2(AxiDataWidth/8):$clog2(AxiDataWidth/8)]),
+      .wdata_i(l2_wdata                                                                   ),
+      .be_i   (l2_be                                                                      ),
+      .rdata_o(l2_rdata                                                                   )
+    );
 `else
-  assign l2_rdata = '0;
+    assign l2_rdata = '0;
 `endif
 
-  // One-cycle latency
-  // `FF(l2_rvalid_1, l2_req, 1'b0);
-  // `FF(l2_rvalid, l2_rvalid_1, 1'b0);
-
-  `FF(l2_rvalid, l2_req, 1'b0);
+    // One-cycle latency
+    `FF(l2_rvalid, l2_req, 1'b0);
+  end
 
   ////////////
   //  UART  //
@@ -508,7 +559,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     .cluster_axi_w_t       (ara_cluster_axi_w_chan_t     ),
     .cluster_axi_req_t     (ara_cluster_axi_req_t        ),
     .cluster_axi_resp_t    (ara_cluster_axi_resp_t       ),
-    
+
     .ariane_axi_ar_t   (ariane_axi_ar_chan_t ),
     .ariane_axi_aw_t   (ariane_axi_aw_chan_t ),
     .ariane_axi_b_t    (ariane_axi_b_chan_t  ),
@@ -572,7 +623,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   if (NrLanes == 0)
     $error("[ara_soc] Ara needs to have at least one lane.");
-  
+
   if (NrClusters == 0)
     $error("[ara_soc] Ara needs to have atleast one group");
 

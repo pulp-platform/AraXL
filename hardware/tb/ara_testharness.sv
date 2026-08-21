@@ -19,7 +19,9 @@ module ara_testharness #(
     parameter int unsigned ClusterAxiDataWidth = 64*NrLanes*NrClusters/2,
 
     // AXI Resp Delay [ps] for gate-level simulation
-    parameter int unsigned AxiRespDelay = 200
+    parameter int unsigned AxiRespDelay = 200,
+    // Pass the system clock period; forwarded to ara_soc's DRAMSys engine.
+    parameter time DramClkPeriod = 1ns
   ) (
     input  logic        clk_i,
     input  logic        rst_ni,
@@ -77,6 +79,9 @@ module ara_testharness #(
     .AxiIdWidth  (AxiIdWidth   ),
     .AxiUserWidth(AxiUserWidth ),
     .AxiRespDelay(AxiRespDelay )
+`ifndef SYNTHESIS
+    ,.DramClkPeriod(DramClkPeriod)
+`endif
   ) i_ara_soc (
     .clk_i         (clk_i       ),
     .rst_ni        (rst_ni      ),
