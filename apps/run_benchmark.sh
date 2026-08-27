@@ -10,10 +10,18 @@ logdir=logs
 
 mkdir -p ${logdir}/$app
 
-for nr_cores in 1 #1 2 4
+# single-core
+for nr_cores in 1
 do
-for nr_clusters in 2 #2 4 8 16
+for nr_clusters in 16
 do
+
+# multi-core
+# for nr_cores in 4
+# do
+# for nr_clusters in 4
+# do
+
 for nr_lanes in 4
 do
 
@@ -22,7 +30,7 @@ cd ../hardware/
 make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
 cd ../apps/
 
-for bytes_lane in 512 256 128 64 32 16 8
+for bytes_lane in 512 #256 128 64 32 16 8
 do
 
 len=$((bytes_lane * nr_lanes * nr_clusters * nr_cores / 8))
@@ -32,7 +40,7 @@ echo "C=$nr_clusters L=$nr_lanes LEN=$len"
 if [[ $app == "fmatmul" ]]
 then
   #args_app="256 256 $len"
-  args_app="32 32 $len"
+  args_app="32 64 $len"
   str_app=FMATMUL
 elif [[ $app == "fconv2d" ]]
 then
@@ -75,7 +83,9 @@ cp bin/benchmarks.dump bin/${appname}.dump
 
 cd ../hardware/
 logfile=../apps/${logdir}/${app}/${nr_lanes}L_${nr_clusters}C_${nr_cores}core_${bytes_lane}B_${latency}${path}.log
-make simc app=${appname} nr_cores=${nr_cores} nr_clusters=$nr_clusters config=${nr_lanes}_lanes > $logfile &
+# logfile=../apps/${logdir}/${app}/${nr_lanes}L_${nr_clusters}C_${bytes_lane}B_${latency}${path}.log
+# make simc app=${appname} nr_cores=${nr_cores} nr_clusters=$nr_clusters config=${nr_lanes}_lanes > $logfile &
+make sim app=${appname} nr_cores=${nr_cores} nr_clusters=$nr_clusters config=${nr_lanes}_lanes
 cd ../apps
 
 done

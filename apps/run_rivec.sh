@@ -12,16 +12,16 @@ latency=$3
 logdir=logs
 nr_lanes=4
 
-for nr_cores in 1 #1 2 4
+for nr_cores in 4
 do
-for nr_clusters in 2 #2 4 8 16
+for nr_clusters in 4
 do
 
 #Build hw
 cd ../hardware/
-make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
+# make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
 cd ../apps/
-for bytes_lane in 512 256 128 64 32 16 8
+for bytes_lane in 512 #256 128 64 32 16 8
 do
 
 len_core=$((bytes_lane * nr_lanes * nr_clusters / 8))
@@ -79,7 +79,9 @@ cp bin/${app}.dump bin/${appname}.dump
 # Run simulation
 cd ../hardware/
 logfile=../apps/${logdir}/${app}/${nr_lanes}L_${nr_clusters}C_${nr_cores}core_${bytes_lane}B_${latency}${path}.log
-make simc nr_cores=${nr_cores} nr_clusters=${nr_clusters} app=${appname} > $logfile &
+# logfile=../apps/${logdir}/${app}/${nr_lanes}L_${nr_clusters}C_${bytes_lane}B_${latency}${path}.log
+make simc app=${appname} nr_cores=${nr_cores} nr_clusters=$nr_clusters config=${nr_lanes}_lanes > $logfile &
+# make sim nr_cores=${nr_cores} nr_clusters=${nr_clusters} app=${appname}
 
 cd ../apps/
 done

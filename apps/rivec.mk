@@ -33,8 +33,8 @@ def_args__lavaMD         ?= "1 1 32"
 
 # Adding compile flags for RiVEC
 
-RISCV_CCFLAGS += -I$(RIVEC_DIR) -DUSE_RISCV_VECTOR
-RISCV_CXXFLAGS += -I$(RIVEC_DIR) -DUSE_RISCV_VECTOR
+RISCV_CCFLAGS += -I$(RIVEC_DIR) -DUSE_RISCV_VECTOR #-DDEBUG
+RISCV_CXXFLAGS += -I$(RIVEC_DIR) -DUSE_RISCV_VECTOR #-DDEBUG
 
 define rivec_gen_data_template
 .PHONY: $1/data.S
