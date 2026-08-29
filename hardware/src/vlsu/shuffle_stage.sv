@@ -258,13 +258,59 @@ logic r_ready_buf, r_ready_buf_q;
 datapath_t rd_datapath;
 ara_op_e rd_op;
 
-// If responses switch from BUFFER to SHUFFLE datapath, we stall to ensure that all responses for the BUFFER datapath have been handled
-// Otherwise the responses that need to use the BUFFER datapath erroneously go into the SHUFFLE datpath.
-logic stall_resp;
-assign stall_resp = (rd_tracker_q[rd_issue_pnt_q[1]].datapath == BUFFER) && (rd_tracker_q[rd_issue_pnt_q[0]].datapath == SHUFFLE) && (rd_cnt_q != 0);
+logic stall_rd_resp;
+logic is_datapath_switch;
+logic is_op_switch;
+req_track_t rd_tracker_first, rd_tracker_last;
 
-assign rd_datapath = stall_resp ? BUFFER : rd_tracker_q[rd_issue_pnt_q[0]].datapath;
-assign rd_op = stall_resp ? rd_tracker_q[rd_issue_pnt_q[1]].op : rd_tracker_q[rd_issue_pnt_q[0]].op;
+always_comb begin
+  rd_tracker_first = rd_tracker_q[rd_issue_pnt_q[0]];
+  rd_tracker_last = rd_tracker_q[rd_issue_pnt_q[NumStages-1]];
+
+  is_datapath_switch = (rd_tracker_last.datapath != rd_tracker_first.datapath);
+  is_op_switch = (rd_tracker_last.op != rd_tracker_first.op);
+  stall_rd_resp = (is_datapath_switch || is_op_switch) && (rd_cnt_q != 0);
+
+  rd_datapath = rd_tracker_last.datapath;
+  rd_op = rd_tracker_last.op;
+end
+
+//////////////////////////////////
+// Mux/Demux for read responses //
+//////////////////////////////////
+
+logic [NrClusters-1:0] axi_rd_unit_stride_ready, axi_rd_unit_stride_valid;
+logic [NrClusters-1:0] axi_rd_buffer_ready, axi_rd_buffer_valid;
+logic [NrClusters-1:0] axi_req_out_r_ready;
+logic [NrClusters-1:0] axi_rd_shuffle_valid, axi_rd_shuffle_ready;
+logic [NrClusters-1:0] axi_rd_indexed_valid, axi_rd_indexed_ready;
+
+for (genvar c=0; c<NrClusters; c++) begin
+  stream_demux #(
+    .N_OUP(2)
+  ) i_demux_indexed_rd (
+    .inp_valid_i   (axi_resp_i[c].r_valid                                 ),
+    .inp_ready_o   (axi_req_out_r_ready[c]                                ),
+    .oup_sel_i     (rd_op inside {VLXE, VLSE} ? 1'b0 : 1'b1               ),
+    .oup_valid_o   ({axi_rd_unit_stride_valid[c], axi_rd_indexed_valid[c]}),
+    .oup_ready_i   ({axi_rd_unit_stride_ready[c], axi_rd_indexed_ready[c]})
+  );
+
+  stream_demux #(
+    .N_OUP(2)
+  ) i_demux_unit_stride_rd (
+    .inp_valid_i   (axi_rd_unit_stride_valid[c]                      ),
+    .inp_ready_o   (axi_rd_unit_stride_ready[c]                      ),
+    .oup_sel_i     ((rd_datapath == BUFFER) ? 1'b0 : 1'b1            ),
+    .oup_valid_o   ({axi_rd_shuffle_valid[c], axi_rd_buffer_valid[c]}),
+    .oup_ready_i   ({axi_rd_shuffle_ready[c], axi_rd_buffer_ready[c]})
+  );
+
+  assign axi_req_o[c].r_ready = axi_req_out_r_ready[c] & ~stall_rd_resp;
+  assign r_data_in[0][c] = axi_resp_i[c].r;
+end
+assign axi_rd_shuffle_ready = {NrClusters{r_ready[0]}};
+assign r_valid[0] = axi_rd_shuffle_valid[0];
 
 // Write packets
 logic [NrClusters-1:0] [ClusterAxiDataWidth*2-1:0]  wrbuf_d, wrbuf_q;
@@ -303,7 +349,7 @@ logic [NrClusters-1:0] axi_wr_indexed_ready, axi_wr_indexed_valid;
 for (genvar c=0; c<NrClusters; c++) begin
   stream_demux #(
     .N_OUP(2)
-  ) i_demux_indexed (
+  ) i_demux_indexed_wr (
     .inp_valid_i   (axi_req_i[c].w_valid                                  ),
     .inp_ready_o   (axi_resp_o[c].w_ready                                 ),
     .oup_sel_i     (wr_op inside {VSXE, VSSE} ? 1'b0 : 1'b1               ),
@@ -313,7 +359,7 @@ for (genvar c=0; c<NrClusters; c++) begin
 
   stream_demux #(
     .N_OUP(NUM_DATAPATHS)
-  ) i_demux_unit_stride (
+  ) i_demux_unit_stride_wr (
     .inp_valid_i   (axi_wr_unit_stride_valid[c]                      ),
     .inp_ready_o   (axi_wr_unit_stride_ready[c]                      ),
     .oup_sel_i     (wr_datapath                                      ),
@@ -686,25 +732,20 @@ always_comb begin
   rd_cluster_completed_d = rd_cluster_completed_q;
   rd_buffer_completed_d = rd_buffer_completed_q;
 
-  // If there is an existing valid data in the buffer and the next request does not use the buffer datapath
-  // we need to stall until the buffer responses are committed to the clusters
-  pending_resp = ((rd_datapath == SHUFFLE) || (rd_op inside {VLXE, VLSE})) && (|buf_valid_q);
-
-  if ((((rd_datapath == BUFFER) || (|buf_valid_q)) && (rd_op == VLE))  || pending_resp) begin
-
+  if ((rd_datapath == BUFFER) && (rd_op == VLE)) begin
     ///// UNIT STRIDE LOADS /////
     ///// 64b precision     /////
 
     // If have a valid handshake on response add to the buffer
     // If have a valid response from L2 after aligning buffer it first pointed by rdbuf_pnt_q
     // Set we have a valid data
-    if (axi_resp_i[0].r_valid & r_ready_buf_q & (&r_ready_i)) begin
+    if (axi_rd_buffer_valid[0] & r_ready_buf_q & (&r_ready_i)) begin
       for (int c=0; c<NrClusters; c++) begin
         buf_d[rdbuf_pnt_q][c] = axi_resp_i[c].r;
       end
       buf_valid_d[rdbuf_pnt_q] = 1'b1;
       rdbuf_pnt_d = (rdbuf_pnt_q == 1'b1) ? 1'b0 : 1'b1;
-      buffer_ld_resp_accepted = 1'b1;
+      axi_rd_buffer_ready = '1;
     end
 
     // Assign data in buffer to the output
@@ -799,8 +840,7 @@ always_comb begin
     
     // The next buffer has to be available only then ready to receive
     r_ready_buf = (buf_valid_d[rdbuf_pnt_d] == 1'b0);
-  end 
-  else if ((rd_op inside {VLXE, VLSE}) & ~pending_resp) begin
+  end else if (rd_op inside {VLXE, VLSE}) begin
 
     ///// INDEXED/STRIDED LOADS /////
     ///// All bit precisions ///// 
@@ -808,9 +848,9 @@ always_comb begin
     // If indexed and strided operation, just forward the data coming from GLSU without shuffling or buffering
     automatic logic single_cluster_handshake = 1'b0;
     for (int c=0; c < NrClusters; c++) begin
-      axi_resp_buf_out[c].r_valid = axi_resp_i[c].r_valid;
+      axi_resp_buf_out[c].r_valid = axi_rd_indexed_valid[c];
       axi_resp_buf_out[c].r = axi_resp_i[c].r;
-      single_cluster_handshake |= (axi_resp_i[c].r_valid & axi_req_i[c].r_ready);
+      single_cluster_handshake |= (axi_rd_indexed_valid[c] & axi_req_i[c].r_ready);
     end
 
     // Do this if we have any valid response
@@ -820,7 +860,7 @@ always_comb begin
       for (int i=0; i <NumStages; i++) begin
         rd_issue_pnt_d[i] = rd_issue_pnt_q[i] + 1;
       end
-      buffer_ld_resp_accepted = 1'b1;
+      axi_rd_indexed_ready = '1;
     end
   end
 
@@ -996,18 +1036,12 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
   assign axi_resp_o[c].b = axi_resp_i[c].b;
 
-  // Reads  
-  assign r_data_in[0][c] = (rd_datapath == BUFFER) ? '0 : axi_resp_i[c].r;             // Copy input resp to first stage
-
   // Take resp from the shuffle or the buffer datapath as necessary, currently prioritize shuffle path
   // Usually responses from both shuffle and buffer paths do not exist simutaneously
   assign axi_resp_o[c].r = r_valid_o[c] ? r_data_out[NumStages-1][c] : axi_resp_buf_out[c].r;  // Copy output resp from last stage
   assign axi_resp_o[c].r_valid = r_valid_o[c] ? ((rd_tracker_q[rd_issue_pnt_q[NumStages-1]].vl[c] == 0) ? 1'b0 : 1'b1) : axi_resp_buf_out[c].r_valid;
 
 end
-
-// Valid input signal to use shuffle datapath
-assign r_valid[0]   = (rd_datapath == BUFFER) ? 1'b0 : (rd_op inside {VLXE, VLSE}) ? 1'b0 : axi_resp_i[0].r_valid;
 
 // Handle Request path
 for (genvar c=0; c < NrClusters; c++) begin
@@ -1018,7 +1052,6 @@ for (genvar c=0; c < NrClusters; c++) begin
   assign axi_req_o[c].b_ready = axi_req_i[c].b_ready;
   
   // Reads
-  assign axi_req_o[c].r_ready = ((rd_datapath == BUFFER) ? buffer_ld_resp_accepted : r_ready[0] ) & ~pending_resp;
   assign r_ready_i[c] = axi_req_i[c].r_ready;           // From input request, get ready inputs to stream fork
 
   // Writes
