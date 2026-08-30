@@ -261,15 +261,19 @@ ara_op_e rd_op;
 logic stall_rd_resp;
 logic is_datapath_switch;
 logic is_op_switch;
-req_track_t rd_tracker_first, rd_tracker_last;
+req_track_t rd_tracker_first, rd_tracker_last, rd_tracker_second;
+
+logic is_shuffle_ongoing, is_buffer_ongoing;
 
 always_comb begin
   rd_tracker_first = rd_tracker_q[rd_issue_pnt_q[0]];
+  rd_tracker_second = rd_tracker_q[rd_issue_pnt_q[1]];
   rd_tracker_last = rd_tracker_q[rd_issue_pnt_q[NumStages-1]];
+  
+  is_shuffle_ongoing = (rd_tracker_last.datapath == SHUFFLE) && (rd_tracker_first.datapath != SHUFFLE);
+  is_buffer_ongoing = (rd_tracker_last.datapath == BUFFER) && !(rd_tracker_last.op inside {VLXE, VLSE}) && (rd_tracker_first.op inside {VLXE, VLSE} || rd_tracker_second.op inside {VLXE, VLSE});
 
-  is_datapath_switch = (rd_tracker_last.datapath != rd_tracker_first.datapath);
-  is_op_switch = (rd_tracker_last.op != rd_tracker_first.op);
-  stall_rd_resp = (is_datapath_switch || is_op_switch) && (rd_cnt_q != 0);
+  stall_rd_resp = (is_shuffle_ongoing || is_buffer_ongoing) && (rd_cnt_q > 1);
 
   rd_datapath = rd_tracker_last.datapath;
   rd_op = rd_tracker_last.op;
@@ -728,6 +732,9 @@ always_comb begin
   shift_d = shift_q;
   r_ready_buf = r_ready_buf_q;
   buffer_ld_resp_accepted = 1'b0;
+
+  axi_rd_buffer_ready = '0;
+  axi_rd_indexed_ready = '0;
 
   rd_cluster_completed_d = rd_cluster_completed_q;
   rd_buffer_completed_d = rd_buffer_completed_q;
