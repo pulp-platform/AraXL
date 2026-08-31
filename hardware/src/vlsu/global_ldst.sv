@@ -78,6 +78,7 @@ vew_e vew_d, vew_q;
 vlen_cluster_t vl_ldst_rd_d, vl_ldst_rd_q, vl_ldst_wr_d, vl_ldst_wr_q;
 
 logic fifo_push_d, fifo_push_q;
+logic w_fifo_push_d, w_fifo_push_q;
 
 // These are updated only when a new aw/ar is accepted
 assign cluster_metadata_o.vew = vew_d;
@@ -103,6 +104,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     r_resp_lane_q <= '0;
     r_resp_rem_q  <= '0;
     fifo_push_q   <= 1'b0;
+    w_fifo_push_q <= 1'b0;
     axi_resp_q    <= '0;
   end else begin
     r_req_valid_q <= r_req_valid_d;
@@ -119,6 +121,7 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     r_resp_lane_q <= r_resp_lane_d;
     r_resp_rem_q  <= r_resp_rem_d;
     fifo_push_q   <= fifo_push_d;
+    w_fifo_push_q <= w_fifo_push_d;
     axi_resp_q    <= axi_resp_d;
   end
 end
@@ -247,6 +250,7 @@ always_comb begin : p_global_ldst
   fifo_push_i = 1'b0;
   b_fifo_push_i = 1'b0;
   fifo_push_d = fifo_push_q;
+  w_fifo_push_d = w_fifo_push_q;
 
   // Initialize cluster pointers and request counters
   cluster_aw_d = cluster_aw_q;
@@ -328,24 +332,24 @@ always_comb begin : p_global_ldst
         vl_ldst_wr_d -= vl_w_done;
         req_d.aw.addr = wr_aligned_next_start_addr_d;     // Update request state
         w_req_valid_d = 1'b1;
-        b_fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
-        fifo_push_d = 1'b1;
+        b_fifo_push_i = w_fifo_push_q ? 1'b0 : 1'b1;
+        w_fifo_push_d = 1'b1;
       end else begin
         vl_ldst_wr_d = '0;
         w_req_valid_d = 1'b0;
-        b_fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
-        fifo_push_d = 1'b0;
+        b_fifo_push_i = w_fifo_push_q ? 1'b0 : 1'b1;
+        w_fifo_push_d = 1'b0;
       end
     end else begin
       vl_ldst_wr_d -= 1;
       // If request already pushed to fifo don't push again
-      b_fifo_push_i = fifo_push_q ? 1'b0 : 1'b1;
-      fifo_push_d = 1'b1;
+      b_fifo_push_i = w_fifo_push_q ? 1'b0 : 1'b1;
+      w_fifo_push_d = 1'b1;
       if (vl_ldst_wr_d == 0) begin
         // If we have sent all the requests for this indexed vector store, we can move the AW pointer back to cluster 0.
         cluster_aw_d = '0;
         lane_aw_d = '0;
-        fifo_push_d = 1'b0;
+        w_fifo_push_d = 1'b0;
       end
       w_req_valid_d = 1'b0;
     end 
