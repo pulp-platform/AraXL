@@ -171,6 +171,8 @@ assign axi_resp_i_cut[0].r_valid = axi_resp_i.r_valid;
 // Handle Vector Loads //
 /////////////////////////
 
+logic is_load_aligned, is_load_resp_valid;
+
 always_comb begin
 
   // Initialize state
@@ -239,13 +241,10 @@ always_comb begin
 
   ///// Handling unaligned data using byte enable /////
 
-  // If a stage receives a valid packet, shift the byte enable
-  for (int s=0; s < NumStages; s++) begin
-    if (axi_resp_o_cut[s].r_valid) begin
-      be_d[s+1] = tracker_q[rd_resp_pnt_q[s]].shift_en[s] ? be_q[s] >> (1 << s) : be_q[s];
-    end
-  end
   be_final_d = be_q[NumStages];
+
+  is_load_aligned = be_final_d[AxiDataBytes-1];
+  is_load_resp_valid = axi_resp_i_cut[NumStages].r_valid;
 
   ///// Handle incoming AXI responses /////
 
@@ -259,7 +258,7 @@ always_comb begin
   axi_req_cut_ready[NumStages] = axi_req_i.r_ready;
   
   // For a valid handshake assign to buffer to be used later
-  if (axi_resp_i_cut[NumStages].r_valid && axi_req_i.r_ready) begin
+  if (is_load_resp_valid && axi_req_i.r_ready) begin
     // Buffer data in this cycle
     data_d = axi_resp_i_cut[NumStages].r.data;
     data_valid_d     = 1'b1;
@@ -277,7 +276,7 @@ always_comb begin
       // If misaligned, make sure you have a valid beat in the current cycle
       // or if the transaction is short that is check if previous beat was the last beat
       // Otherwise, we have a valid data if the request is aligned
-      automatic logic valid_data = (~be_final_d[AxiDataBytes-1] & (axi_resp_i_cut[NumStages].r_valid | last_q)) | be_final_d[AxiDataBytes-1];
+      automatic logic valid_data = (~is_load_aligned & (is_load_resp_valid | last_q)) | is_load_aligned;
       for (int b=0; b<AxiDataBytes; b++) begin
         axi_resp_o.r.data[b*8 +: 8] = be_final_d[b] ? data_q[b*8 +: 8] : axi_resp_i_cut[NumStages].r.data[b*8 +: 8];
       end
@@ -290,7 +289,7 @@ always_comb begin
         tracker_d[rd_resp_pnt_q_del[NumStages-1]].len -= axi_valid_el;
 
         // If aligned request, set data valid only if available valid beat
-        data_valid_d = be_final_d[AxiDataBytes-1] ? axi_resp_i_cut[NumStages].r_valid : 1'b1;
+        data_valid_d = is_load_aligned ? is_load_resp_valid : 1'b1;
       
         // Use vl from tracker to check if this is the last data packet or not
         // Since using delayed data, using delayed pointer to the tracker
@@ -300,14 +299,12 @@ always_comb begin
 
           // If the current data is not misaligned and we have a valid data
           // Set valid data for the next subsequent load to avoid bubble
-          data_valid_d = be_final_d[AxiDataBytes-1] & axi_resp_i_cut[NumStages].r_valid;
+          data_valid_d = is_load_aligned & is_load_resp_valid;
 
-          // If misaligned but we already have a response for the next request,
-          // stall it for 1 cycle
-          if (!be_final_d[AxiDataBytes-1] & !axi_resp_i_cut[NumStages].r.last) begin
+          // If misaligned stall it for 1 cycle
+          if (!is_load_aligned & last_q) begin
             axi_req_cut_ready[NumStages] = 1'b0;
           end
-
           last_d = 1'b0;
         end
       end
@@ -322,6 +319,13 @@ always_comb begin
     axi_resp_o.r.data = data_d;
     last_d = 1'b0;
     data_valid_d = 1'b0;
+  end
+
+  // If a stage receives a valid packet, shift the byte enable
+  for (int s=0; s < NumStages; s++) begin
+    if (axi_resp_o_cut[s].r_valid & axi_req_cut_ready[NumStages]) begin
+      be_d[s+1] = tracker_q[rd_resp_pnt_q[s]].shift_en[s] ? be_q[s] >> (1 << s) : be_q[s];
+    end
   end
 
   ///// Pointer updates to align stages /////
