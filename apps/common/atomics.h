@@ -33,7 +33,7 @@ extern atomic_int_t sync_generation;
 /////////////
 
 // Barrier implementation using atomic operations for multi-core configurations
-inline void sync_barrier() {
+inline void sync_barrier_simple() {
 # if NR_CORES > 1
   // Snapshot generation before incrementing count so we know which
   // generation we are waiting for.
@@ -47,6 +47,41 @@ inline void sync_barrier() {
     // to the next barrier cannot cause a deadlock.
     while (__atomic_load_n(&sync_generation, __ATOMIC_SEQ_CST) == gen)
       ;
+  }
+#endif
+}
+
+// Same barrier as above, but hand-written in RISC-V asm using AMOs with
+// aq/rl bits encoded directly in the instruction, instead of relying on
+// the compiler to emit standalone fence instructions around plain loads
+// and stores for SEQ_CST ordering. Callers that need ordering beyond what
+// the AMOs themselves provide must issue fence() explicitly.
+inline void sync_barrier() {
+# if NR_CORES > 1
+  int gen, count;
+
+  asm volatile("lw %0, %1" : "=r"(gen) : "m"(sync_generation) : "memory");
+  asm volatile("amoadd.w.aqrl %1, %2, %0"
+               : "+A"(sync_flag), "=r"(count)
+               : "r"(1)
+               : "memory");
+
+  if (count == NR_CORES - 1) {
+    // Last core: reset count then bump generation to release all spinners.
+    asm volatile("amoswap.w.rl zero, zero, %0" : "+A"(sync_flag) :: "memory");
+    asm volatile("amoadd.w.aqrl zero, %1, %0"
+                 : "+A"(sync_generation)
+                 : "r"(1)
+                 : "memory");
+  } else {
+    // Spin on generation, not on sync_flag, so a fast core racing back
+    // to the next barrier cannot cause a deadlock. lr.w.aq (rather than a
+    // plain lw) makes the loop exit itself an acquire, so no trailing
+    // fence is needed to see writes published by the releasing core.
+    int cur;
+    do {
+      asm volatile("lr.w.aq %0, %1" : "=r"(cur) : "A"(sync_generation) : "memory");
+    } while (cur == gen);
   }
 #endif
 }
