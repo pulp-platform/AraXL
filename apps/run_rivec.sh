@@ -17,15 +17,20 @@ do
 for nr_clusters in 4
 do
 
+# for nr_cores in 1
+# do
+# for nr_clusters in 16
+# do
+
 #Build hw
 cd ../hardware/
-# make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
+make compile nr_cores=${nr_cores} nr_clusters=${nr_clusters} config=${nr_lanes}_lanes ${path}_latency=$latency -B
 cd ../apps/
-for bytes_lane in 512 #256 128 64 32 16 8
+
+for bytes_lane in 512 256 128 64 32 16 8
 do
 
-len_core=$((bytes_lane * nr_lanes * nr_clusters / 8))
-len=$((len_core * nr_cores))
+len=$((bytes_lane * nr_lanes * nr_clusters * nr_cores / 8))
 
 # set parameters
 if [[ $app == "_axpy" ]]
@@ -45,8 +50,8 @@ app_size="medium_${len}"
 elif [[ $app == "_streamcluster" ]]
 then
 len=$((len * 2))
-args_app="3 3 ${len} 8 8 10"
-app_size=3_3_${len}_8_8_10
+args_app="3 10 ${len} 128 128 10"
+app_size=3_10_${len}_128_128_10
 elif [[ $app == "_spmv" ]]
 then
 args_app="input/lhr07.mtx"
@@ -57,13 +62,15 @@ args_app="input/100.nets"
 app_size=100
 elif [[ $app == "_swaptions" ]]
 then
-args_app="${len_core} ${nr_cores}"
-app_size=${len_core}_${nr_cores}
+nr_swaptions=${nr_cores}
+args_app="${len} ${nr_swaptions}"
+app_size=${len}_${nr_swaptions}
 elif [[ $app == "_lavaMD" ]]
 then
 len=$((len * 2))
-args_app="${nr_cores} 1 ${len}"
-app_size=${nr_cores}_1_${len}
+boxes_1d=2
+args_app="${nr_cores} ${boxes_1d} ${len}"
+app_size=${nr_cores}_${boxes_1d}_${len}
 else
   echo "RiVEC app not supported!!"
 fi
