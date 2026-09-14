@@ -75,13 +75,14 @@ int main(int hart_id) {
   
   softmax_vec_reduction(i_hart, o_v_hart, channels_hart, innerSize);
 
+  if (hart_id == 0)
+    stop_timer();
+
 #if NR_CORES > 1
   sync_barrier();
 #endif
 
   if (hart_id == 0) {
-    stop_timer();
-
     runtime = get_timer();
   
     float utilization = 100.0 * (22 * innerSize * channels) / (NR_LANES * NR_CLUSTERS * NR_CORES * runtime);
