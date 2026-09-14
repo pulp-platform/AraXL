@@ -75,13 +75,14 @@ int main(int hart_id) {
   
   exp_1xf64_bmark(exponents_f64_hart, results_f64_hart, N_f64_hart);
 
+  if (hart_id == 0)
+    stop_timer();
+
 #if NR_CORES > 1
   sync_barrier();
 #endif
   
   if (hart_id == 0) {
-    stop_timer();
-
     runtime = get_timer();
 
     float utilization = 100.0 * (18 * N_f64) / (NR_LANES * NR_CLUSTERS * NR_CORES * runtime);
