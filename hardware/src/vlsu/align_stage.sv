@@ -327,7 +327,6 @@ always_comb begin
       be_d[s+1] = tracker_q[rd_resp_pnt_q[s]].shift_en[s] ? be_q[s] >> (1 << s) : be_q[s];
     end
   end
-
   ///// Pointer updates to align stages /////
 
   // Update read pointer of each stage
@@ -361,6 +360,7 @@ typedef struct packed {
   int len;
   ara_op_e op;
   axi_addr_t addr;
+  rvv_pkg::vew_e vew;
 } wr_req_track_t;
 
 // Tracking write requests
@@ -436,6 +436,7 @@ always_comb begin
     wr_track_d[wr_pnt_q].addr          = axi_req_i.aw.addr;
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
     wr_track_d[wr_pnt_q].op            = cluster_metadata_i.op;
+    wr_track_d[wr_pnt_q].vew           = cluster_metadata_i.vew;
     b_track_d[b_pnt_q].count          += 1;
 
     wr_cnt_d += 1;
@@ -495,8 +496,8 @@ always_comb begin
       axi_req_o.w.data = '0;
       // Set the strb according to the vector length and element width
       for (int i = 0; i < AxiDataWidth/8; i++) begin
-        if (i < cluster_metadata_i.vl && (i * (1 << int'(cluster_metadata_i.vew)) < AxiDataWidth/8)) begin
-          unique case (cluster_metadata_i.vew)
+        if (i < cluster_metadata_i.vl && (i * (1 << int'(wr_track_q[wr_commit_pnt_q].vew)) < AxiDataWidth/8)) begin
+          unique case (wr_track_q[wr_commit_pnt_q].vew)
             EW8:  begin 
               axi_req_o.w.strb[i]         = axi_req_i.w.strb[i];
               axi_req_o.w.data[i*8 +: 8]  = axi_req_i.w.data[i*8 +: 8];
