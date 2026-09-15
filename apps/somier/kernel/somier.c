@@ -12,7 +12,7 @@
 #include <inttypes.h>
 #include <errno.h>
 #include <assert.h>
-
+#include "printf.h"
 
 #include "../utils.h"
 
@@ -36,16 +36,16 @@ void init_X (int n1, int n2, double (*X)[n1][n1][n2])
             X[1][i][j][k] = j;
             X[2][i][j][k] = k;
            
-           if (k<n1) {
+           if (k<n2) {
             Xcenter[0] += X[0][i][j][k];
             Xcenter[1] += X[1][i][j][k];
             Xcenter[2] += X[2][i][j][k];
            }
          }
 
-    Xcenter[0] /= (n1*n1*n1);
-    Xcenter[1] /= (n1*n1*n1);
-    Xcenter[2] /= (n1*n1*n1);
+    Xcenter[0] /= (n1*n1*n2);
+    Xcenter[1] /= (n1*n1*n2);
+    Xcenter[2] /= (n1*n1*n2);
 }
 
 //make sure the boundary nodes are fixed
@@ -106,7 +106,7 @@ void compute_force_new(int n1, int n2, double (*X)[n1][n1][n2], double (*F)[n1][
 {
    for (int i=1; i<n1-1; i++) {
       for (int j=1; j<n1-1; j++) {
-         for (int k=1; k<n1-1; k++) {
+         for (int k=1; k<n2-1; k++) {
             force_contribution (n1, n2, X, F, i, j, k, i-1, j,   k);
             force_contribution (n1, n2, X, F, i, j, k, i+1, j,   k);
             force_contribution (n1, n2, X, F, i, j, k, i,   j-1, k);
@@ -121,13 +121,14 @@ void compute_force_new(int n1, int n2, double (*X)[n1][n1][n2], double (*F)[n1][
 void acceleration(int n1, int n2, double (*A)[n1][n1][n2], double (*F)[n1][n1][n2], double M)
 {
    int i, j, k;
+   double invM = 1.0/M;          // compute reciprocal once, like accel_intr does
 //#dear compiler: please fuse next two loops if you can
    for (i = 0; i<n1; i++)
       for (j = 0; j<n1; j++)
-         for (k = 0; k<n1; k++) {
-            A[0][i][j][k]= F[0][i][j][k]/M;
-            A[1][i][j][k]= F[1][i][j][k]/M;
-            A[2][i][j][k]= F[2][i][j][k]/M;
+         for (k = 0; k<n2; k++) {
+            A[0][i][j][k]= F[0][i][j][k] * invM;///M;
+            A[1][i][j][k]= F[1][i][j][k] * invM;///M;
+            A[2][i][j][k]= F[2][i][j][k] * invM;///M;
 	 }
 
 }
@@ -142,7 +143,7 @@ void velocities(int n1, int n2, double (*V)[n1][n1][n2], double (*A)[n1][n1][n2]
 //      #pragma omp unroll
       for (j = 0; j<n1; j++) {
 	 #pragma omp simd
-         for (k = 0; k<n1; k++) {
+         for (k = 0; k<n2; k++) {
                V[0][i][j][k] += A[0][i][j][k]*dt;
                V[1][i][j][k] += A[1][i][j][k]*dt;
                V[2][i][j][k] += A[2][i][j][k]*dt;
@@ -156,7 +157,7 @@ void positions(int n1, int n2, double (*X)[n1][n1][n2], double (*V)[n1][n1][n2],
 //#dear compiler: please fuse next two loops if you can
    for (i = 0; i<n1; i++)
       for (j = 0; j<n1; j++)
-         for (k = 0; k<n1; k++) {
+         for (k = 0; k<n2; k++) {
                X[0][i][j][k] += V[0][i][j][k]*dt;
                X[1][i][j][k] += V[1][i][j][k]*dt;
                X[2][i][j][k] += V[2][i][j][k]*dt;
@@ -166,9 +167,10 @@ void positions(int n1, int n2, double (*X)[n1][n1][n2], double (*V)[n1][n1][n2],
 void compute_stats(int n1, int n2, double (*X)[n1][n1][n2], double Xcenter[3])
 {
    double sum0, sum1, sum2 = 0.0;
+
    for (int i = 0; i<n1; i++) {
       for (int j = 0; j<n1; j++) {
-         for (int k = 0; k<n1; k++) {
+         for (int k = 0; k<n2; k++) {
             Xcenter[0] += X[0][i][j][k];
             Xcenter[1] += X[1][i][j][k];
             Xcenter[2] += X[2][i][j][k];
@@ -176,7 +178,8 @@ void compute_stats(int n1, int n2, double (*X)[n1][n1][n2], double Xcenter[3])
       }
    }
    
-   Xcenter[0] /= (n1*n1*n1);
-   Xcenter[1] /= (n1*n1*n1);
-   Xcenter[2] /= (n1*n1*n1);
+   Xcenter[0] /= (n1*n1*n2);
+   Xcenter[1] /= (n1*n1*n2);
+   Xcenter[2] /= (n1*n1*n2);
+
 }

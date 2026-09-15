@@ -24,7 +24,7 @@ void print_4D (int n1, int n2, char*name, double (*y)[n1][n1][n2])
       for (i = 0; i<n1; i++) {
          for (j = 0; j<n1; j++) {
             printf("\n%s[%d][%d][%d][0..%d] ", name, dim, i, j, n1-1);
-            for (k = 0; k<n1; k++) {
+            for (k = 0; k<n2; k++) {
                printf("%.4f ", y[dim][i][j][k]);
             }
          }
@@ -87,8 +87,8 @@ void print_state(int n1, int n2, double (*X)[n1][n1][n2], double Xcenter[3], int
    printf ("t=%d\t", nt);
    printf ("XC= %f,%f,%f X[n/2-1] = %f,%f,%f  X[n/2] = %f,%f,%f X[n/2+1] = %f,%f,%f \n",
             Xcenter[0],            Xcenter[1],            Xcenter[2],
-            X[0][n1/2-1][n1/2][n1/2], X[1][n1/2-1][n1/2][n1/2], X[2][n1/2-1][n1/2][n1/2],
-            X[0][n1/2][n1/2][n1/2],   X[1][n1/2][n1/2][n1/2],   X[2][n1/2][n1/2][n1/2],
-            X[0][n1/2+1][n1/2][n1/2], X[1][n1/2+1][n1/2][n1/2], X[2][n1/2+1][n1/2][n1/2]);
+            X[0][n1/2-1][n1/2][n2/2], X[1][n1/2-1][n1/2][n2/2], X[2][n1/2-1][n1/2][n2/2],
+            X[0][n1/2][n1/2][n2/2],   X[1][n1/2][n1/2][n2/2],   X[2][n1/2][n1/2][n2/2],
+            X[0][n1/2+1][n1/2][n2/2], X[1][n1/2+1][n1/2][n2/2], X[2][n1/2+1][n1/2][n2/2]);
 }
 

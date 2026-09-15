@@ -30,17 +30,19 @@ void accel_intr(int n1, int n2, double (*A)[n1][n1][n2], double (*F)[n1][n1][n2]
 
    for (i = 0; i<n1; i++)
       for (j = 0; j<n1; j++)
-         for (k = 0; k<n1; ) {
-            rvl = n1-k;
+         for (k = 0; k<n2; ) {
+            rvl = n2-k;
             gvl = _MMR_VSETVL_E64M1(rvl);
             _MMR_f64 v_invM = _MM_SET_f64(invM, gvl);
 
             vF0 = _MM_LOAD_f64( &F[0][i][j][k], gvl );
             vF1 = _MM_LOAD_f64( &F[1][i][j][k], gvl );
             vF2 = _MM_LOAD_f64( &F[2][i][j][k], gvl );
+
             vA0 = _MM_MUL_f64(vF0, v_invM, gvl);
             vA1 = _MM_MUL_f64(vF1, v_invM, gvl);
             vA2 = _MM_MUL_f64(vF2, v_invM, gvl);
+
             _MM_STORE_f64(&A[0][i][j][k], vA0, gvl);
             _MM_STORE_f64(&A[1][i][j][k], vA1, gvl);
             _MM_STORE_f64(&A[2][i][j][k], vA2, gvl);
@@ -70,16 +72,18 @@ void vel_intr(int n1, int n2, double (*V)[n1][n1][n2], double (*A)[n1][n1][n2], 
    //MAX = n1;
    for (i = 0; i<n1; i++) {
       for (j = 0; j<n1; j++) {
-         for (k = 0; k<n1; ) {
-            rvl = n1-k;
+         for (k = 0; k<n2; ) {
+            rvl = n2-k;
 #endif
             gvl = _MMR_VSETVL_E64M1(rvl);
             _MMR_f64 vdt = _MM_SET_f64(dt, gvl);
 
             vV0 = _MM_LOAD_f64( &V[0][i][j][k], gvl );
             vA0 = _MM_LOAD_f64( &A[0][i][j][k], gvl );
+
             vV1 = _MM_LOAD_f64( &V[1][i][j][k], gvl );
             vA1 = _MM_LOAD_f64( &A[1][i][j][k], gvl );
+
             vV2 = _MM_LOAD_f64( &V[2][i][j][k], gvl );
             vA2 = _MM_LOAD_f64( &A[2][i][j][k], gvl );
 
@@ -115,16 +119,18 @@ void pos_intr(int n1, int n2, double (*X)[n1][n1][n2], double (*V)[n1][n1][n2], 
 
    for (i = 0; i<n1; i++) {
       for (j = 0; j<n1; j++) {
-         for (k = 0; k<n1;) {
-            rvl = n1-k;
+         for (k = 0; k<n2;) {
+            rvl = n2-k;
             gvl = _MMR_VSETVL_E64M1(rvl);
 
             _MMR_f64 vdt = _MM_SET_f64(dt, gvl);
 
             vX0 = _MM_LOAD_f64( &X[0][i][j][k], gvl );
             vV0 = _MM_LOAD_f64( &V[0][i][j][k], gvl );
+
             vX1 = _MM_LOAD_f64( &X[1][i][j][k], gvl );
             vV1 = _MM_LOAD_f64( &V[1][i][j][k], gvl );
+
             vX2 = _MM_LOAD_f64( &X[2][i][j][k], gvl );
             vV2 = _MM_LOAD_f64( &V[2][i][j][k], gvl );
 

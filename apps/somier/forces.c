@@ -16,7 +16,7 @@ void force_contribution(int n1, int n2, double (*X)[n1][n1][n2], double (*F)[n1]
    assert (i >= 1); assert (j >= 1); assert (k >= 0);
    assert (i <  n1-1); assert (j <  n1-1); assert (k <  n2-1);
    assert (neig_i >= 0); assert (neig_j >= 0); assert (neig_k >= 0);
-   assert (neig_i <  n1); assert (neig_j <  n1); assert (neig_k <  n1);
+   assert (neig_i <  n1); assert (neig_j <  n1); assert (neig_k <  n2);
 
    dx=X[0][neig_i][neig_j][neig_k]-X[0][i][j][k];
    dy=X[1][neig_i][neig_j][neig_k]-X[1][i][j][k];
@@ -35,7 +35,7 @@ void compute_forces(int n1, int n2, double (*X)[n1][n1][n2], double (*F)[n1][n1]
 {
    for (int i=1; i<n1-1; i++) {
       for (int j=1; j<n1-1; j++) {
-         for (int k=1; k<n1-1; k++) {
+         for (int k=1; k<n2-1; k++) {
             force_contribution (n1, n2, X, F, i, j, k, i-1, j,   k);
             force_contribution (n1, n2, X, F, i, j, k, i+1, j,   k);
             force_contribution (n1, n2, X, F, i, j, k, i,   j-1, k);
