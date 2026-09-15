@@ -62,11 +62,11 @@ void particleFilter_vec(double *CDF, double *u, uint64_t *locations, int Npartic
 
     int gvl;
 
-    for(int i = 0; i < Nparticles - 1;){
+    for(int i = 0; i < Nparticles - 1; ){
 
         asm volatile("vsetvli %0, %1, e64, m1, ta, ma" : "=r"(gvl) : "r"(Nparticles-i));
         vector_complete             = 0;    
-        asm volatile ("vlm.v v2, (%0)"::"r"(&Mask[i]));                 // xMask, initally 0
+        asm volatile ("vlm.v v2, (%0)"::"r"(&Mask[0]));                 // xMask, initally 0
         asm volatile ("vmv.v.x v3, %0" :: "r"(Nparticles-1));           // xArray, every lane has the maximum index as default value
         asm volatile ("vle64.v v4, (%0)"::"r"(&u[i]));                  // u, load the random numbers
  
@@ -91,6 +91,7 @@ void particleFilter_vec(double *CDF, double *u, uint64_t *locations, int Npartic
             }
         }
         asm volatile ("vse64.v v3, (%0)"::"r"(&locations[i]));          // locations 
-        i = i + gvl;
+        
+        i = i + gvl;   
     }
 }
