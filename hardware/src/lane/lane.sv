@@ -104,6 +104,11 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     output logic                                           mask_ready_o
   );
 
+  // Workaround to support STRUCT_PORT for hierarchical verilation
+  // To remove if not necessary for later verilator versions
+  pe_req_t pe_req;
+  assign pe_req = pe_req_i;
+
   /////////////////
   //  Spill Reg  //
   /////////////////
@@ -151,7 +156,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .cluster_id_i           (cluster_id_i         ),
     .num_clusters_i         (num_clusters_i       ),
     // Interface with the main sequencer
-    .pe_req_i               (pe_req_i             ),
+    .pe_req_i               (pe_req               ),
     .pe_req_valid_i         (pe_req_valid_i       ),
     .pe_vinsn_running_i     (pe_vinsn_running_i   ),
     .pe_req_ready_o         (pe_req_ready_o       ),
@@ -322,9 +327,9 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
 
   always_comb begin
     mask_result_broadcast_d = mask_result_broadcast_q;
-    if (pe_req_i.op == VCPOP) begin
+    if (pe_req.op == VCPOP) begin
       mask_result_broadcast_d[0] = '0;
-    end else if (pe_req_i.op == VFIRST) begin
+    end else if (pe_req.op == VFIRST) begin
       mask_result_broadcast_d[0] = {1'b0, {($bits(mask_result_broadcast_d[0])-1){1'b1}}};
     end
     mask_result_broadcast_d[1] = mask_result_scalar_i;
@@ -443,7 +448,7 @@ module lane import ara_pkg::*; import rvv_pkg::*; #(
     .sldu_red_completed_i (sldu_red_completed_i                   ),
     // Interface with the operand queues
     // ALU
-    .alu_operand_i        (pe_req_i.is_mask_instr ? mask_result_broadcast_d : alu_operand), 
+    .alu_operand_i        (pe_req.is_mask_instr ? mask_result_broadcast_d : alu_operand),
     .alu_operand_valid_i  (alu_operand_valid                      ),
     .alu_operand_ready_o  (alu_operand_ready                      ),
     // Multiplier/FPU
