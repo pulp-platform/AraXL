@@ -58,23 +58,9 @@ localparam int unsigned NUM_DATAPATHS = 2;
 localparam int unsigned NumTrackers=16;
 
 typedef enum logic { SHUFFLE, BUFFER } datapath_t;
+
 typedef logic [$clog2(NumTrackers)-1:0] pnt_t; 
 typedef logic [$clog2(NumTrackers):0] cnt_t;
-typedef axi_w_t [NrClusters-1:0] stage_w_t; 
-
-logic [NrClusters-1:0] buf_sel_d, buf_sel_q;
-logic cluster_sel_d, cluster_sel_q;
-logic cluster_buf_ready, cluster_buf_valid;
-
-pnt_t [NumStages-1:0] wr_issue_pnt_d, wr_issue_pnt_q;
-
-logic [NrClusters-1:0] wr_cluster_completed_d, wr_cluster_status_completed;
-
-`FF(buf_sel_q,              buf_sel_d,              '0, clk_i, rst_ni)
-`FF(cluster_sel_q,          cluster_sel_d,          '0, clk_i, rst_ni)
-
-typedef logic [$clog2(NumTrackers)-1:0] pnt_t; 
-typedef logic [$clog2(NumTrackers):0]   cnt_t;
 
 typedef axi_w_t [NrClusters-1:0] stage_w_t;
 typedef axi_r_t [NrClusters-1:0] stage_r_t;
@@ -225,10 +211,6 @@ stream_fork #(
   .ready_i(r_ready_i            ),
   .ready_o(r_ready[NumStages-1] )
 );
-
-logic [NrClusters-1:0] axi_wr_buffer_valid, axi_wr_buffer_ready;
-logic [NrClusters-1:0] axi_wr_shuffle_valid, axi_wr_shuffle_ready;
-logic [NrClusters-1:0] axi_wr_shuffle_ready_inp, axi_wr_shuffle_valid_inp;
 
 // To handle cases where write data does not come simultaneously 
 // from all the clusters
@@ -498,113 +480,6 @@ end
 stage_w_t  wr_buf_data_o;
 stage_w_t  axi_req_unit_stride_o;
 cluster_bitmask_t wr_buf_ready_o, wr_buf_data_valid;
-
-for (genvar c=0; c<NrClusters; c++) begin
-  stream_mux #(
-    .DATA_T(axi_w_t),
-    .N_INP(NUM_DATAPATHS)
-  ) i_mux_unit_stride (
-    .inp_data_i    ({wr_buf_data_o[c], w_data_out[NumStages-1][c]}),
-    .inp_ready_o   ({wr_buf_ready_o[c], w_ready_shuffle[c]}       ),
-    .inp_valid_i   ({wr_buf_data_valid[c], w_valid[NumStages-1]}  ),
-    .inp_sel_i     (wr_datapath                                   ),
-    .oup_ready_i   (axi_req_unit_stride_ready[c]                  ),
-    .oup_valid_o   (axi_req_unit_stride_valid[c]                  ),
-    .oup_data_o    (axi_req_unit_stride_o[c]                      )
-  );
-
-  stream_mux #(
-    .DATA_T(axi_w_t),
-    .N_INP(2)
-  ) i_mux_indexed (
-    .inp_data_i    ({axi_req_unit_stride_o[c], axi_req_i[c].w}             ),
-    .inp_ready_o   ({axi_req_unit_stride_ready[c], axi_wr_indexed_ready[c]}),
-    .inp_valid_i   ({axi_req_unit_stride_valid[c], axi_wr_indexed_valid[c]}),
-    .inp_sel_i     (wr_op inside {VSXE, VSSE} ? 1'b0 : 1'b1                ),
-    .oup_ready_i   (axi_resp_i[c].w_ready                                  ),
-    .oup_valid_o   (axi_req_o[c].w_valid                                   ),
-    .oup_data_o    (axi_req_o[c].w                                         )
-  );
-end
-
-logic [NrClusters-1:0] buffer_wr_data_accepted;
-
-///////////////////////////////
-// Mux/Demux for write data  //
-///////////////////////////////
-
-logic [NrClusters-1:0] axi_req_unit_stride_ready, axi_req_unit_stride_valid;
-logic [NrClusters-1:0] axi_wr_unit_stride_ready, axi_wr_unit_stride_valid;
-logic [NrClusters-1:0] axi_wr_indexed_ready, axi_wr_indexed_valid;
-
-for (genvar c=0; c<NrClusters; c++) begin
-  stream_demux #(
-    .N_OUP(2)
-  ) i_demux_indexed (
-    .inp_valid_i   (axi_req_i[c].w_valid                                  ),
-    .inp_ready_o   (axi_resp_o[c].w_ready                                 ),
-    .oup_sel_i     (wr_op inside {VSXE, VSSE} ? 1'b0 : 1'b1               ),
-    .oup_valid_o   ({axi_wr_unit_stride_valid[c], axi_wr_indexed_valid[c]}),
-    .oup_ready_i   ({axi_wr_unit_stride_ready[c], axi_wr_indexed_ready[c]})
-  );
-
-  stream_demux #(
-    .N_OUP(NUM_DATAPATHS)
-  ) i_demux_unit_stride (
-    .inp_valid_i   (axi_wr_unit_stride_valid[c]                      ),
-    .inp_ready_o   (axi_wr_unit_stride_ready[c]                      ),
-    .oup_sel_i     (wr_datapath                                      ),
-    .oup_valid_o   ({axi_wr_buffer_valid[c], axi_wr_shuffle_valid[c]}),
-    .oup_ready_i   ({axi_wr_buffer_ready[c], axi_wr_shuffle_ready[c]})
-  );
-end
-
-logic   [NumBuffers-1:0] [NrClusters-1:0] wr_buf_valid, wr_buf_ready;
-logic   [NumBuffers-1:0] [NrClusters-1:0] wr_buf_valid_in, wr_buf_ready_in;
-
-stage_w_t wr_arb_data_in;
-stage_w_t [NumBuffers-1:0] wr_arb_data;
-
-for (genvar c=0; c<NrClusters; c++) begin
-  stream_demux #(
-    .N_OUP(2)
-  ) i_demux_wr_spill (
-    .inp_valid_i   (axi_wr_buffer_valid[c]                        ),
-    .inp_ready_o   (axi_wr_buffer_ready[c]                        ),
-    .oup_sel_i     (buf_sel_q[c]                                  ),
-    .oup_valid_o   ({wr_buf_valid_in[1][c], wr_buf_valid_in[0][c]}),
-    .oup_ready_i   ({wr_buf_ready_in[1][c], wr_buf_ready_in[0][c]})
-  );
-
-  for (genvar b=0; b<NumBuffers; b++) begin
-    spill_register #(
-      .T(axi_w_t)
-    ) i_wr_spill_reg (
-      .clk_i      ( clk_i                ),
-      .rst_ni     ( rst_ni               ),
-      .valid_i    ( wr_buf_valid_in[b][c]),
-      .ready_o    ( wr_buf_ready_in[b][c]),
-      .data_i     ( wr_arb_data_in[c]    ),
-      .valid_o    ( wr_buf_valid[b][c]   ),
-      .ready_i    ( wr_buf_ready[b][c]   ),
-      .data_o     ( wr_arb_data[b][c]    )
-    );
-  end
-end
-
-logic [NrClusters-1:0] w_ready_shuffle;
-
-always_comb begin
-  // Reset req fields
-  for (int c=0; c < NrClusters; c++) begin
-    wr_arb_data_in[c] = axi_req_i[c].w;
-    wr_arb_data_in[c].last = 1'b0;
-  end
-end
-
-stage_w_t  wr_buf_data_o;
-stage_w_t  axi_req_unit_stride_o;
-logic [NrClusters-1:0] wr_buf_ready_o, wr_buf_data_valid;
 
 for (genvar c=0; c<NrClusters; c++) begin
   stream_mux #(
