@@ -1,0 +1,22 @@
+# name              lanes   vlen    category
+2L-Ara2             2       2048    riscv
+4L-Ara2             4       4096    riscv
+8L-Ara2             8       8192    riscv
+16L-Ara2            16      16384   riscv
+Vitruvius+          8       16384   riscv
+Vicuna-2.0          8       1024    riscv
+VE30                32      16384   non_riscv
+SiFive-P270         2       256     riscv
+SiFive-X280/P670    4       512     riscv
+SiFive-X390         8       1024    riscv
+Xuantie-C910        2       256     riscv
+Spatz               4       512     riscv
+Saturn              4       512     riscv
+Andes-AX46MPV       32      2048    riscv
+Semidynamics        32      4096    riscv
+16L-AraXL           16      16384   riscv
+32L-AraXL           32      32768   riscv
+64L-AraXL           64      65536   riscv
+Fugaku-A64FX        8       512     non_riscv
+Arm-Neoverse-V2/V3  2       128     non_riscv
+
