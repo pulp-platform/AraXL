@@ -22,6 +22,7 @@
 #define _MALLOC_H_
 
 #include <stdint.h>
+#include "atomics.h"
 
 // Allocate atomic variables in non-cacheable L2 heap
 static inline void * baremetal_atomic_malloc(int incr)
@@ -31,6 +32,8 @@ static inline void * baremetal_atomic_malloc(int incr)
 
     uintptr_t aligned;
     char *result;
+
+    mutex_lock_acquire();
 
     /* First call: initialize heap */
     if (!atomic_heap_end)
@@ -42,6 +45,8 @@ static inline void * baremetal_atomic_malloc(int incr)
 
     /* Move heap past allocated block */
     atomic_heap_end = result + incr;
+
+    mutex_lock_release();
 
     return (void *)result;
 }
@@ -59,6 +64,8 @@ inline void * baremetal_malloc(int incr)
     uintptr_t aligned;
     char *result;
 
+    mutex_lock_acquire();
+
     /* First call: initialize heap */
     if (!heap_end)
         heap_end = &l2_alloc_base;
@@ -70,6 +77,8 @@ inline void * baremetal_malloc(int incr)
 
     /* Move heap past allocated block */
     heap_end = result + incr;
+
+    mutex_lock_release();
 
     return (void *)result;
 }
