@@ -129,6 +129,7 @@ static inline void mutex_lock_acquire()
 {
 # if NR_CORES > 1
   acquire_lock(&mutex_lock);
+  fence();
 #endif
 }
 
