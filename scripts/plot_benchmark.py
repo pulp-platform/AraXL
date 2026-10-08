@@ -7,6 +7,7 @@ Log files are read from apps/logs*/<benchmark>/ with naming like:
 Only logs without an explicit multi-core suffix are plotted.
 """
 
+import argparse
 import os
 import re
 import matplotlib.pyplot as plt
@@ -14,6 +15,71 @@ import numpy as np
 from collections import defaultdict
 
 APPS_LOGS_DIR = os.path.join(os.path.dirname(__file__), '..', 'apps', 'logs')
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+PLOTS_DIR = os.path.join(REPO_ROOT, 'plots')
+
+_parser = argparse.ArgumentParser(description=__doc__)
+_parser.add_argument(
+    "--font-size",
+    type=int,
+    default=20,
+    help="Base font size for axis labels (default: 12)",
+)
+_parser.add_argument(
+    "--tick-font-size",
+    type=int,
+    default=20,
+    help="Font size for x/y tick values (default: font-size - 2)",
+)
+args = _parser.parse_args()
+FONT_SIZE = args.font_size
+TICK_FONT_SIZE = args.tick_font_size if args.tick_font_size is not None else FONT_SIZE-4
+
+# These benchmarks are print-only: never plotted, individually or in the combined summary.
+PRINT_ONLY_BENCHMARKS = {"canneal", "_canneal", "spmv", "_spmv"}
+
+BENCHMARK_ORDER = [
+    "fmatmul",
+    "fconv2d",
+    "axpy",
+    "dotp",
+    "exp",
+    "softmax",
+    "blackscholes",
+    "swaptions",
+    "pathfinder",
+    "streamcluster",
+    "lavamd",
+]
+DISPLAY_NAME_MAP = {
+    "fdotproduct": "dotp",
+    "lavaMD": "lavamd",
+    "_lavaMD": "lavamd",
+    "_fdotproduct": "dotp",
+}
+
+
+def display_benchmark_name(bench_name):
+    """Map a benchmark directory name to its display name (no underscore)."""
+    base_name = bench_name.lstrip("_")
+    return DISPLAY_NAME_MAP.get(base_name, DISPLAY_NAME_MAP.get(bench_name, base_name.lower()))
+
+
+def ordered_benchmarks(all_data):
+    """Return benchmark keys in the same order as plot_muticore.py."""
+    ordered = []
+    seen = set()
+    for desired_name in BENCHMARK_ORDER:
+        for bench_name in all_data:
+            if bench_name in seen:
+                continue
+            if display_benchmark_name(bench_name) == desired_name:
+                ordered.append(bench_name)
+                seen.add(bench_name)
+    for bench_name in all_data:
+        if bench_name not in seen:
+            ordered.append(bench_name)
+    return ordered
 
 
 def discover_benchmarks(logs_root):
@@ -115,6 +181,79 @@ def format_config(config):
         return f'{lanes}L_{clusters}C'
     return f'{lanes}L_{clusters}C_{cores}core'
 
+
+def plot_combined_summary(all_data, output_path, cluster_colors, core_markers, font_size=12, tick_font_size=None):
+    """Generate a combined multi-panel figure showing all benchmarks."""
+    sub_font_size = font_size - 2
+    sub_tick_font_size = (tick_font_size if tick_font_size is not None else font_size - 2) - 2
+    benchmarks = [b for b in ordered_benchmarks(all_data) if b not in PRINT_ONLY_BENCHMARKS]
+    n_benchmarks = len(benchmarks)
+    if n_benchmarks == 0:
+        return
+
+    rows = 2
+    cols = max(1, (n_benchmarks + 1) // 2)
+
+    # Shared color/marker mapping across panels so a given cluster/core count
+    # always looks the same regardless of which benchmark panel it's in.
+    all_clusters = sorted({config[1] for data in all_data.values() for config in data})
+    all_cores = sorted({
+        config[2] if config[2] is not None else 1
+        for data in all_data.values() for config in data
+    })
+    color_by_cluster = {
+        clusters: cluster_colors[i % len(cluster_colors)]
+        for i, clusters in enumerate(all_clusters)
+    }
+    marker_by_cores = {
+        cores: core_markers[i % len(core_markers)]
+        for i, cores in enumerate(all_cores)
+    }
+
+    fig, axes = plt.subplots(
+        rows, cols, figsize=(4.5 * cols, 3.8 * rows), squeeze=False, dpi=300,
+    )
+
+    for i, benchmark in enumerate(benchmarks):
+        row, col = divmod(i, cols)
+        ax = axes[row][col]
+        data = all_data[benchmark]
+        all_bpl_vals = sorted({bpl for config_data in data.values() for bpl in config_data})
+
+        for config in sorted(data):
+            _, clusters, cores = config
+            cores = cores if cores is not None else 1
+            bpl_vals = sorted(data[config])
+            util_vals = [data[config][b] for b in bpl_vals]
+            ax.plot(
+                bpl_vals, util_vals,
+                color=color_by_cluster[clusters],
+                marker=marker_by_cores[cores],
+                linewidth=1.8, markersize=6,
+                label=format_config(config),
+            )
+
+        ax.set_title(display_benchmark_name(benchmark), fontsize=sub_font_size, fontweight='bold')
+        ax.set_xlabel('Bytes / Lane', fontsize=sub_font_size, fontweight='bold')
+        ax.set_ylabel('FPU Utilization (%)', fontsize=sub_font_size, fontweight='bold')
+        ax.set_xscale('log', base=2)
+        ax.set_xticks(all_bpl_vals)
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{int(v)}'))
+        ax.tick_params(axis='both', labelsize=sub_tick_font_size)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.set_ylim(0, 105)
+        ax.legend(frameon=True, fontsize=sub_tick_font_size, loc="best")
+
+    for i in range(n_benchmarks, rows * cols):
+        row, col = divmod(i, cols)
+        fig.delaxes(axes[row][col])
+
+    plt.tight_layout()
+
+    plt.savefig(output_path, format='svg', bbox_inches='tight')
+    print(f"Combined summary plot saved to {output_path}")
+    plt.close(fig)
+
 # Collect data per benchmark: {benchmark: {config: {bytes: util}}}
 all_data = {}
 
@@ -162,10 +301,16 @@ for benchmark, data in all_data.items():
             print(f"{format_config(config):<12} {bpl:<12} {data[config][bpl]:.3f}%")
 
 # Plot: one figure per benchmark, saved as SVG in the respective logs folder
-cluster_colors = ['#2A9D8F', '#E9C46A', '#F4A261', '#264653', '#E76F51', '#6A4C93', '#1982C4', '#8AC926']
+# Shared qualitative palette, same order as plot_muticore.py's PALETTE and
+# plot_latency_tolerance.py's palette, so all three scripts look consistent.
+cluster_colors = ['#2A9D8F', '#E76F51', '#E9C46A', '#264653', '#F4A261', '#6A4C93', '#1982C4', '#8AC926']
 core_markers = ['o', 's', '^', 'D', 'v', 'P', 'X', '*']
 
-for benchmark, data in all_data.items():
+for benchmark in ordered_benchmarks(all_data):
+    if benchmark in PRINT_ONLY_BENCHMARKS:
+        continue
+    data = all_data[benchmark]
+    all_bpl_vals = sorted({bpl for config_data in data.values() for bpl in config_data})
     fig, ax = plt.subplots(figsize=(8, 6))
     cluster_values = sorted({config[1] for config in data})
     core_counts = sorted({config[2] if config[2] is not None else 1 for config in data})
@@ -189,16 +334,18 @@ for benchmark, data in all_data.items():
                 marker=marker_by_cores[cores],
                 linewidth=2, markersize=7, label=label)
 
-    ax.set_xlabel('Bytes / Lane', fontsize=12, fontweight='bold')
-    ax.set_ylabel('FPU Utilization (%)', fontsize=12, fontweight='bold')
-    ax.set_title(f'{benchmark}', fontsize=13, fontweight='bold')
+    ax.set_xlabel('Bytes / Lane', fontsize=FONT_SIZE, fontweight='bold')
+    ax.set_ylabel('FPU Utilization (%)', fontsize=FONT_SIZE, fontweight='bold')
+    ax.set_title(f'{display_benchmark_name(benchmark)}', fontsize=FONT_SIZE + 1, fontweight='bold')
     ax.set_xscale('log', base=2)
+    ax.set_xticks(all_bpl_vals)
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'{int(v)}'))
-    ax.legend(fontsize=10)
+    ax.tick_params(axis='both', labelsize=TICK_FONT_SIZE)
+    ax.legend(frameon=True, fontsize=TICK_FONT_SIZE, loc="best")
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.set_ylim(0, 105)
 
-    fig.suptitle('FPU Utilization vs Bytes/Lane — AraXL Configurations', fontsize=14, fontweight='bold')
+    fig.suptitle('FPU Utilization vs Bytes/Lane — AraXL Configurations', fontsize=FONT_SIZE + 2, fontweight='bold')
     plt.tight_layout()
 
     logs_dir = os.path.join(APPS_LOGS_DIR, benchmark)
@@ -206,6 +353,11 @@ for benchmark, data in all_data.items():
     plt.savefig(output_file, format='svg', bbox_inches='tight')
     print(f"Plot saved to {output_file}")
     plt.close(fig)
+
+# Plot: combined multi-panel summary across all benchmarks
+os.makedirs(PLOTS_DIR, exist_ok=True)
+combined_output = os.path.join(PLOTS_DIR, 'benchmark_utilization_comparison.svg')
+plot_combined_summary(all_data, combined_output, cluster_colors, core_markers, font_size=FONT_SIZE, tick_font_size=TICK_FONT_SIZE)
 
 # --- _canneal: 16C total 32-bit ops / (sw-cycles * total lanes * 2) ratio ---
 canneal_logs_dir = os.path.join(APPS_LOGS_DIR, '_canneal')
