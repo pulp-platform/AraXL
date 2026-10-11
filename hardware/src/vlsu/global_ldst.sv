@@ -41,7 +41,8 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 );
 
 // SEM PROJ :
-logic[127:0] rs_buffer;
+logic[127:0] rs_buffer_0;
+logic[127:0] rs_buffer_1;
 
 import cf_math_pkg::idx_width;
 import axi_pkg::aligned_addr;
@@ -532,7 +533,11 @@ always_comb begin : p_global_ldst
 
   // SEM PROJ :
   if(cluster_metadata_i.is_reshuffle && axi_resp_d[0].r_valid) begin
-    axi_resp_d[0].r.data = rs_buffer;
+    axi_resp_d[0].r.data = rs_buffer_0;
+  end
+
+  if(cluster_metadata_i.is_reshuffle && axi_resp_d[1].r_valid) begin
+    axi_resp_d[1].r.data = rs_buffer_1;
   end
 
 
@@ -630,7 +635,10 @@ always_comb begin : p_global_ldst
 
   // SEM PROJ :
   if(cluster_metadata_i.is_reshuffle && axi_req_i[0].w_valid) begin
-    rs_buffer = axi_req_i[0].w.data;
+    rs_buffer_0 = axi_req_i[0].w.data;
+  end
+  if(cluster_metadata_i.is_reshuffle && axi_req_i[1].w_valid) begin
+    rs_buffer_1 = axi_req_i[1].w.data;
   end
 
 

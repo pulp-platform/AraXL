@@ -54,6 +54,21 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
   assign core_st_pending_o = acc_req_i.store_pending;
 
+  // Helper function to compute vector length for a specific cluster
+function automatic int unsigned compute_cluster_vl(
+  input int unsigned vl,
+  input logic use_eew1,
+  input int unsigned cluster_idx,
+  input int unsigned nr_lanes,
+  input int unsigned total_nr_lanes
+);
+  automatic int unsigned vl_tot = use_eew1 ? vl << 3 : vl;
+  automatic int unsigned vl_rem = vl_tot & (total_nr_lanes - 1);
+  automatic int unsigned vl_base = vl_tot >> $clog2(total_nr_lanes);
+  automatic int unsigned vl_rem_diff = vl_rem - (cluster_idx * nr_lanes);
+  return (vl_base << $clog2(nr_lanes)) + ((vl_rem >= (cluster_idx + 1) * nr_lanes) ? nr_lanes : (vl_rem >= (cluster_idx * nr_lanes)) ? vl_rem_diff : '0);
+endfunction
+
   ////////////
   //  CSRs  //
   ////////////
@@ -268,6 +283,10 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
   logic illegal_insn;
   elen_t vfmvfs_result;
 
+  // SEM PROJ
+  vlen_t  vl_temp;
+  logic from_ld;
+
   always_comb begin: p_decoder
     // Default values
     vstart_d     = vstart_q;
@@ -466,29 +485,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         // SEM PROJ : START BY COPYING SIMPLE LOAD REQ
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
-            // Prepare the information to reshuffle the vector registers during the next cycles
-            // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
-            unique casez (reshuffle_req_d)
-              3'b??1: begin
-                eew_old_buffer_d = eew_q[insn.vmem_type.rd];
-                eew_new_buffer_d = ara_req_d.vtype.vsew;
-                vs_buffer_d      = insn.varith_type.rd;
-              end
-              3'b?10: begin
-                eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
-                eew_new_buffer_d = ara_req_d.eew_vs2;
-                vs_buffer_d      = insn.varith_type.rs2;
-              end
-              3'b100: begin
-                eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
-                eew_new_buffer_d = ara_req_d.eew_vs1;
-                vs_buffer_d      = insn.varith_type.rs1;
-              end
-              default:;
-            endcase
+            
 
         // The instruction is a store
         is_vstore = 1'b1;
+
+        from_ld = 0;
 
         ignore_zero_vl_check = 1'b1;
 
@@ -540,6 +542,12 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
       RESHUFFLE_LD: begin
 
+        from_ld =1;
+
+        vl_temp = compute_cluster_vl(2, 0, cluster_id_i, 4, 8);
+
+        if (vl_temp != 0) begin
+
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
         // The instruction is a load
@@ -583,9 +591,11 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         // HARDCODED
         ara_req_d.vl         = 2;
         ara_req_d.vl_cluster = 2;
-        ara_req_d.use_eew1   = 1'b1;
+        ara_req_d.use_eew1   = 1'b0;
 
         reshuffle_pending_d = 1;
+
+        end
 
         // Set eew to new eew
         eew_d[vs_buffer_d]=EW64;
@@ -595,7 +605,9 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         eew_d[4]=EW64;
         eew_d[0]=EW64;
 
-        if (ara_resp_valid_i) begin
+        
+
+        if (ara_resp_valid_i || vl_temp ==0) begin
             state_d = RESHUFFLE_WAIT;
             reshuffle_ld_issued_d = 1'b0;  // Reset flag for next reshuffle
         end else if (ara_req_ready_i) begin
@@ -605,6 +617,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       RESHUFFLE_WAIT: begin
+
+        
 
         // If we come from sore
         if (rs_store_complete_q) begin
@@ -616,10 +630,15 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
           endcase
           state_d =RESHUFFLE_LD;
         end
+        
+        if (vl_temp ==0 && from_ld) begin
+         
+            reshuffle_complete_d=1'b1;
+        end
        
         // If we come from load, finish reshuffle, respond to acc
         // Ack only when all reshuffles are done
-        if (reshuffle_complete_q) begin
+        if (reshuffle_complete_q ) begin
           unique case (reshuffle_req_d)
             3'b000 : begin
               reshuffle_complete_d  = 1'b0;
@@ -633,6 +652,27 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
                 vstart_d = ara_resp_i.error_vl;
             end
             default: begin
+              automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+              // Prepare the information to reshuffle the vector registers during the next cycles
+              // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
+              unique casez (reshuffle_req_q)
+                3'b??1: begin
+                  eew_old_buffer_d = eew_q[insn.vmem_type.rd];
+                  eew_new_buffer_d = ara_req_d.vtype.vsew;
+                  vs_buffer_d      = insn.varith_type.rd;
+                end
+                3'b?10: begin
+                  eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
+                  eew_new_buffer_d = ara_req_d.eew_vs2;
+                  vs_buffer_d      = insn.varith_type.rs2;
+                end
+                3'b100: begin
+                  eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
+                  eew_new_buffer_d = ara_req_d.eew_vs1;
+                  vs_buffer_d      = insn.varith_type.rs1;
+                end
+                default:;
+              endcase
               ara_req_valid_d  = 1'b0;
               reshuffle_complete_d  = 1'b0;
               state_d = RESHUFFLE_ST;
@@ -3423,6 +3463,8 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         endcase
       end
 
+      //if (cluster_id_i != 1) begin
+
       // Reshuffle if at least one of the three registers needs a reshuffle
       if (|reshuffle_req_d && !reshuffle_pending_q) begin
         // Instruction is of one of the RVV types
@@ -3444,6 +3486,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
         // Reshuffle
         state_d = RESHUFFLE_ST;
       end
+      //end
     end
 
     // Raise an illegal instruction exception
