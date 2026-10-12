@@ -510,9 +510,11 @@ endfunction
         // These generate a request to Ara's backend
         ara_req_d.vs1       = vs_buffer_q;
         ara_req_d.use_vs1   = 1'b1;
-        ara_req_d.eew_vs1   = EW8; // This is the vs1 EEW
-        ara_req_d.eew_vs2   = EW8; // This is the vs2 EEW
-        ara_req_d.eew_vd_op = EW8;
+        // ara_req_d.eew_vs1   = EW8; // This is the vs1 EEW
+        ara_req_d.eew_vs1   = eew_old_buffer_q;
+        //ara_req_d.eew_vs2   = EW8; // This is the vs2 EEW
+        //ara_req_d.eew_vs2   = eew_old_buffer_q;
+        //ara_req_d.eew_vd_op = EW8;
 
         ara_req_d.is_reshuffle = 1'b1;
         
@@ -522,12 +524,18 @@ endfunction
         ara_req_d.scalar_op  = 64'h8FFF_0000;
         ara_req_valid_d     = 1'b1;
 
-        ara_req_d.vtype.vsew = EW8;
+        //ara_req_d.vtype.vsew = EW8;
+        ara_req_d.vtype.vsew    = eew_old_buffer_q;
+        //ara_req_d.vtype.vsew    = vtype_q.vsew;
 
         ara_req_d.op = VSE;
 
-        ara_req_d.vl         = 8;
-        ara_req_d.vl_cluster = 16;
+        // ara_req_d.vl         = 8;
+        // ara_req_d.vl_cluster = 16;
+
+        ara_req_d.vl            = VLENB >> ara_req_d.vtype.vsew;
+        ara_req_d.vl_cluster    = ara_req_d.vl << num_clusters_i;
+
         ara_req_d.use_eew1   = 1'b0;
 
         reshuffle_pending_d = 1;
@@ -567,9 +575,9 @@ endfunction
         ara_req_d.is_reshuffle = 1'b1;
 
         // These generate a request to Ara's backend
-        ara_req_d.eew_vs1   = EW64; // This is the vs1 EEW
-        ara_req_d.eew_vs2   = EW64; // This is the vs2 EEW
-        ara_req_d.eew_vd_op = EW64;
+        //ara_req_d.eew_vs1   = EW64; // This is the vs1 EEW
+        //ara_req_d.eew_vs2   = EW64; // This is the vs2 EEW
+        //ara_req_d.eew_vd_op = EW64;
 
         ara_req_d.use_vd   = 1'b1;
 
@@ -584,13 +592,16 @@ endfunction
         reshuffle_pending_d = 1;
 
         // HARDCODED : store to EW64
-        ara_req_d.vtype.vsew = EW64;
+        ara_req_d.vtype.vsew = eew_new_buffer_q;
 
         ara_req_d.op = VLE;
 
         // HARDCODED
-        ara_req_d.vl         = 2;
-        ara_req_d.vl_cluster = 2;
+        // ara_req_d.vl         = 2;
+        // ara_req_d.vl_cluster = 2;
+        ara_req_d.vl            = VLENB >> ara_req_d.vtype.vsew;
+        ara_req_d.vl_cluster    = ara_req_d.vl << num_clusters_i;
+
         ara_req_d.use_eew1   = 1'b0;
 
         reshuffle_pending_d = 1;
@@ -598,12 +609,12 @@ endfunction
         end
 
         // Set eew to new eew
-        eew_d[vs_buffer_d]=EW64;
+        eew_d[vs_buffer_d]=eew_new_buffer_q;
 
         // Set these for convenience
-        eew_d[3]=EW64;
-        eew_d[4]=EW64;
-        eew_d[0]=EW64;
+        //eew_d[3]=EW64;
+        //eew_d[4]=EW64;
+        //eew_d[0]=EW64;
 
         
 
@@ -643,9 +654,9 @@ endfunction
             3'b000 : begin
               reshuffle_complete_d  = 1'b0;
               state_d = NORMAL_OPERATION;
-              acc_resp_o.req_ready  = 1'b1;
-              acc_resp_o.error = ara_resp_i.error;
-              acc_resp_o.resp_valid = 1'b1;
+              //acc_resp_o.req_ready  = 1'b1;
+              //acc_resp_o.error = ara_resp_i.error;
+              //acc_resp_o.resp_valid = 1'b1;
               ara_req_valid_d  = 1'b0;
               // If there is an error, change vstart
               if (ara_resp_i.error)
@@ -673,6 +684,7 @@ endfunction
                 end
                 default:;
               endcase
+              
               ara_req_valid_d  = 1'b0;
               reshuffle_complete_d  = 1'b0;
               state_d = RESHUFFLE_ST;
