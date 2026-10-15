@@ -50,12 +50,60 @@ void TEST_RESHUFFLE(void) {
   //VCMP_U64(1, v4, 0x080706504030201, 0x100F0E0D0C0B0A09);
 }
 
+void TEST_RESHUFFLE_2(void) {
+ 
+  VSET(16, e8, m1);
+  VLOAD_8(v1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+  VLOAD_8(v2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+  asm volatile("vadd.vv v3, v1, v2"); 
+
+  VSET(8, e16, m1);
+  //VLOAD_64(v3, 0x080706504030201, 0x100F0E0D0C0B0A09);
+  VLOAD_16(v3, 0, 0, 0, 0, 0, 0, 0, 0);
+
+  asm volatile("vadd.vv v3, v1, v2");
+  
+  VCMP_U16(1, v1, 0x0201,0x0403 , 0x0605 ,0x0807 , 0x0A09 , 0x0C0B, 0x0E0D, 0x100F);
+  VCMP_U16(2, v2, 0x0101,0x0101 , 0x0101 ,0x0101 , 0x0101 , 0x0101, 0x0101, 0x0101);
+
+
+
+}
+
+void TEST_RESHUFFLE_3(void) {
+ 
+  VSET(8, e16, m1);
+  VLOAD_16(v1, 0x0201,0x0403 , 0x0605 ,0x0807 , 0x0A09 , 0x0C0B, 0x0E0D, 0x100F);
+  VLOAD_16(v2, 0x0101,0x0101 , 0x0101 ,0x0101 , 0x0101 , 0x0101, 0x0101, 0x0101);
+  
+  asm volatile("vadd.vv v3, v1, v2"); 
+
+  VSET(2, e64, m1);
+  //VLOAD_64(v3, 0x080706504030201, 0x100F0E0D0C0B0A09);
+  VLOAD_64(v3, 0, 0);
+
+  asm volatile("vadd.vv v3, v1, v2");
+  VCMP_U64(1, v1, 0x0807060504030201, 0x100F0E0D0C0B0A09);
+
+  VSET(8, e16, m1);
+  VLOAD_16(v3, 0, 0, 0, 0, 0, 0, 0, 0);
+  asm volatile("vadd.vv v3, v1, v2"); 
+  VCMP_U16(2, v1, 0x0201,0x0403 , 0x0605 ,0x0807 , 0x0A09 , 0x0C0B, 0x0E0D, 0x100F);
+  VCMP_U16(3, v2, 0x0101,0x0101 , 0x0101 ,0x0101 , 0x0101 , 0x0101, 0x0101, 0x0101);
+  
+  //VCMP_U16(1, v1, 0x0201,0x0403 , 0x0605 ,0x0807 , 0x0A09 , 0x0C0B, 0x0E0D, 0x100F);
+  //VCMP_U16(2, v2, 0x0101,0x0101 , 0x0101 ,0x0101 , 0x0101 , 0x0101, 0x0101, 0x0101);
+
+
+
+}
+
 
 int main(void) {
   INIT_CHECK();
   enable_vec();
 
-  TEST_RESHUFFLE();
+  TEST_RESHUFFLE_3();
 
 
   EXIT_CHECK();
