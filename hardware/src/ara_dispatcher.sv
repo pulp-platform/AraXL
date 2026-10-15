@@ -550,11 +550,11 @@ endfunction
 
       RESHUFFLE_LD: begin
 
-        from_ld =1;
+        //from_ld =1;
 
-        vl_temp = compute_cluster_vl(2, 0, cluster_id_i, 4, 8);
+        //vl_temp = compute_cluster_vl(2, 0, cluster_id_i, 4, 8);
 
-        if (vl_temp != 0) begin
+        //if (vl_temp != 0) begin
 
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
@@ -606,7 +606,7 @@ endfunction
 
         reshuffle_pending_d = 1;
 
-        end
+        //end
 
         // Set eew to new eew
         eew_d[vs_buffer_d]=eew_new_buffer_q;
@@ -642,10 +642,10 @@ endfunction
           state_d =RESHUFFLE_LD;
         end
         
-        if (vl_temp ==0 && from_ld) begin
+        // if (vl_temp ==0 && from_ld) begin
          
-            reshuffle_complete_d=1'b1;
-        end
+        //     reshuffle_complete_d=1'b1;
+        // end
        
         // If we come from load, finish reshuffle, respond to acc
         // Ack only when all reshuffles are done

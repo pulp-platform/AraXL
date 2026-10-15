@@ -25,7 +25,20 @@ void TEST_RESHUFFLE(void) {
   VLOAD_64(v3, 0, 0);
 
   asm volatile("vadd.vv v4, v1, v2");
-  //asm volatile("vadd.vv v5, v2, v3"); 
+  
+  VCMP_U64(1, v1, 0x0807060504030201, 0x100F0E0D0C0B0A09);
+  VCMP_U64(2, v2, 0x0101010101010101, 0x0101010101010101);
+  VCMP_U64(3, v4, 0x0908070605040302, 0x11100F0E0D0C0B0A);
+
+  VSET(16, e8, m1);
+  asm volatile("vadd.vv v5, v1, v2"); 
+
+  // check we got back to base layout
+  VCMP_U8(4, v1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+  VCMP_U8(5, v2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+
+  // check op correctness
+  VCMP_U8(6, v5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17);
 
   // store result
   // uint64_t result[2];
