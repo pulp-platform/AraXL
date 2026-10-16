@@ -41,8 +41,12 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 );
 
 // SEM PROJ :
+logic[127:0] rs_buffer [64] [1:0];
 logic[127:0] rs_buffer_0;
 logic[127:0] rs_buffer_1;
+logic [4:0] count_q, count_d;
+logic [NrClusters-1:0] rs_done_cluster;
+logic rs_done;
 
 import cf_math_pkg::idx_width;
 import axi_pkg::aligned_addr;
@@ -111,6 +115,10 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     fifo_push_q   <= 1'b0;
     w_fifo_push_q <= 1'b0;
     axi_resp_q    <= '0;
+
+    // SEM PROJ
+    count_q    <= '0;
+
   end else begin
     r_req_valid_q <= r_req_valid_d;
     req_q         <= req_d;
@@ -128,6 +136,9 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     fifo_push_q   <= fifo_push_d;
     w_fifo_push_q <= w_fifo_push_d;
     axi_resp_q    <= axi_resp_d;
+
+    // SEM PROJ
+    count_q    <= count_d;
   end
 end
 
@@ -263,6 +274,9 @@ always_comb begin : p_global_ldst
 
   idx_metadata_i = '0;
   axi_resp_d = axi_resp_q;
+
+  // SEM PROJ
+  count_d = count_q;
 
   /////////////////
   //  AXI AR/AW  //
@@ -622,6 +636,38 @@ always_comb begin : p_global_ldst
   ///////////////
   //   AXI W   //
   ///////////////
+
+  // RESHUFFLE
+
+  
+
+  rs_done = (rs_done_cluster == '1);
+
+  // WAIT FOR BOTH CLUSTERS TO BE DONE BEFORE SENDING SIGNAL
+
+  
+  if (axi_req_i[0].w_valid && cluster_metadata_i.is_reshuffle) begin
+    count_d = count_q + 1;
+    for (int j=0; j<NrClusters; j++) begin
+      rs_buffer[count_q][j] = w_cluster_ready_q[j] ? axi_req_i[j].w.data : rs_buffer[count_q][j];
+      if (axi_req_i[j].w.last) begin
+        rs_done_cluster[j] = 1'b1;
+      end
+      
+    end
+
+  end
+
+  if (rs_done) begin
+    // send response to all clusters
+  end
+
+  // cluster response 
+  // axi_resp_d[i].b_valid = axi_resp_i.b_valid;
+
+
+
+  
 
   // Initialize cluster pointer and lane counter for write data
   cluster_w_d = cluster_w_q;

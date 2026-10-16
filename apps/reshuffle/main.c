@@ -94,6 +94,38 @@ void TEST_RESHUFFLE_3(void) {
   //VCMP_U16(1, v1, 0x0201,0x0403 , 0x0605 ,0x0807 , 0x0A09 , 0x0C0B, 0x0E0D, 0x100F);
   //VCMP_U16(2, v2, 0x0101,0x0101 , 0x0101 ,0x0101 , 0x0101 , 0x0101, 0x0101, 0x0101);
 
+}
+
+void TEST_RESHUFFLE_4(void) {
+
+  uint8_t LONG_I8[1024] __attribute__((aligned(128)));
+  uint8_t LONG_I8_2[1024] __attribute__((aligned(128)));
+  int j=0;
+  for (int i=0; i<1024; i++){
+    if (j==64){
+      j=0;
+    }
+    LONG_I8[i]= j + 1;
+    LONG_I8_2[i]= 0;
+    j ++;
+  }
+
+ 
+  VSET(1024, e8, m1);
+  asm volatile("vle8.v v1, (%0)" ::"r"(&LONG_I8[0]));
+  asm volatile("vle8.v v2, (%0)" ::"r"(&LONG_I8_2[0]));
+  
+
+  VSET(512, e16, m1);
+  asm volatile("vadd.vv v3, v1, v2");
+
+  VSET(1024, e8, m1);
+  asm volatile("vle8.v v3, (%0)" ::"r"(&LONG_I8_2[0]));
+  asm volatile("vadd.vv v3, v1, v2");
+
+
+  LVCMP_U8(15, v1, LONG_I8);
+
 
 
 }
@@ -103,7 +135,7 @@ int main(void) {
   INIT_CHECK();
   enable_vec();
 
-  TEST_RESHUFFLE_3();
+  TEST_RESHUFFLE_4();
 
 
   EXIT_CHECK();
