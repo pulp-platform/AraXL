@@ -44,9 +44,12 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 logic[127:0] rs_buffer [64] [1:0];
 logic[127:0] rs_buffer_0;
 logic[127:0] rs_buffer_1;
-logic [4:0] count_q, count_d;
+logic [4:0] rs_w_count_q, rs_w_count_d;
+logic [4:0] rs_r_count_q, rs_r_count_d;
 logic [NrClusters-1:0] rs_done_cluster;
 logic rs_done;
+logic rs_ar_valid_toggle;
+cluster_axi_resp_t [NrClusters-1:0] axi_toy_resp;
 
 import cf_math_pkg::idx_width;
 import axi_pkg::aligned_addr;
@@ -117,7 +120,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     axi_resp_q    <= '0;
 
     // SEM PROJ
-    count_q    <= '0;
+    rs_w_count_q    <= '0;
+    rs_r_count_q    <= '0;
 
   end else begin
     r_req_valid_q <= r_req_valid_d;
@@ -138,7 +142,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     axi_resp_q    <= axi_resp_d;
 
     // SEM PROJ
-    count_q    <= count_d;
+    rs_w_count_q    <= rs_w_count_d;
+    rs_r_count_q    <= rs_r_count_d;
   end
 end
 
@@ -276,7 +281,8 @@ always_comb begin : p_global_ldst
   axi_resp_d = axi_resp_q;
 
   // SEM PROJ
-  count_d = count_q;
+  rs_w_count_d = rs_w_count_q;
+  rs_r_count_d = rs_r_count_q;
 
   /////////////////
   //  AXI AR/AW  //
@@ -546,12 +552,60 @@ always_comb begin : p_global_ldst
 
 
   // SEM PROJ :
-  if(cluster_metadata_i.is_reshuffle && axi_resp_d[0].r_valid) begin
-    axi_resp_d[0].r.data = rs_buffer_0;
+  // if(cluster_metadata_i.is_reshuffle && axi_resp_d[0].r_valid) begin
+  //   axi_resp_d[0].r.data = rs_buffer_0;
+  // end
+
+  // if(cluster_metadata_i.is_reshuffle && axi_resp_d[1].r_valid) begin
+  //   axi_resp_d[1].r.data = rs_buffer_1;
+  // end
+  if (axi_req_i[0].ar_valid && cluster_metadata_i.is_reshuffle) begin
+    rs_ar_valid_toggle = 1'b1;
+    for (int j=0; j<NrClusters; j++) begin
+      axi_toy_resp[j].r_valid = 1'b1;
+    end
   end
 
-  if(cluster_metadata_i.is_reshuffle && axi_resp_d[1].r_valid) begin
-    axi_resp_d[1].r.data = rs_buffer_1;
+  if (axi_req_i[0].ar_valid && cluster_metadata_i.is_reshuffle) begin
+    for (int j=0; j<NrClusters; j++) begin
+
+      axi_toy_resp[j].r.id   = axi_req_i[j].ar.id;
+      //axi_toy_resp[j].r.data = rs_buf[rs_rd_idx][c];
+      axi_toy_resp[j].r.resp = 2'b00;
+      axi_toy_resp[j].r.user = '0;
+      //axi_toy_resp[c].r.last = (rs_rd_ctx_q[c].cnt == rs_rd_ctx_q[c].len);
+      //axi_toy_resp[c].r_valid = rs_rd_valid;
+    
+    end
+  end
+
+  if (rs_r_count_q==31) begin
+    rs_ar_valid_toggle = 1'b0;
+    for (int j=0; j<NrClusters; j++) begin
+      axi_toy_resp[j].r_valid = 1'b0;
+    end
+  end
+
+  // for (int i=0; i<(AxiDataWidth/ClusterAxiDataWidth); i++) begin
+    
+  //   // axi_toy_resp[cluster_start_r_q+i].r.data = axi_resp_i.r.data[i*ClusterAxiDataWidth +: ClusterAxiDataWidth];
+  //   axi_toy_resp[cluster_start_r_q+i].r.data = rs_buffer[i*ClusterAxiDataWidth +: ClusterAxiDataWidth];
+  //   axi_toy_resp[cluster_start_r_q+i].r.id   = axi_resp_i.r.id;
+  //   axi_toy_resp[cluster_start_r_q+i].r.resp = axi_resp_i.r.resp;
+  //   axi_toy_resp[cluster_start_r_q+i].r.last = 1'b0;
+  //   axi_toy_resp[cluster_start_r_q+i].r.user = axi_resp_i.r.user;
+
+  // end
+  
+
+  if (rs_ar_valid_toggle && cluster_metadata_i.is_reshuffle) begin
+    rs_r_count_d = rs_r_count_q + 1;
+    for (int j=0; j<NrClusters; j++) begin
+      axi_toy_resp[j].r.data = rs_buffer[rs_r_count_q][j];
+      if (rs_r_count_q==31) begin
+        axi_toy_resp[j].r.last = 1'b1;
+      end
+    end
   end
 
 
@@ -644,18 +698,14 @@ always_comb begin : p_global_ldst
   rs_done = (rs_done_cluster == '1);
 
   // WAIT FOR BOTH CLUSTERS TO BE DONE BEFORE SENDING SIGNAL
-
-  
   if (axi_req_i[0].w_valid && cluster_metadata_i.is_reshuffle) begin
-    count_d = count_q + 1;
+    rs_w_count_d = rs_w_count_q + 1;
     for (int j=0; j<NrClusters; j++) begin
-      rs_buffer[count_q][j] = w_cluster_ready_q[j] ? axi_req_i[j].w.data : rs_buffer[count_q][j];
+      rs_buffer[rs_w_count_q][j] = w_cluster_ready_q[j] ? axi_req_i[j].w.data : rs_buffer[rs_w_count_q][j];
       if (axi_req_i[j].w.last) begin
         rs_done_cluster[j] = 1'b1;
-      end
-      
+      end      
     end
-
   end
 
   if (rs_done) begin
