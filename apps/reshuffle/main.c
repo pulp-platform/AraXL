@@ -169,6 +169,46 @@ void TEST_RESHUFFLE_5(void) {
   //VCMP_U64(1, v4, 0x080706504030201, 0x100F0E0D0C0B0A09);
 }
 
+void TEST_RESHUFFLE_6(void) {
+
+  VSET(2048, e8, m2);
+
+  uint8_t LONG_I8[2048] __attribute__((aligned(128)));
+  uint8_t LONG_I8_2[2048] __attribute__((aligned(128)));
+  int j=0;
+  for (int i=0; i<2048; i++){
+    if (j==64){
+      j=0;
+    }
+    LONG_I8[i]= j + 1;
+    LONG_I8_2[i]= 0;
+    j ++;
+  }
+
+ 
+  
+  asm volatile("vle8.v v0, (%0)" ::"r"(&LONG_I8[0]));
+  asm volatile("vle8.v v2, (%0)" ::"r"(&LONG_I8_2[0]));
+
+  asm volatile("vadd.vv v4, v0, v2");
+
+  LVCMP_U8(15, v0, LONG_I8);
+  
+
+  VSET(1024, e16, m2);
+  asm volatile("vadd.vv v4, v0, v2");
+
+  VSET(2048, e8, m2);
+  asm volatile("vle8.v v4, (%0)" ::"r"(&LONG_I8_2[0]));
+  asm volatile("vadd.vv v4, v0, v2");
+
+
+  LVCMP_U8(16, v0, LONG_I8);
+
+
+
+}
+
 
 int main(void) {
   INIT_CHECK();
