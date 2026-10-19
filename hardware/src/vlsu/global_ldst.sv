@@ -41,16 +41,15 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 );
 
 // SEM PROJ :
-logic[127:0] rs_buffer [64] [1:0];
+logic[ClusterAxiDataWidth-1:0] rs_buffer [(NrLanes*1024)/ClusterAxiDataWidth] [NrClusters-1:0];
 logic[127:0] rs_buffer_0;
 logic[127:0] rs_buffer_1;
 logic [5:0] rs_w_count_q, rs_w_count_d;
 logic [5:0] rs_r_count_q, rs_r_count_d;
-logic [NrClusters-1:0] rs_done_cluster;
-logic rs_done;
+logic [NrClusters-1:0] rs_r_clusters_valid, rs_w_clusters_valid;
 logic rs_ar_valid_toggle_d, rs_ar_valid_toggle_q;
-cluster_axi_resp_t [NrClusters-1:0] axi_toy_resp_r;
-cluster_axi_resp_t [NrClusters-1:0] axi_toy_resp_w;
+cluster_axi_resp_t [NrClusters-1:0] axi_toy_resp_r, axi_toy_resp_w;
+
 
 import cf_math_pkg::idx_width;
 import axi_pkg::aligned_addr;
@@ -396,8 +395,11 @@ always_comb begin : p_global_ldst
     idx_metadata_i.op = cluster_metadata_i.op;
     idx_metadata_i.vew = vew_d;
   end
-  axi_req_o.aw = req_wrmem.aw;
-  axi_req_o.aw_valid = req_wrmem.aw_valid ;
+  // Send request to AXI if it's not a reshuffle
+  if (!cluster_metadata_i.is_reshuffle) begin
+    axi_req_o.aw = req_wrmem.aw;
+    axi_req_o.aw_valid = req_wrmem.aw_valid ;
+  end
 
 
 
@@ -565,20 +567,21 @@ always_comb begin : p_global_ldst
 
 
   // SEM PROJ :
-  // if(cluster_metadata_i.is_reshuffle && axi_resp_d[0].r_valid) begin
-  //   axi_resp_d[0].r.data = rs_buffer_0;
-  // end
+  // RESHUFFLE LOAD MANAGEMENT
 
-  // if(cluster_metadata_i.is_reshuffle && axi_resp_d[1].r_valid) begin
-  //   axi_resp_d[1].r.data = rs_buffer_1;
-  // end
+  for (int j=0; j<NrClusters; j++) begin
+    rs_r_clusters_valid[j]= axi_req_i[j].ar_valid;
+  end
 
-  if (axi_req_i[0].ar_valid && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VLE) begin
+  if (rs_r_clusters_valid == '1 && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VLE) begin
     rs_ar_valid_toggle_d = 1'b1;
+  end
 
+  if (rs_ar_valid_toggle_q) begin
     for (int j=0; j<NrClusters; j++) begin
+      axi_toy_resp_r[j].r_valid = 1'b1;
+      axi_toy_resp_r[j].r.data = rs_buffer[rs_r_count_q][j];
       axi_toy_resp_r[j].r.id   = axi_req_i[j].ar.id;
-      //axi_toy_resp_r[j].r.data = rs_buf[rs_rd_idx][c];
       axi_toy_resp_r[j].r.resp = 2'b00;
       axi_toy_resp_r[j].r.user = '0;
       axi_toy_resp_r[j].ar_ready = 1'b1;
@@ -586,46 +589,26 @@ always_comb begin : p_global_ldst
       axi_toy_resp_r[j].w_ready = 1'b1;
       axi_toy_resp_r[j].b_valid = 1'b0;
       axi_toy_resp_r[j].b = '0;
-      //axi_toy_resp_r[c].r.last = (rs_rd_ctx_q[c].cnt == rs_rd_ctx_q[c].len);
-      //axi_toy_resp_r[c].r_valid = rs_rd_valid;
-    
-    end
-  end
 
-  
-
-  if (rs_ar_valid_toggle_q && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VLE) begin
-    for (int j=0; j<NrClusters; j++) begin
-      axi_toy_resp_r[j].r_valid = 1'b1;
-    end
-    if (rs_r_count_q <31) begin
-      rs_r_count_d = rs_r_count_q + 1;
-    end else begin
-      rs_r_count_d ='0;
-      rs_ar_valid_toggle_d = 1'b0;
-      for (int j=0; j<NrClusters; j++) begin
-        //axi_toy_resp_r[j].r_valid = 1'b0;
-        
-        axi_resp_d[j].ar_ready = '1;
-        axi_resp_d[j].aw_ready = '1;
-      end
-    end
-    for (int j=0; j<NrClusters; j++) begin
-      axi_toy_resp_r[j].r.data = rs_buffer[rs_r_count_q][j];
-      if (rs_r_count_q==31) begin
+      // Fixed number of transactions since we reshuffle entire vector
+      if (rs_r_count_q>=(((NrLanes*1024)/ClusterAxiDataWidth)-1)) begin
         axi_toy_resp_r[j].r.last = 1'b1;
+        rs_r_count_d ='0;
+        rs_ar_valid_toggle_d = 1'b0;
+        for (int j=0; j<NrClusters; j++) begin    
+          axi_resp_d[j].ar_ready = '1;
+          axi_resp_d[j].aw_ready = '1;
+        end
       end else begin 
         axi_toy_resp_r[j].r.last = 1'b0;
+        rs_r_count_d = rs_r_count_q + 1;
       end
     end
   end else begin
     for (int j=0; j<NrClusters; j++) begin
         axi_toy_resp_r[j] = '0;
-        //rs_ar_valid_toggle_d = 1'b0;
     end
   end
-
-
   
   fifo_pop_o = 1'b0;
 
@@ -703,7 +686,6 @@ always_comb begin : p_global_ldst
       fifo_pop_o = 1'b1;
     end
   end else if (rs_ar_valid_toggle_q && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op==VLE) begin
-    r_resp_rem_d = r_resp_rem_q ? r_resp_rem_q : idx_metadata_o.vl;
     for (int i = 0; i < NrClusters; i++) begin
       axi_resp_d[i].r       = axi_toy_resp_r[i].r;
       axi_resp_d[i].r_valid = '1;
@@ -714,39 +696,31 @@ always_comb begin : p_global_ldst
   //   AXI W   //
   ///////////////
 
-  // RESHUFFLE
 
-  if (axi_req_i[0].w_valid && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VSE) begin
-    //rs_ar_valid_toggle_d = 1'b1;
+  // SEM PROJ :
+  // RESHUFFLE STORE MANAGEMENT
+  for (int j=0; j<NrClusters; j++) begin
+    rs_w_clusters_valid[j]= axi_req_i[j].w_valid;
+  end
+
+  if (rs_w_clusters_valid=='1 && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VSE) begin
 
     for (int j=0; j<NrClusters; j++) begin
-      //axi_toy_resp_w[j]='0;
       axi_toy_resp_w[j].r.id   = axi_req_i[j].ar.id;
-      //axi_toy_resp_w[j].r.data = rs_buf[rs_rd_idx][c];
+      rs_buffer[rs_w_count_q][j] = w_cluster_ready_q[j] ? axi_req_i[j].w.data : rs_buffer[rs_w_count_q][j];
       axi_toy_resp_w[j].r.resp = 2'b00;
       axi_toy_resp_w[j].r.user = '0;
       axi_toy_resp_w[j].ar_ready = 1'b1;
       axi_toy_resp_w[j].aw_ready = 1'b1;
       axi_toy_resp_w[j].w_ready = 1'b1;
-      axi_toy_resp_w[j].b_valid = 1'b0;
       axi_toy_resp_w[j].r_valid = 1'b0;
       axi_toy_resp_w[j].r.last = 1'b0;
       axi_toy_resp_w[j].b = '0;
       axi_toy_resp_w[j].w_ready ='1;
-      //axi_toy_resp_w[c].r.last = (rs_rd_ctx_q[c].cnt == rs_rd_ctx_q[c].len);
-      //axi_toy_resp_w[c].r_valid = rs_rd_valid;
-    
+      axi_toy_resp_w[j].r.data ='0;
     end
-  end
 
-  
-
-  rs_done = (rs_done_cluster == '1);
-
-  // WAIT FOR BOTH CLUSTERS TO BE DONE BEFORE SENDING SIGNAL
-  if (axi_req_i[0].w_valid && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VSE) begin
-    //w_ready_d = '1;
-    if (rs_w_count_d == 31)begin
+    if (rs_w_count_d == (((NrLanes*1024)/ClusterAxiDataWidth)-1))begin
       rs_w_count_d ='0;
       for (int j=0; j<NrClusters; j++) begin
         axi_toy_resp_w[j].b_valid = '1;
@@ -757,26 +731,7 @@ always_comb begin : p_global_ldst
       end
       rs_w_count_d = rs_w_count_q + 1;
     end
-    for (int j=0; j<NrClusters; j++) begin
-      //axi_resp_d[j].aw_ready = 1'b0;
-      rs_buffer[rs_w_count_q][j] = w_cluster_ready_q[j] ? axi_req_i[j].w.data : rs_buffer[rs_w_count_q][j];
-      axi_toy_resp_w[j].r.data = rs_buffer[rs_w_count_q][j];
-      if (axi_req_i[j].w.last) begin
-        rs_done_cluster[j] = 1'b1;
-      end      
-    end
   end
-
-  if (rs_done) begin
-    // send response to all clusters
-  end
-
-  // cluster response 
-  // axi_resp_d[i].b_valid = axi_resp_i.b_valid;
-
-
-
-  
 
   // Initialize cluster pointer and lane counter for write data
   cluster_w_d = cluster_w_q;
@@ -839,7 +794,7 @@ always_comb begin : p_global_ldst
   
   if (w_valid_d  ) begin
     // Have a valid write data to send to System AXI
-    //if (!cluster_metadata_i.is_reshuffle) begin
+   if (!cluster_metadata_i.is_reshuffle) begin
     for (int i=0; i<(AxiDataWidth/ClusterAxiDataWidth); i++) begin
       axi_req_o.w.data[i*ClusterAxiDataWidth +: ClusterAxiDataWidth] = axi_req_data_d[cluster_start_wr_q + i].w.data;
       axi_req_o.w.strb[i*ClusterAxiDataWidth/8 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_start_wr_q + i].w.strb;
@@ -853,7 +808,7 @@ always_comb begin : p_global_ldst
       axi_req_o.w.data[0 +: ClusterAxiDataWidth] = axi_req_data_d[cluster_w_q].w.data;
       axi_req_o.w.strb[0 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_w_q].w.strb;
     end
-    //end
+    end
 
     if (axi_resp_i.w_ready) begin
       // If downstream AXI is ready to receive request only then update the
@@ -918,7 +873,7 @@ always_comb begin : p_global_ldst
   end
   axi_req_o.b_ready = axi_req_i[cluster_b_q].b_ready;
 
-  //if (cluster_metadata_i.is_reshuffle && !b_fifo_empty_o) b_fifo_pop_o = 1'b1;
+  if (cluster_metadata_i.is_reshuffle && !b_fifo_empty_o) b_fifo_pop_o = 1'b1;
 
   if (!b_fifo_empty_o) begin
     if (b_fifo_idx_metadata.op inside {VSXE, VSSE}) begin
