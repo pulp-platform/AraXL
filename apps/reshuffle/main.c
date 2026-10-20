@@ -6,6 +6,7 @@
 //         Basile Bougenot <bbougenot@student.ethz.ch>
 
 #include "/scratch/sem26h15/AraXL_sem_project/apps/common/macros/vector/vector_macros.h"
+#include "/scratch/sem26h15/AraXL_sem_project/apps/common/macros/vector/long_array.h"
 #include <stdio.h>
 
 
@@ -171,39 +172,109 @@ void TEST_RESHUFFLE_5(void) {
 
 void TEST_RESHUFFLE_6(void) {
 
-  VSET(2048, e8, m2);
+  VSET(1024, e8, m2);
 
-  uint8_t LONG_I8[2048] __attribute__((aligned(128)));
-  uint8_t LONG_I8_2[2048] __attribute__((aligned(128)));
-  int j=0;
-  for (int i=0; i<2048; i++){
-    if (j==64){
-      j=0;
-    }
-    LONG_I8[i]= j + 1;
-    LONG_I8_2[i]= 0;
-    j ++;
-  }
+  //uint8_t LONG_I8[2048] __attribute__((aligned(128)));
+  //uint8_t LONG_I8_2[2048] __attribute__((aligned(128)));
+  // int j=0;
+  // for (int i=0; i<2048; i++){
+  //   LONG_I8_2[i]=3;
+  //   if (i<1024){
+  //     LONG_I8[i]=1;
+  //   } else {
+  //     LONG_I8[i]=2;
+  //   }
+  // }
 
  
   
   asm volatile("vle8.v v0, (%0)" ::"r"(&LONG_I8[0]));
+  asm volatile("vle8.v v2, (%0)" ::"r"(&LONG_I8[0]));
+
+  asm volatile("vadd.vv v4, v0, v2");
+
+  //LVCMP_U8(1, v0, LONG_I8);
+  
+
+  VSET(512, e16, m2);
+  asm volatile("vadd.vv v4, v0, v2");
+
+  // Trigger error
+  //LONG_I8[0]=5;
+
+  VSET(1024, e8, m2);
+  //asm volatile("vle8.v v4, (%0)" ::"r"(&LONG_I8_2[0]));
+  asm volatile("vadd.vv v4, v0, v2");
+
+
+  LVCMP_U8(2, v0, LONG_I8);
+
+
+
+}
+
+void TEST_RESHUFFLE_7(void) {
+
+  VSET(1024, e8, m1);
+
+  // uint8_t LONG_I8[1024] __attribute__((aligned(128)));
+  // uint8_t LONG_I8_2[1024] __attribute__((aligned(128)));
+  // int j=0;
+  // for (int i=0; i<1024; i++){
+  //   LONG_I8_2[i]=3;
+  //   if (i<1024){
+  //     LONG_I8[i]=1;
+  //   } else {
+  //     //LONG_I8[i]=2;
+  //   }
+  // }
+
+  asm volatile("vle8.v v0, (%0)" ::"r"(&LONG_I8[0]));
+  asm volatile("vle8.v v2, (%0)" ::"r"(&LONG_I8[0]));
+
+  asm volatile("vadd.vv v4, v0, v2");
+
+
+
+}
+
+void TEST_RESHUFFLE_8(void) {
+
+  VSET(1024, e8, m2);
+
+  
+  uint8_t LONG_I8_2[1024] __attribute__((aligned(128)));
+  int j=0;
+  for (int i=1; i<1024; i++){
+    if (j== 65){
+      j=0;
+    }
+    LONG_I8_2[i]=j;
+    
+    j ++;
+    
+  }
+  
+  asm volatile("vle8.v v0, (%0)" ::"r"(&LONG_I8_2[0]));
   asm volatile("vle8.v v2, (%0)" ::"r"(&LONG_I8_2[0]));
 
   asm volatile("vadd.vv v4, v0, v2");
 
-  LVCMP_U8(15, v0, LONG_I8);
+  //LVCMP_U8(1, v0, LONG_I8);
   
 
-  VSET(1024, e16, m2);
+  VSET(512, e16, m2);
   asm volatile("vadd.vv v4, v0, v2");
 
-  VSET(2048, e8, m2);
-  asm volatile("vle8.v v4, (%0)" ::"r"(&LONG_I8_2[0]));
+  // Trigger error
+  //LONG_I8[0]=5;
+
+  VSET(1024, e8, m2);
+  //asm volatile("vle8.v v4, (%0)" ::"r"(&LONG_I8_2[0]));
   asm volatile("vadd.vv v4, v0, v2");
 
 
-  LVCMP_U8(16, v0, LONG_I8);
+  LVCMP_U8(2, v0, LONG_I8_2);
 
 
 
@@ -214,13 +285,16 @@ int main(void) {
   INIT_CHECK();
   enable_vec();
 
-  TEST_RESHUFFLE();
-  TEST_RESHUFFLE_2();
-  TEST_RESHUFFLE_3();
+  // TEST_RESHUFFLE();
+  // TEST_RESHUFFLE_2();
+  // TEST_RESHUFFLE_3();
 
-  TEST_RESHUFFLE_4();
+  //TEST_RESHUFFLE_4();
 
-  TEST_RESHUFFLE_5();
+  // TEST_RESHUFFLE_5();
+  TEST_RESHUFFLE_6();
+  TEST_RESHUFFLE_7();
+  TEST_RESHUFFLE_8();
 
 
   EXIT_CHECK();

@@ -183,7 +183,7 @@ endfunction
   // Keep track of the registers to be reshuffled |vs1|vs2|vd|
   logic [2:0] reshuffle_req_d, reshuffle_req_q;
 
-  // ADDED
+  // SEM PROJ :
   logic reshuffle_ld_issued_d, reshuffle_ld_issued_q;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -485,6 +485,9 @@ endfunction
         // SEM PROJ : START BY COPYING SIMPLE LOAD REQ
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
+        rs_lmul_cnt_d       = rs_lmul_cnt_q;
+        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
+
             
 
         // The instruction is a store
@@ -550,6 +553,7 @@ endfunction
 
       RESHUFFLE_LD: begin
 
+
         //from_ld =1;
 
         //vl_temp = compute_cluster_vl(2, 0, cluster_id_i, 4, 8);
@@ -560,6 +564,9 @@ endfunction
 
         // The instruction is a load
         is_vload = 1'b1;
+
+        rs_lmul_cnt_d       = rs_lmul_cnt_q;
+        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
 
         ignore_zero_vl_check = 1'b1;
 
@@ -629,16 +636,28 @@ endfunction
 
       RESHUFFLE_WAIT: begin
 
+        rs_lmul_cnt_d       = rs_lmul_cnt_q;
+        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
+
         
 
-        // If we come from sore
-        if (rs_store_complete_q) begin
-          unique casez (reshuffle_req_q)
-            3'b??1: reshuffle_req_d = {reshuffle_req_q[2:1], 1'b0};
-            3'b?10: reshuffle_req_d = {reshuffle_req_q[2  ], 2'b0};
-            3'b100: reshuffle_req_d =                        3'b0 ;
-            default:;
-          endcase
+        // If we come from store
+        // UPDATE ONLY IF ALL MULTS TAKEN CARE OF
+        if (rs_store_complete_q ) begin
+
+          if (rs_lmul_cnt_q == rs_lmul_cnt_limit_q) begin
+            unique casez (reshuffle_req_q)
+              3'b??1: reshuffle_req_d = {reshuffle_req_q[2:1], 1'b0};
+              3'b?10: reshuffle_req_d = {reshuffle_req_q[2  ], 2'b0};
+              3'b100: reshuffle_req_d =                        3'b0 ;
+              default:;
+            endcase
+          end
+
+          // if (rs_lmul_cnt_q != rs_lmul_cnt_limit_q) begin
+          //   rs_lmul_cnt_d += 1;
+          // end
+
           state_d =RESHUFFLE_LD;
         end
         
@@ -654,6 +673,7 @@ endfunction
             3'b000 : begin
               reshuffle_complete_d  = 1'b0;
               state_d = NORMAL_OPERATION;
+              // rs_lmul_cnt_d ='0;
               //acc_resp_o.req_ready  = 1'b1;
               //acc_resp_o.error = ara_resp_i.error;
               //acc_resp_o.resp_valid = 1'b1;
@@ -666,24 +686,33 @@ endfunction
               automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
               // Prepare the information to reshuffle the vector registers during the next cycles
               // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
-              unique casez (reshuffle_req_q)
-                3'b??1: begin
-                  eew_old_buffer_d = eew_q[insn.vmem_type.rd];
-                  eew_new_buffer_d = ara_req_d.vtype.vsew;
-                  vs_buffer_d      = insn.varith_type.rd;
-                end
-                3'b?10: begin
-                  eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
-                  eew_new_buffer_d = ara_req_d.eew_vs2;
-                  vs_buffer_d      = insn.varith_type.rs2;
-                end
-                3'b100: begin
-                  eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
-                  eew_new_buffer_d = ara_req_d.eew_vs1;
-                  vs_buffer_d      = insn.varith_type.rs1;
-                end
-                default:;
-              endcase
+              if (rs_lmul_cnt_q == rs_lmul_cnt_limit_q) begin
+                rs_lmul_cnt_d = '0;
+                unique casez (reshuffle_req_q)
+                  3'b??1: begin
+                    eew_old_buffer_d = eew_q[insn.vmem_type.rd];
+                    eew_new_buffer_d = ara_req_d.vtype.vsew;
+                    vs_buffer_d      = insn.varith_type.rd;
+                  end
+                  3'b?10: begin
+                    eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
+                    eew_new_buffer_d = ara_req_d.eew_vs2;
+                    vs_buffer_d      = insn.varith_type.rs2;
+                  end
+                  3'b100: begin
+                    eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
+                    eew_new_buffer_d = ara_req_d.eew_vs1;
+                    vs_buffer_d      = insn.varith_type.rs1;
+                  end
+                  default:;
+                endcase
+              end else begin
+                vs_buffer_d = vs_buffer_q +1; // move on to next reg holding vector
+                rs_lmul_cnt_d =rs_lmul_cnt_q + 1;
+
+              end
+
+              
               
               ara_req_valid_d  = 1'b0;
               reshuffle_complete_d  = 1'b0;
@@ -3452,6 +3481,10 @@ endfunction
                            ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op && ara_req_d.op != VLE,
                            ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew) && ara_req_d.op != VLE};
         // TODO: Reshuffling is currently not supported.
+
+        // SEM PROJ:
+        // SET LMUL
+        //rs_lmul_cnt_limit_d = insn
         
         // Prepare the information to reshuffle the vector registers during the next cycles
         // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
