@@ -131,6 +131,11 @@ endif
 # By default tracing enabled
 bender_defs += --define PERFETTO_TRACE
 
+sldu_debug ?= 0
+ifeq ($(sldu_debug),1)
+	bender_defs += --define SLDU_DEBUG_ENABLE
+endif
+
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 
 # Targets
@@ -195,6 +200,10 @@ simc: compile
 	cd $(buildpath) && \
 	$(questa_cmd) vsim -c $(questa_args) $(library).$(top_level) -do "run -a"
 	./scripts/return_status.sh $(buildpath)/transcript
+
+.PHONY: sim-debug
+sim-debug:
+	$(MAKE) sim app=$(app) sldu_debug=1 -B
 
 # RISC-V Tests simulation
 APPS_DIR := $(abspath $(ROOT_DIR)/../apps)
