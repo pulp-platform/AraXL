@@ -1570,7 +1570,7 @@ module ara_dispatcher import ara_pkg::*; import rvv_pkg::*; #(
 
                     // Wait until the back-end answers to acknowledge those instructions
                     if (ara_resp_valid_i) begin
-                      if (mask_instr_cnt_q == 2) begin
+                      if ((ara_req_d.op == ara_pkg::VMVXS) || (mask_instr_cnt_q == 2)) begin
                         acc_resp_o.req_ready   = 1'b1;
                         acc_resp_o.resp_valid  = 1'b1;
                         ara_req_valid_d        = 1'b0;
