@@ -41,15 +41,8 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
 );
 
 // SEM PROJ :
-logic[ClusterAxiDataWidth-1:0] rs_buffer [(NrLanes*1024)/ClusterAxiDataWidth] [NrClusters-1:0];
 logic[127:0] rs_buffer_0;
 logic[127:0] rs_buffer_1;
-logic [5:0] rs_w_count_q, rs_w_count_d;
-logic [5:0] rs_r_count_q, rs_r_count_d;
-logic [NrClusters-1:0] rs_r_clusters_valid, rs_w_clusters_valid;
-logic rs_ar_valid_toggle_d, rs_ar_valid_toggle_q;
-cluster_axi_resp_t [NrClusters-1:0] axi_toy_resp_r, axi_toy_resp_w;
-
 
 import cf_math_pkg::idx_width;
 import axi_pkg::aligned_addr;
@@ -118,12 +111,6 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     fifo_push_q   <= 1'b0;
     w_fifo_push_q <= 1'b0;
     axi_resp_q    <= '0;
-
-    // SEM PROJ
-    rs_w_count_q    <= '0;
-    rs_r_count_q    <= '0;
-    rs_ar_valid_toggle_q  <= '0;
-
   end else begin
     r_req_valid_q <= r_req_valid_d;
     req_q         <= req_d;
@@ -141,22 +128,10 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     fifo_push_q   <= fifo_push_d;
     w_fifo_push_q <= w_fifo_push_d;
     axi_resp_q    <= axi_resp_d;
-
-    // SEM PROJ
-    rs_w_count_q    <= rs_w_count_d;
-    rs_r_count_q    <= rs_r_count_d;
-    rs_ar_valid_toggle_q  <= rs_ar_valid_toggle_d;
   end
 end
 
-//assign axi_resp_o = axi_resp_d;
-always_comb begin
-  if (axi_req_i[0].w_valid && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VSE) begin
-    axi_resp_o = axi_toy_resp_w;
-  end else begin
-  axi_resp_o = axi_resp_d;
- end
-end 
+assign axi_resp_o = axi_resp_d;
 
 ///// Signals for AXI B channel
 
@@ -289,11 +264,6 @@ always_comb begin : p_global_ldst
   idx_metadata_i = '0;
   axi_resp_d = axi_resp_q;
 
-  // SEM PROJ
-  rs_w_count_d = rs_w_count_q;
-  rs_r_count_d = rs_r_count_q;
-  rs_ar_valid_toggle_d = rs_ar_valid_toggle_q;
-
   /////////////////
   //  AXI AR/AW  //
   /////////////////
@@ -395,15 +365,8 @@ always_comb begin : p_global_ldst
     idx_metadata_i.op = cluster_metadata_i.op;
     idx_metadata_i.vew = vew_d;
   end
-  // Send request to AXI if it's not a reshuffle
-  if (!cluster_metadata_i.is_reshuffle) begin
-    axi_req_o.aw = req_wrmem.aw;
-    axi_req_o.aw_valid = req_wrmem.aw_valid ;
-  end else begin
-    b_fifo_push_i = 1'b0;
-  end
-
-
+  axi_req_o.aw = req_wrmem.aw;
+  axi_req_o.aw_valid = req_wrmem.aw_valid;
 
   ///// READ REQUESTS /////
 
@@ -424,7 +387,7 @@ always_comb begin : p_global_ldst
 
   // For indexed loads, select AR request from appropriate cluster
   // Start with cluster-0 and update the cluster by 1 if we have processed NrLanes requests and we have more requests to process
-  if (axi_req_i[cluster_ar_q].ar_valid && r_req_ready && (fifo_push_q == 1'b0 ? !fifo_full_o : 1'b1) && !cluster_metadata_i.is_reshuffle) begin
+  if (axi_req_i[cluster_ar_q].ar_valid && r_req_ready && (fifo_push_q == 1'b0 ? !fifo_full_o : 1'b1)) begin
     req_d.ar = axi_req_i[cluster_ar_q].ar;
     r_req_valid_d = 1'b1;
     vew_d = cluster_metadata_i.vew;
@@ -449,7 +412,7 @@ always_comb begin : p_global_ldst
     end
   end
 
-  if (r_req_valid_d==1'b1 && axi_resp_i.ar_ready && !cluster_metadata_i.is_reshuffle) begin
+  if (r_req_valid_d==1'b1 && axi_resp_i.ar_ready) begin
     automatic logic [8:0] burst_length;
     axi_addr_t aligned_start_addr_d, aligned_next_start_addr_d, aligned_end_addr_d;
     automatic logic [($bits(aligned_start_addr_d) - 12)-1:0] next_2page_msb_d;
@@ -569,44 +532,20 @@ always_comb begin : p_global_ldst
 
 
   // SEM PROJ :
-  // RESHUFFLE LOAD MANAGEMENT
-
-  for (int j=0; j<NrClusters; j++) begin
-    rs_r_clusters_valid[j]= axi_req_i[j].ar_valid;
+  if(cluster_metadata_i.is_reshuffle && axi_resp_d[0].r_valid) begin
+    axi_resp_d[0].r.data = rs_buffer_0;
   end
 
-  if (rs_r_clusters_valid == '1 && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VLE) begin
-    rs_ar_valid_toggle_d = 1'b1;
+  if(cluster_metadata_i.is_reshuffle && axi_resp_d[1].r_valid) begin
+    axi_resp_d[1].r.data = rs_buffer_1;
   end
 
-  if (rs_ar_valid_toggle_q) begin
-    for (int j=0; j<NrClusters; j++) begin
-      axi_toy_resp_r[j].r_valid = 1'b1;
-      axi_toy_resp_r[j].r.data = rs_buffer[rs_r_count_q][j];
-      axi_toy_resp_r[j].r.id   = axi_req_i[j].ar.id;
-      axi_toy_resp_r[j].r.resp = 2'b00;
-      axi_toy_resp_r[j].r.user = '0;
-      axi_toy_resp_r[j].ar_ready = 1'b1;
-      axi_toy_resp_r[j].aw_ready = 1'b1;
-      axi_toy_resp_r[j].w_ready = 1'b1;
-      axi_toy_resp_r[j].b_valid = 1'b0;
-      axi_toy_resp_r[j].b = '0;
-      axi_toy_resp_r[j].r.last = (rs_r_count_q==(((NrLanes*1024)/ClusterAxiDataWidth)-1))? 1'b1 : 1'b0;
-    end
 
-    rs_ar_valid_toggle_d = (rs_r_count_q == (((NrLanes*1024)/ClusterAxiDataWidth)-1))? '0 : rs_ar_valid_toggle_q;
-    rs_r_count_d = (rs_r_count_q == (((NrLanes*1024)/ClusterAxiDataWidth)-1))? '0 : rs_r_count_q + 1;
-
-  end else begin
-    for (int j=0; j<NrClusters; j++) begin
-        axi_toy_resp_r[j] = '0;
-    end
-  end
   
   fifo_pop_o = 1'b0;
 
   // If we are expecting a response
-  if ((!fifo_empty_o) && ~(cluster_metadata_i.is_reshuffle && cluster_metadata_i.op==VLE)) begin
+  if (!fifo_empty_o) begin
     r_resp_rem_d = r_resp_rem_q ? r_resp_rem_q : idx_metadata_o.vl;
     
     if (axi_resp_i.r_valid) begin : p_valid_read_resp
@@ -678,45 +617,11 @@ always_comb begin : p_global_ldst
       r_resp_lane_d = '0;
       fifo_pop_o = 1'b1;
     end
-  end else if (rs_ar_valid_toggle_q && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op==VLE) begin
-    for (int i = 0; i < NrClusters; i++) begin
-      axi_resp_d[i].r       = axi_toy_resp_r[i].r;
-      axi_resp_d[i].r_valid = '1;
-    end
   end
 
   ///////////////
   //   AXI W   //
   ///////////////
-
-
-  // SEM PROJ :
-  // RESHUFFLE STORE MANAGEMENT
-  for (int j=0; j<NrClusters; j++) begin
-    rs_w_clusters_valid[j]= axi_req_i[j].w_valid;
-  end
-
-  if (rs_w_clusters_valid=='1 && cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VSE) begin
-
-    for (int j=0; j<NrClusters; j++) begin
-      axi_toy_resp_w[j].r.id   = axi_req_i[j].ar.id;
-      rs_buffer[rs_w_count_q][j] = w_cluster_ready_q[j] ? axi_req_i[j].w.data : rs_buffer[rs_w_count_q][j];
-      axi_toy_resp_w[j].r.resp = 2'b00;
-      axi_toy_resp_w[j].r.user = '0;
-      axi_toy_resp_w[j].ar_ready = 1'b1;
-      axi_toy_resp_w[j].aw_ready = 1'b1;
-      axi_toy_resp_w[j].w_ready = 1'b1;
-      axi_toy_resp_w[j].r_valid = 1'b0;
-      axi_toy_resp_w[j].r.last = 1'b0;
-      axi_toy_resp_w[j].b = '0;
-      axi_toy_resp_w[j].w_ready ='1;
-      axi_toy_resp_w[j].r.data ='0;
-      axi_toy_resp_w[j].b_valid = (rs_w_count_q == (((NrLanes*1024)/ClusterAxiDataWidth)-1))? 1'b1 : 1'b0;
-    end
-
-    rs_w_count_d = (rs_w_count_q == (((NrLanes*1024)/ClusterAxiDataWidth)-1))? '0 : rs_w_count_q + 1;
-
-  end
 
   // Initialize cluster pointer and lane counter for write data
   cluster_w_d = cluster_w_q;
@@ -777,22 +682,20 @@ always_comb begin : p_global_ldst
   axi_req_o.w_valid = 1'b0;
   axi_req_o.w = '0;
   
-  if (w_valid_d  ) begin
+  if (w_valid_d) begin
     // Have a valid write data to send to System AXI
-   if (!cluster_metadata_i.is_reshuffle) begin
-      for (int i=0; i<(AxiDataWidth/ClusterAxiDataWidth); i++) begin
-        axi_req_o.w.data[i*ClusterAxiDataWidth +: ClusterAxiDataWidth] = axi_req_data_d[cluster_start_wr_q + i].w.data;
-        axi_req_o.w.strb[i*ClusterAxiDataWidth/8 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_start_wr_q + i].w.strb;
-        axi_req_o.w.user = axi_req_data_d[cluster_start_wr_q + i].w.user;
-      end
-      axi_req_o.w_valid = 1'b1;
-      axi_req_o.w.last = (cluster_metadata_i.op inside {VSXE,VSSE});
-      if (cluster_metadata_i.op inside {VSXE, VSSE} && w_cluster_ready_q) begin
-        axi_req_o.w.data = '0;
-        axi_req_o.w.strb = '0;
-        axi_req_o.w.data[0 +: ClusterAxiDataWidth] = axi_req_data_d[cluster_w_q].w.data;
-        axi_req_o.w.strb[0 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_w_q].w.strb;
-      end
+    for (int i=0; i<(AxiDataWidth/ClusterAxiDataWidth); i++) begin
+      axi_req_o.w.data[i*ClusterAxiDataWidth +: ClusterAxiDataWidth] = axi_req_data_d[cluster_start_wr_q + i].w.data;
+      axi_req_o.w.strb[i*ClusterAxiDataWidth/8 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_start_wr_q + i].w.strb;
+      axi_req_o.w.user = axi_req_data_d[cluster_start_wr_q + i].w.user;
+    end
+    axi_req_o.w_valid = 1'b1;
+    axi_req_o.w.last = (cluster_metadata_i.op inside {VSXE,VSSE});
+    if (cluster_metadata_i.op inside {VSXE, VSSE} && w_cluster_ready_q) begin
+      axi_req_o.w.data = '0;
+      axi_req_o.w.strb = '0;
+      axi_req_o.w.data[0 +: ClusterAxiDataWidth] = axi_req_data_d[cluster_w_q].w.data;
+      axi_req_o.w.strb[0 +: ClusterAxiDataWidth/8] = axi_req_data_d[cluster_w_q].w.strb;
     end
 
     if (axi_resp_i.w_ready) begin

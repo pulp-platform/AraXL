@@ -76,8 +76,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   accelerator_resp_t [NrClusters-1:0] acc_resp, acc_resp_cut;
   accelerator_resp_t acc_resp_d, acc_resp_q;
 
-  cluster_axi_req_t      [NrClusters-1:0] ara_axi_req, ara_axi_req_cut, ldst_axi_req, ldst_axi_req_cut;
-  cluster_axi_resp_t     [NrClusters-1:0] ara_axi_resp, ara_axi_resp_cut, ldst_axi_resp, ldst_axi_resp_cut;
+  cluster_axi_req_t      [NrClusters-1:0] ara_axi_req, ara_axi_req_cut, ldst_axi_req, ldst_axi_req_2, ldst_axi_req_cut;
+  cluster_axi_resp_t     [NrClusters-1:0] ara_axi_resp, ara_axi_resp_cut, ldst_axi_resp, ldst_axi_resp_2, ldst_axi_resp_cut;
 
   axi_req_t  axi_req_cut, axi_req_ldst, axi_req_align, axi_req_align_o;
   axi_resp_t axi_resp_cut, axi_resp_ldst, axi_resp_align, axi_resp_align_i;
@@ -106,7 +106,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   group_resp_t [ShuffleCuts:0] ara_axi_resp_shuffle_cut;
 
   cluster_metadata_t cluster_metadata_cut, 
-                     cluster_metadata_cut_glsu, 
+                     cluster_metadata_cut_glsu,
+                     cluster_metadata_cut_glsu_2,
                      cluster_metadata_cut_glsu2align,
                      cluster_metadata_cut_align;
 
@@ -450,11 +451,37 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         .slv_resp_o  (ldst_axi_resp_cut[cluster]),
 
         .mst_req_o   (ldst_axi_req[cluster]),
-        .mst_resp_i  (ldst_axi_resp[cluster])
+        .mst_resp_i  (ldst_axi_resp_2[cluster])
       );
   end
 
   `FF(cluster_metadata_cut_glsu, cluster_metadata_cut, cluster_metadata_t'('0), clk_i, rst_ni)
+
+
+  reshuffle_unit #(
+    .NrLanes            (NrLanes            ),
+    .NrClusters         (NrClusters         ),
+    .AxiDataWidth       (AxiDataWidth       ),
+    .ClusterAxiDataWidth(ClusterAxiDataWidth),
+    .AxiAddrWidth       (AxiAddrWidth       ),
+    .cluster_axi_req_t  (cluster_axi_req_t  ),
+    .cluster_axi_resp_t (cluster_axi_resp_t ),
+    .axi_req_t          (axi_req_t          ),
+    .axi_resp_t         (axi_resp_t         )
+  ) i_reshuffle_unit (
+    .clk_i              (clk_i              ),
+    .rst_ni             (rst_ni             ),
+    // To Ara
+    .axi_req_i          (ldst_axi_req       ),
+    .axi_resp_o         (ldst_axi_resp_2      ),
+    .cluster_metadata_i (cluster_metadata_cut_glsu      ),
+    .cluster_metadata_o (cluster_metadata_cut_glsu_2),
+    // To System
+    .axi_resp_i         (ldst_axi_resp       ),
+    .axi_req_o          (ldst_axi_req_2        ) // request to glsu
+  );
+
+
 
   // Global Ld/St Unit
   global_ldst #(
@@ -471,9 +498,9 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     .clk_i              (clk_i              ),
     .rst_ni             (rst_ni             ),
     // To Ara
-    .axi_req_i          (ldst_axi_req       ),
+    .axi_req_i          (ldst_axi_req_2       ), // request from rs unit
     .axi_resp_o         (ldst_axi_resp      ),
-    .cluster_metadata_i (cluster_metadata_cut_glsu      ),
+    .cluster_metadata_i (cluster_metadata_cut_glsu_2      ),
     .cluster_metadata_o (cluster_metadata_cut_glsu2align),
     // To System
     .axi_resp_i         (axi_resp_cut       ),
