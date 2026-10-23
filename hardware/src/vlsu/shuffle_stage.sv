@@ -820,10 +820,7 @@ always_comb begin
           // If the clusters corresponding to a buffer completed,
           // Clear buffer valid and go to the next instruction
           if (&(rd_cluster_completed_d[b*ClustersPerBuffer +: ClustersPerBuffer])) begin
-            // Change to next instruction for the particular buffer
-            // Since each buffer can complete at different times, we maintain a different instruction pointer
-            rd_issue_pnt_d[b] = (rd_issue_pnt_q[b] == NumTrackers-1) ? '0 : rd_issue_pnt_q[b] + 1;
-            
+           
             // clear buffer for the next instruction
             buf_valid_d[b] = 1'b0;
             shift_d[b] = 1'b0;
@@ -852,7 +849,7 @@ always_comb begin
             // Once a 64b load request is completed, reset pointers for all stages
             // to handle cases where the next request uses shuffle datapath
             for (int i=0; i <NumStages; i++) begin
-              rd_issue_pnt_d[i] = rd_issue_pnt_d[b];
+              rd_issue_pnt_d[i] = rd_issue_pnt_q[i] + 1;
             end
           end
         end
