@@ -45,12 +45,14 @@ logic[ClusterAxiDataWidth-1:0] rs_buffer [(NrLanes*1024)/ClusterAxiDataWidth] [N
 
 logic [NrClusters-1:0] rs_r_clusters_valid, rs_w_clusters_valid;
 
-logic [5:0] rs_w_count_q, rs_w_count_d;
-logic [5:0] rs_r_count_q, rs_r_count_d;
+logic [$clog2(((NrLanes*1024)/ClusterAxiDataWidth)):0] rs_w_count_q, rs_w_count_d;
+logic [$clog2(((NrLanes*1024)/ClusterAxiDataWidth)):0] rs_r_count_q, rs_r_count_d;
 
 logic rs_ar_valid_toggle_d, rs_ar_valid_toggle_q;
 
-cluster_metadata_t cluster_metadata_d;
+cluster_metadata_t cluster_metadata_d, cluster_metadata_q;
+
+logic ar_group_valid;
 
 
 
@@ -60,18 +62,23 @@ cluster_axi_req_t  [NrClusters-1:0] axi_req_d;
 assign axi_resp_o = axi_resp_d;
 assign axi_req_o = axi_req_d;
 assign cluster_metadata_o = cluster_metadata_d;
+assign ar_group_valid = &rs_r_clusters_valid;
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
   if(~rst_ni) begin
     rs_w_count_q    <= '0;
     rs_r_count_q    <= '0;
     rs_ar_valid_toggle_q <= '0;
+    cluster_metadata_q <= '0;
   end else begin
     rs_w_count_q    <= rs_w_count_d;
     rs_r_count_q    <= rs_r_count_d;
     rs_ar_valid_toggle_q <= rs_ar_valid_toggle_d;
+    cluster_metadata_q <= cluster_metadata_d;
   end
 end
+
+
 
 
 
@@ -87,11 +94,19 @@ always_comb begin
 
   if (cluster_metadata_i.is_reshuffle) begin
 
-    axi_req_d='0;
-    cluster_metadata_d ='0;
+    //axi_req_d='0;
+    cluster_metadata_d = cluster_metadata_q;
+
+    for (int j = 0; j < NrClusters; j++) begin
+      axi_req_d[j].aw_valid = 1'b0;   // no writes reach GLSU
+      axi_req_d[j].w_valid  = 1'b0;   // no write data reaches GLSU
+      axi_req_d[j].ar_valid = 1'b0;   // no reads reach GLSU
+    end
 
   
     case(cluster_metadata_i.op)
+
+      
 
       VSE : begin
         // SEM PROJ :
@@ -102,8 +117,12 @@ always_comb begin
         // TODO : Maybe set w ready in response to 0 unitl all are valid
         if (rs_w_clusters_valid=='1) begin
 
+          //axi_req_d='0;
+
+          //axi_resp_d = '0;
+
           for (int j=0; j<NrClusters; j++) begin
-            axi_resp_d[j].r.id   = axi_req_i[j].ar.id;
+            //axi_resp_d[j].r.id   = axi_req_i[j].ar.id;
             rs_buffer[rs_w_count_q][j] = axi_req_i[j].w.data;
             axi_resp_d[j].r.resp = 2'b00;
             axi_resp_d[j].r.user = '0;
@@ -113,16 +132,18 @@ always_comb begin
             axi_resp_d[j].r_valid = 1'b0;
             axi_resp_d[j].r.last = 1'b0;
             axi_resp_d[j].b = '0;
-            axi_resp_d[j].w_ready ='1;
-            axi_resp_d[j].r.data ='0;
 
-            // Request doesn't propagate to GLSU
-            axi_req_d[j] = '0;
+            //axi_resp_d[j].r.data ='0;
+
+            
           end
+          
 
           if (rs_w_count_d == (((NrLanes*1024)/ClusterAxiDataWidth)-1))begin
             rs_w_count_d ='0;
+            
             for (int j=0; j<NrClusters; j++) begin
+              
               axi_resp_d[j].b_valid = '1;
             end
           end else begin
@@ -144,11 +165,13 @@ always_comb begin
         end
 
         // TODO : Maybe set r ready in response to 0 unitl all are valid
-        if (rs_r_clusters_valid == '1) begin
-          rs_ar_valid_toggle_d = 1'b1;
+        if (ar_group_valid && !rs_ar_valid_toggle_q) begin
+            rs_ar_valid_toggle_d = 1'b1;
+            rs_r_count_d = '0;
         end
 
         if (rs_ar_valid_toggle_q) begin
+          //axi_req_d='0;
           for (int j=0; j<NrClusters; j++) begin
             axi_resp_d[j].r_valid = 1'b1;
             axi_resp_d[j].r.data = rs_buffer[rs_r_count_q][j];
@@ -161,8 +184,7 @@ always_comb begin
             axi_resp_d[j].b_valid = 1'b0;
             axi_resp_d[j].b = '0;
 
-            // Request doesn't propagate to GLSU
-            axi_req_d[j] = '0;
+            
 
             // Fixed number of transactions since we reshuffle entire vector
             if (rs_r_count_q>=(((NrLanes*1024)/ClusterAxiDataWidth)-1)) begin
@@ -174,7 +196,8 @@ always_comb begin
               rs_r_count_d = rs_r_count_q + 1;
             end
           end
-        end else begin
+        end
+        else begin
           for (int j=0; j<NrClusters; j++) begin
               axi_resp_d[j] = '0;
           end
@@ -191,6 +214,7 @@ always_comb begin
   // TODO : REMOVE THIS
   // axi_resp_d = axi_resp_i;
   // axi_req_d = axi_req_i;
+  cluster_metadata_d = cluster_metadata_i;
 
 end
 
