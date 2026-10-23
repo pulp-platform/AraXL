@@ -10,11 +10,6 @@
 #include <stdio.h>
 #endif
 
-#include "../common/macros/vector/riscv_util.h"
-#include "../common/rivec/vector_defines.h"
-//#include "../common/macros/vector/long_array.h"
-//#include "../common/macros/vector/float_macros.h"
-
 #define NPARTICLES 64
 #define REPETITIONS 10            // run the kernel several times
 

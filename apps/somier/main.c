@@ -21,11 +21,6 @@
 #include "runtime.h"
 #include "util.h"
 
-#include "../common/macros/vector/riscv_util.h"
-#include "../common/rivec/vector_defines.h"
-#include "../common/macros/vector/long_array.h"
-#include "../common/macros/vector/float_macros.h"
-
 #ifndef SPIKE
 #include "printf.h"
 #else
