@@ -328,23 +328,18 @@ logic r_ready_buf, r_ready_buf_q;
 
 datapath_t rd_datapath;
 ara_op_e rd_op;
-req_track_t rd_tracker_first, rd_tracker_last, rd_tracker_second;
+req_track_t rd_tracker_last;
 
 logic stall_rd_resp;
-logic is_shuffle_ongoing, is_buffer_ongoing;
+logic buffer_pending_q, buffer_pending_d;
+logic shuffle_pending_q, shuffle_pending_d;
 
 always_comb begin
-  rd_tracker_first = rd_tracker_q[rd_issue_pnt_q[0]];
-  rd_tracker_second = rd_tracker_q[rd_issue_pnt_q[1]];
   rd_tracker_last = rd_tracker_q[rd_issue_pnt_q[NumStages-1]];
-  
-  is_shuffle_ongoing = (rd_tracker_last.datapath == SHUFFLE) && (rd_tracker_first.datapath != SHUFFLE);
-  is_buffer_ongoing = (rd_tracker_last.datapath == BUFFER) && !(rd_tracker_last.op inside {VLXE, VLSE}) && (rd_tracker_first.op inside {VLXE, VLSE} || rd_tracker_second.op inside {VLXE, VLSE});
-
-  stall_rd_resp = (is_shuffle_ongoing || is_buffer_ongoing) && (rd_cnt_q > 1);
-
   rd_datapath = rd_tracker_last.datapath;
   rd_op = rd_tracker_last.op;
+
+  stall_rd_resp = (shuffle_pending_q || buffer_pending_q) && (rd_cnt_q > 1);
 end
 
 //////////////////////////////////
@@ -565,6 +560,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     lane_w_q <= '0;
     vl_idx_cluster_q <= '0;
     wr_idx_accepted_q <= '0;
+    buffer_pending_q <= 1'b0;
+    shuffle_pending_q <= 1'b0;
   end else begin
     rd_tracker_q    <= rd_tracker_d;
     wr_tracker_q    <= wr_tracker_d;
@@ -584,6 +581,8 @@ always_ff @(posedge clk_i or negedge rst_ni) begin
     lane_w_q <= lane_w_d;
     vl_idx_cluster_q <= vl_idx_cluster_d;
     wr_idx_accepted_q <= wr_idx_accepted_d;
+    buffer_pending_q <= buffer_pending_d;
+    shuffle_pending_q <= shuffle_pending_d;
   end
 end
 
@@ -689,6 +688,12 @@ always_comb begin
     end
   end
 
+  ////////////////
+  // Shuffling ///
+  ////////////////
+
+  shuffle_pending_d = shuffle_pending_q;
+
   // Update counters for shuffle stage
   // Update issue pointer of each stage
   // Once last packet is received by each stage, point to the next tracker.
@@ -698,11 +703,15 @@ always_comb begin
     // If the last stage sends the last packet, we need to go to the vew of the next request
     if (r_data_out[s][0].last & r_valid[s] & r_ready[s]) begin
       rd_issue_pnt_d[s] = (rd_issue_pnt_q[s] == NumTrackers-1) ? '0 : rd_issue_pnt_q[s] + 1;
+      if (s==0) begin
+        shuffle_pending_d = 1'b1;
+      end
       // In the last stage, reset the shift enable for the tracker instance
       if (s==NumStages-1) begin
         rd_tracker_d[rd_issue_pnt_q[s]].shuffle_en = '0;
         rd_tracker_d[rd_issue_pnt_q[s]].datapath = SHUFFLE;
         rd_cnt_d -= 1'b1;
+        shuffle_pending_d = 1'b0;
       end
     end
     
@@ -753,6 +762,8 @@ always_comb begin
   rd_cluster_completed_d = rd_cluster_completed_q;
   rd_buffer_completed_d = rd_buffer_completed_q;
 
+  buffer_pending_d = buffer_pending_q;
+
   if ((rd_datapath == BUFFER) && (rd_op == VLE)) begin
     ///// UNIT STRIDE LOADS /////
     ///// 64b precision     /////
@@ -767,6 +778,9 @@ always_comb begin
       buf_valid_d[rdbuf_pnt_q] = 1'b1;
       rdbuf_pnt_d = (rdbuf_pnt_q == 1'b1) ? 1'b0 : 1'b1;
       axi_rd_buffer_ready = '1;
+      if (axi_resp_i[0].r.last) begin
+        buffer_pending_d = 1'b1;
+      end
     end
 
     // Assign data in buffer to the output
@@ -854,6 +868,7 @@ always_comb begin
             for (int i=0; i <NumStages; i++) begin
               rd_issue_pnt_d[i] = rd_issue_pnt_d[b];
             end
+            buffer_pending_d = 1'b0;
           end
         end
       end
