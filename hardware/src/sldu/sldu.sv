@@ -698,7 +698,8 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
 
   logic is_edge_cluster;
   logic is_ring_reduction, is_ring_slide;
-
+  logic receive_slide_packet, receive_reduction_packet;
+  
   // maximum 4 64-bit data send out of a cluster on to the ring
   vlen_t vl_cluster_d, vl_cluster_q;
   vlen_t n_ring_out_d, n_ring_out_q;
@@ -1815,6 +1816,9 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     finish_last_result = 1'b0;
     receive_ring_packet = fifo_ring_valid_inp; // && (/*(n_ring_in_q > 0)*/ || is_ring_reduction);
     finish_without_ring_packet = !fifo_ring_valid_inp && (n_ring_in_q == 0);
+
+    receive_slide_packet = result_queue_cnt_d && is_ring_slide;
+    receive_reduction_packet = is_ring_reduction && (issue_cnt_q < inter_cluser_issue_limit_q);
     
     if (vinsn_commit_valid && (vinsn_commit.vl > 0)) begin
       // Either we have advanced to the next instruction in issue stage
@@ -1831,7 +1835,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       // if ((result_queue_cnt_d || (issue_cnt_d==0) || (issue_cnt_d > 0 && vinsn_ring.broadcast)) && ring_ready_to_receive) begin
-      if ((result_queue_cnt_d && is_ring_slide) || is_ring_reduction) begin
+      if (receive_slide_packet || receive_reduction_packet) begin
         // We have result after local slide waiting in the result queue for ring
         // Don't check for reduction
         automatic elen_t scalar_op = vinsn_commit.scalar_op;
