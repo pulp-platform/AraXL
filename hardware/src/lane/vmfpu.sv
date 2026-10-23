@@ -1395,7 +1395,7 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
     // Don't prevent commit by default
     prevent_commit = 1'b0;
 
-    sldu_red_completed_d = sldu_red_completed_q;
+    sldu_red_completed_d = sldu_red_completed_i | sldu_red_completed_q;
 
     //////////////////////////////////////////////////////////////////
     //  Issue the instruction and Write data into the result queue  //
@@ -1814,7 +1814,6 @@ module vmfpu import ara_pkg::*; import rvv_pkg::*; import fpnew_pkg::*;
           end
         end
  
-        sldu_red_completed_d = sldu_red_completed_i | sldu_red_completed_q;
         // If we have a valid result from the FPU,
         // write it in the queue and send it to the SLDU
         if (vfpu_out_valid && !result_queue_full) begin
