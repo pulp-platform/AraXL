@@ -269,9 +269,7 @@ jobs:
     - name: Untar RiVEC
       run: tar xvf rivec-bench-suite.tar
     - name: Compile applications
-      run: |
-        config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C apps
-        config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make rivec_binaries -C apps
+      run: config=${{ matrix.ara_config }} nr_clusters=${{ matrix.cluster_config }} make -C apps apps_binaries rivec_binaries
     - name: Upload applications
       uses: actions/upload-artifact@v4
       with:
