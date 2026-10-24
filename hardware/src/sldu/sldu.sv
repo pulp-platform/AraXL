@@ -963,7 +963,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               eff_stride_d = eff_stride;
               
               n_ring_out_d = vslideup_ring_packets_out(vinsn_issue_q, cluster_id_i, last_cluster_id);
-              n_ring_in_d = vslideup_ring_packets_in(vinsn_issue_q, cluster_id_i, last_cluster_id);
    
               // Initialize counters
               issue_cnt_d = vinsn_issue_q.vl << int'(vinsn_issue_q.vtype.vsew);
@@ -1004,12 +1003,6 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
               end else begin
                 n_ring_out_d = vslidedown_ring_packets_out(vinsn_issue_q, cluster_id_i, last_cluster_id);
               end   
-
-              if (vinsn_issue_q.vl == 0 || eff_stride == 0 || (cluster_id_i == 0 && vinsn_issue_q.vl_cluster <= (NrLanes * NrClusters) && vinsn_issue_q.use_scalar_op == 1'b0)) begin
-                n_ring_in_d = 0;
-              end else begin
-                n_ring_in_d = vslidedown_ring_packets_in(vinsn_issue_q, cluster_id_i, last_cluster_id);
-              end
 
               `SLDU_DEBUG($display("SLIDEDOWN INIT c=%0d sew=%0d vl=%0d vl_cluster=%0d last=%0d n_out=%0d",
                 cluster_id_i, vinsn_issue_q.vtype.vsew, vinsn_issue_q.vl, vinsn_issue_q.vl_cluster,
@@ -1853,6 +1846,13 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           ///// HANDLE RING PACKET /////
           automatic id_lane_t lane_id = sldu_ring_i.dst_lane;
 
+          `ifndef VERILATOR
+          `ifndef TARGET_SYNTHESIS
+          assert (!is_ring_slide || (n_ring_in_q != '0))
+            else $error("Slide packet received with no packets remaining");
+          `endif
+          `endif
+
           //broadcast_valid_d = 1'b1;
           
           // We have a valid ring packet
@@ -2050,9 +2050,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
           ring_cnt_d = ring_vinsn.op inside {VSLIDEUP, VSLIDEDOWN}
                         ? ring_vinsn.vl << int'(ring_vinsn.vtype.vsew)
                         : (NrLanes * ($clog2(NrLanes))) << EW64;
-          if (slidedown_drops_first_packet(ring_vinsn, cluster_id_i) && (ring_cnt_d >= 8*NrLanes)) begin
-            ring_cnt_d -= 8*NrLanes;
-          end
+          n_ring_in_d = slide_ring_packets_in(ring_vinsn, cluster_id_i);
 
           // Add packets for inter cluster reduction
           if (ring_vinsn.vfu inside {VFU_Alu, VFU_MFpu}) begin
@@ -2152,9 +2150,7 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
                       ? pe_req_i.vl << int'(pe_req_i.vtype.vsew)
                       : (NrLanes * ($clog2(NrLanes))) << EW64;
         end
-        if (slidedown_drops_first_packet(pe_req_i, cluster_id_i) && (ring_cnt_d >= 8*NrLanes)) begin
-          ring_cnt_d -= 8*NrLanes;
-        end
+        n_ring_in_d = slide_ring_packets_in(ring_vinsn, cluster_id_i);
 
         // Add packets for inter cluster reduction
         if (pe_req_i.vfu inside {VFU_Alu, VFU_MFpu}) begin
@@ -2278,10 +2274,35 @@ module sldu import ara_pkg::*; import rvv_pkg::*; #(
     end
   endfunction: vslidedown_ring_packets_in
 
-  function automatic logic slidedown_drops_first_packet(input pe_req_t insn, input id_cluster_t cluster_id);
-    slidedown_drops_first_packet = (insn.op == VSLIDEDOWN) && (cluster_id != 0) && (int'(cluster_id) == NrClusters-1) &&
-      ((insn.vtype.vsew == EW64) || (insn.vl_cluster <= NrLanes * NrClusters));
-  endfunction: slidedown_drops_first_packet
+  // n_ring_in belongs to the ring stage. Initialize it together with ring_cnt
+  // so a following instruction cannot be mistaken for a packet-free tail of
+  // the instruction that just completed.
+  function automatic vlen_t slide_ring_packets_in(
+    input pe_req_t insn,
+    input id_cluster_t cluster_id
+  );
+    automatic vlen_cluster_t rem = insn.vl_cluster % (NrLanes * NrClusters);
+    automatic id_cluster_t last_cluster = (rem == 0)
+                                           ? max_cluster_id
+                                           : id_cluster_t'((rem - 1) >> $clog2(NrLanes));
+    automatic vlen_t cluster_strides = insn.stride >> ($clog2(8*NrLanes) + num_clusters_i);
+    automatic vlen_t eff_stride = insn.stride - (cluster_strides * ((8*NrLanes) << num_clusters_i));
+
+    unique case (insn.op)
+      VSLIDEUP: begin
+        slide_ring_packets_in = vslideup_ring_packets_in(insn, cluster_id, last_cluster);
+      end
+      VSLIDEDOWN: begin
+        if (insn.vl == 0 || eff_stride == 0 ||
+            ((cluster_id == 0) && (insn.vl_cluster <= NrLanes * NrClusters) && !insn.use_scalar_op)) begin
+          slide_ring_packets_in = '0;
+        end else begin
+          slide_ring_packets_in = vslidedown_ring_packets_in(insn, cluster_id, last_cluster);
+        end
+      end
+      default: slide_ring_packets_in = '0;
+    endcase
+  endfunction: slide_ring_packets_in
 
   function automatic int unsigned cluster_id_bits(input id_cluster_t id);
       cluster_id_bits = 1;

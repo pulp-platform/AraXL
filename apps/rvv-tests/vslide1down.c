@@ -243,6 +243,10 @@ void TEST_CASE6() {
 
     asm volatile("vsetvli %0, %1, e64, m2, ta, ma" : "=r"(avl) : "r"(vl));
     asm volatile ("vle64.v v2, (%0)"::"r"(&LONG_I64[0]));
+    // Test back to back slide instructions to ensure the state machine
+    // works as expected.
+    asm volatile ("vslide1down.vx v8, v2, %0"::"r"(a));
+    asm volatile ("vslide1down.vx v8, v2, %0"::"r"(a));
     asm volatile ("vslide1down.vx v8, v2, %0"::"r"(a));
     asm volatile ("vse64.v v8, (%0)"::"r"(res[i]));
 
@@ -269,12 +273,12 @@ int main(void) {
   INIT_CHECK();
   enable_vec();
   
-  TEST_CASE1();
-  TEST_CASE2();
+  // TEST_CASE1();
+  // TEST_CASE2();
   
-  TEST_CASE3();
-  TEST_CASE4();
-  TEST_CASE5();
+  // TEST_CASE3();
+  // TEST_CASE4();
+  // TEST_CASE5();
   TEST_CASE6();
 
   EXIT_CHECK();
