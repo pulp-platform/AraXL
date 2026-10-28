@@ -311,7 +311,7 @@ endfunction
 
     rs_lmul_cnt_d       = '0;
     rs_lmul_cnt_limit_d = '0;
-    rs_mask_request_d   = 1'b0;
+    rs_mask_request_d   = rs_mask_request_q;
 
     illegal_insn = 1'b0;
     vxsat_d      = vxsat_q;
@@ -485,6 +485,8 @@ endfunction
         // SEM PROJ : START BY COPYING SIMPLE LOAD REQ
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
+        
+
         rs_lmul_cnt_d       = rs_lmul_cnt_q;
         rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
 
@@ -543,10 +545,19 @@ endfunction
 
         reshuffle_pending_d = 1;
 
-        if (ara_resp_valid_i) begin
+        if (ara_resp_valid_i && ~(eew_new_buffer_d == eew_old_buffer_d)) begin
           state_d = RESHUFFLE_WAIT;
           ara_req_valid_d  = 1'b0;
         end
+
+        // MASK REQUEST = SKIP
+        if (eew_new_buffer_d == eew_old_buffer_d)begin
+          rs_mask_request_d = 1'b1;
+          ara_req_valid_d     = 1'b0;
+          state_d = RESHUFFLE_WAIT;
+        end
+
+        
 
 
       end
@@ -639,6 +650,35 @@ endfunction
         rs_lmul_cnt_d       = rs_lmul_cnt_q;
         rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
 
+        if (rs_mask_request_q) begin
+          rs_mask_request_d = 1'b0;
+
+          unique casez (reshuffle_req_d)
+
+                  3'b??1: begin
+                    vs_buffer_d      = vs_buffer_q + 1;
+                    eew_old_buffer_d = eew_q[vs_buffer_d];
+                    eew_new_buffer_d = ara_req_d.vtype.vsew;
+                  end
+                  3'b?10: begin
+                    vs_buffer_d      = vs_buffer_q + 1;
+                    eew_old_buffer_d = eew_q[vs_buffer_d];
+                    eew_new_buffer_d = ara_req_d.eew_vs2;
+                  end
+                  3'b100: begin
+                    vs_buffer_d      = vs_buffer_q + 1;
+                    eew_old_buffer_d = eew_q[vs_buffer_d];
+                    eew_new_buffer_d = ara_req_d.eew_vs1;
+                  end
+                  default:;
+                endcase
+
+          //vs_buffer_d = vs_buffer_q +1; // move on to next reg holding vector
+          rs_lmul_cnt_d =rs_lmul_cnt_q + 1;
+          state_d = RESHUFFLE_ST;
+          ara_req_valid_d  = 1'b0;
+        end
+
         
 
         // If we come from store
@@ -707,6 +747,26 @@ endfunction
                   default:;
                 endcase
               end else begin
+                // unique casez (reshuffle_req_d)
+
+                //   3'b??1: begin
+                //     vs_buffer_d      = vs_buffer_q + 1;
+                //     eew_old_buffer_d = eew_q[vs_buffer_d];
+                //     eew_new_buffer_d = ara_req_d.vtype.vsew;
+                //   end
+                //   3'b?10: begin
+                //     vs_buffer_d      = vs_buffer_q + 1;
+                //     eew_old_buffer_d = eew_q[vs_buffer_d];
+                //     eew_new_buffer_d = ara_req_d.eew_vs2;
+                //   end
+                //   3'b100: begin
+                //     vs_buffer_d      = vs_buffer_q + 1;
+                //     eew_old_buffer_d = eew_q[vs_buffer_d];
+                //     eew_new_buffer_d = ara_req_d.eew_vs1;
+                //   end
+                //   default:;
+                // endcase
+
                 vs_buffer_d = vs_buffer_q +1; // move on to next reg holding vector
                 rs_lmul_cnt_d =rs_lmul_cnt_q + 1;
 
@@ -3477,9 +3537,9 @@ endfunction
         // Annotate which registers need a reshuffle -> |vs1|vs2|vd|
         // Optimization: reshuffle vs1 and vs2 only if the operation is strictly in-lane
         // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
-        reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op && ara_req_d.op != VLE , // Skip loads
-                           ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op && ara_req_d.op != VLE,
-                           ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew) && ara_req_d.op != VLE};
+        reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op, // Skip loads
+                           ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op,
+                           ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew)};
         // TODO: Reshuffling is currently not supported.
 
         // SEM PROJ:
