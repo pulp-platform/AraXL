@@ -463,7 +463,7 @@ void TEST_RESHUFFLE_10(void) {
 
   for (int i = 0; i < 512; i++) {
     IDX_A[i]   = (uint16_t)i;
-    IDX_B[i]   = (uint16_t)(3 * i + 1);
+    IDX_B[i]   = (uint16_t)(3*i +1);
     IDX_SUM[i] = (uint16_t)(IDX_A[i] + IDX_B[i]);
   }
   for (int i = 0; i < 512; i++) {
@@ -498,10 +498,10 @@ void TEST_RESHUFFLE_10(void) {
     printf("BUFFER index %d : %#08x \r\n",i,IDX_SUM8[i]);
 
   }
-  asm volatile("vse16.v v4, (%0)" : : "r"(rs_buffer));
+  //asm volatile("vse16.v v4, (%0)" : : "r"(rs_buffer));
 
   VSET(1024, e8, m2);
-  asm volatile("vle8.v v4, (%0)" : : "r"(rs_buffer));
+  //asm volatile("vle8.v v4, (%0)" : : "r"(rs_buffer));
   asm volatile("vadd.vv v2, v0, v4");
   //LVCMP_U8(4, v0, IDX_A8);
   LVCMP_U8(5, v4, IDX_SUM8);
@@ -547,80 +547,6 @@ void TEST_RESHUFFLE_11(void) {
 
 }
 
-void TEST_RESHUFFLE_12(void) {
-
-  
-  uint16_t IDX_A[512]  __attribute__((aligned(128)));
-  uint16_t IDX_B[512]  __attribute__((aligned(128)));
-  uint16_t IDX_SUM[512] __attribute__((aligned(128)));
-
-  uint8_t IDX_A8[1024]  __attribute__((aligned(128)));
-  uint8_t IDX_SUM8[1024] __attribute__((aligned(128)));
-  uint8_t IDX_SUM8_2[1024] __attribute__((aligned(128)));
-
-  int j =0;
-
-  for (int i = 0; i < 512; i++) {
-    if (i<1024){
-      // if (j == 16){
-      //   j =0 ;
-      // }
-      IDX_A[i]   = (uint16_t)i;
-      IDX_B[i]   = (uint16_t)(i*3 + 1);
-      IDX_SUM[i] = (uint16_t)(IDX_A[i] + IDX_B[i]);
-      j ++;
-    } else {
-      IDX_A[i]   = (uint16_t)3;
-      IDX_B[i]   = (uint16_t)1;
-      IDX_SUM[i] = (uint16_t)(IDX_A[i] + IDX_B[i]);
-
-    }
-  }
-  for (int i = 0; i < 512; i++) {
-    IDX_A8[2 * i]     = (uint8_t)(IDX_A[i] & 0xFF);
-    IDX_A8[2 * i + 1] = (uint8_t)(IDX_A[i] >> 8);
-  }
-  for (int i = 0; i < 512; i++) {
-    IDX_SUM8[2 * i]     = (uint8_t)(IDX_SUM[i] & 0xFF);
-    IDX_SUM8[2 * i + 1] = (uint8_t)(IDX_SUM[i] >> 8);
-  }
-    for (int k = 0; k < 1024; k++) {
-    IDX_SUM8_2[k] = (uint8_t)(IDX_SUM8[k] + IDX_A8[k]);
-  }
-  __asm__ volatile("fence");
-
-  // store result
-  uint16_t rs_buffer[512];
-  
-
-  VSET(512, e16, m2);
-  asm volatile("vle16.v v0, (%0)" ::"r"(&IDX_A[0]));
-  asm volatile("vle16.v v2, (%0)" ::"r"(&IDX_B[0]));
-  //asm volatile("vle16.v v4, (%0)" ::"r"(&IDX_B[0]));
-  asm volatile("vadd.vv v4, v0, v2");
-
-  
-
-  //LVCMP_U16(1, v0, IDX_A);
-  //LVCMP_U16(2, v2, IDX_B);
-  //LVCMP_U16(3, v4, IDX_SUM);
-  for (int i=0; i<10; i++) {
-    printf("BUFFER index %d : %#08x \r\n",i,IDX_SUM8[i]);
-
-  }
-  asm volatile("vse16.v v4, (%0)" : : "r"(rs_buffer));
-
-  VSET(1024, e8, m2);
-  asm volatile("vle8.v v4, (%0)" : : "r"(rs_buffer));
-  asm volatile("vadd.vv v2, v0, v4");
-  //LVCMP_U8(4, v0, IDX_A8);
-  LVCMP_U8(5, v4, IDX_SUM8);
-  //LVCMP_U8(6, v2, IDX_SUM8_2);
-  
-  //VSET(512, e16, m2);
-  //asm volatile("vadd.vv v6, v0, v2");
-  //LVCMP_U16(7, v0, IDX_A);
-}
 
 
 int main(void) {
@@ -642,9 +568,8 @@ int main(void) {
   
   TEST_RESHUFFLE_8();
   TEST_RESHUFFLE_9();
- TEST_RESHUFFLE_10();
- TEST_RESHUFFLE_11();
-  TEST_RESHUFFLE_12();
+  TEST_RESHUFFLE_10();
+  TEST_RESHUFFLE_11();
   
 
 

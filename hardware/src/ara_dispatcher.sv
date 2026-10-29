@@ -627,7 +627,10 @@ endfunction
         //end
 
         // Set eew to new eew
-        eew_d[vs_buffer_d]=eew_new_buffer_q;
+        
+        eew_d[ara_req_d.vd]=eew_new_buffer_q;
+        //eew_d[10]=EW16;
+        
 
         // Set these for convenience
         //eew_d[3]=EW64;
@@ -3601,6 +3604,7 @@ endfunction
     end
 
     // Update the EEW
+    if (state_q != RESHUFFLE_LD && state_q != RESHUFFLE_ST && state_q != RESHUFFLE_WAIT) begin
     if (ara_req_valid_d && ara_req_d.use_vd && ara_req_ready_i) begin
       unique case (ara_req_d.emul)
         LMUL_1: begin
@@ -3635,6 +3639,7 @@ endfunction
         end
       endcase
     end
+    end
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
     // e.g. whole vector memory operations / whole vector register move
@@ -3649,6 +3654,9 @@ endfunction
       ara_req_valid_d  = 1'b0;
       load_zero_vl     = is_vload;
       store_zero_vl    = is_vstore;
+
+      // ADDED 
+      //eew_d[ara_req_d.vd]       = ara_req_d.vtype.vsew;
     end
 
     //acc_resp_o.load_complete  = load_zero_vl  | load_complete_q;
