@@ -172,7 +172,7 @@ $(foreach app,$(APPS),$(eval $(call run_benchmark_spike,$(app))))
 # Clean Spike simulation
 .PHONY: riscv_tests_spike_clean
 riscv_tests_spike_clean:
-	make -C riscv-tests/isa clean
+	@if [ -d riscv-tests/isa ]; then make -C riscv-tests/isa clean; fi
 
 # Compile Standardized RISC-V tests
 .PHONY: riscv_tests_standard
@@ -189,13 +189,7 @@ benchmarks_clean:
 
 .PHONY: clean
 clean: riscv_tests_spike_clean benchmarks_clean
-	rm -vf $(BINARIES)
-	rm -vf $(CVA6_BINARIES)
-	rm -vf $(ARA_BINARIES)
-	rm -vf $(addsuffix .dump,$(BINARIES))
-	rm -vf $(addsuffix .dump,$(CVA6_BINARIES))
-	rm -vf $(addsuffix .dump,$(ARA_BINARIES))
-	rm -vf $(addsuffix /main.c.o,$(APPS))
+	rm -vf bin/*
 	rm -vf $(RUNTIME_GCC)
 	rm -vf $(RUNTIME_LLVM)
 	rm -vf $(RUNTIME_SPIKE)
