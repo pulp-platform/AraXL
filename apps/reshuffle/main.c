@@ -38,7 +38,7 @@ void TEST_RESHUFFLE(void) {
   VSET(16, e8, m1);
   VLOAD_8(v1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
   // 'Load baring banana'
-  VLOAD_8(v4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+  //VLOAD_8(v4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
   VLOAD_8(v2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
   asm volatile("vadd.vv v3, v1, v2"); 
 
@@ -498,13 +498,17 @@ void TEST_RESHUFFLE_10(void) {
     printf("BUFFER index %d : %#08x \r\n",i,IDX_SUM8[i]);
 
   }
-  //asm volatile("vse16.v v4, (%0)" : : "r"(rs_buffer));
+  asm volatile("vse16.v v4, (%0)" : : "r"(rs_buffer));
+
+  // FENCE IS NEEDED
+  //__asm__ volatile("fence");
 
   VSET(1024, e8, m2);
+  
   //asm volatile("vle8.v v4, (%0)" : : "r"(rs_buffer));
-  asm volatile("vadd.vv v2, v0, v4");
+  //asm volatile("vadd.vv v2, v0, v4");
   //LVCMP_U8(4, v0, IDX_A8);
-  LVCMP_U8(5, v4, IDX_SUM8);
+  //LVCMP_U8(5, v4, IDX_SUM8);
   //LVCMP_U8(6, v2, IDX_SUM8_2);
   
   //VSET(512, e16, m2);

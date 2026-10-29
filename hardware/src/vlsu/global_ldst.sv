@@ -40,10 +40,6 @@ module global_ldst import ara_pkg::*; import rvv_pkg::*;  #(
   output axi_req_t                      axi_req_o
 );
 
-// SEM PROJ :
-logic[127:0] rs_buffer_0;
-logic[127:0] rs_buffer_1;
-
 import cf_math_pkg::idx_width;
 import axi_pkg::aligned_addr;
 import axi_pkg::BURST_INCR;
@@ -89,7 +85,6 @@ assign cluster_metadata_o.vew = vew_d;
 assign cluster_metadata_o.vl = cluster_metadata_i.vl; 
 assign cluster_metadata_o.use_eew1 = cluster_metadata_i.use_eew1;
 assign cluster_metadata_o.op = cluster_metadata_i.op;
-assign cluster_metadata_o.is_reshuffle = cluster_metadata_i.is_reshuffle;
 
 cluster_axi_resp_t  [NrClusters-1:0] axi_resp_d, axi_resp_q;
 
@@ -529,18 +524,6 @@ always_comb begin : p_global_ldst
     cluster_axi_resp_data_d[i].r_valid = 1'b0;
     axi_resp_d[i].r_valid = 1'b0;
   end
-
-
-  // SEM PROJ :
-  if(cluster_metadata_i.is_reshuffle && axi_resp_d[0].r_valid) begin
-    axi_resp_d[0].r.data = rs_buffer_0;
-  end
-
-  if(cluster_metadata_i.is_reshuffle && axi_resp_d[1].r_valid) begin
-    axi_resp_d[1].r.data = rs_buffer_1;
-  end
-
-
   
   fifo_pop_o = 1'b0;
 
@@ -632,15 +615,6 @@ always_comb begin : p_global_ldst
 
   cluster_start_wr_d = cluster_start_wr_q;
   axi_req_data_d = axi_req_data_q;
-
-  // SEM PROJ :
-  if(cluster_metadata_i.is_reshuffle && axi_req_i[0].w_valid) begin
-    rs_buffer_0 = axi_req_i[0].w.data;
-  end
-  if(cluster_metadata_i.is_reshuffle && axi_req_i[1].w_valid) begin
-    rs_buffer_1 = axi_req_i[1].w.data;
-  end
-
 
   for (int i=0; i<NrClusters; i++) begin
     // For VSXE/VSSE operations, only track valid from the active cluster

@@ -481,6 +481,7 @@ endfunction
         //     if (eew_new_buffer_d == eew_old_buffer_d) rs_mask_request_d = 1'b1;
         //   end
         // end
+        //if (~store_pending_i) begin
 
         // SEM PROJ : START BY COPYING SIMPLE LOAD REQ
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
@@ -550,12 +551,22 @@ endfunction
           ara_req_valid_d  = 1'b0;
         end
 
+        // if (store_pending_i)begin
+        //   rs_mask_request_d = 1'b1;
+        //   ara_req_valid_d     = 1'b0;
+        //   state_d = RESHUFFLE_ST;
+        // end
+
         // MASK REQUEST = SKIP
         if (eew_new_buffer_d == eew_old_buffer_d)begin
           rs_mask_request_d = 1'b1;
           ara_req_valid_d     = 1'b0;
           state_d = RESHUFFLE_WAIT;
         end
+        // end else begin
+        //   state_d = RESHUFFLE_ST;
+
+        // end
 
         
 
@@ -3592,7 +3603,9 @@ endfunction
         endcase
 
         // Reshuffle
-        state_d = RESHUFFLE_ST;
+        if (~store_pending_i) begin
+          state_d = RESHUFFLE_ST;
+        end
       end
       //end
     end
@@ -3605,40 +3618,40 @@ endfunction
 
     // Update the EEW
     if (state_q != RESHUFFLE_LD && state_q != RESHUFFLE_ST && state_q != RESHUFFLE_WAIT) begin
-    if (ara_req_valid_d && ara_req_d.use_vd && ara_req_ready_i) begin
-      unique case (ara_req_d.emul)
-        LMUL_1: begin
-          for (int i = 0; i < 1; i++) begin
-            eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
-            eew_valid_d[ara_req_d.vd + i] = 1'b1;
+      if (ara_req_d.use_vd && ara_req_ready_i) begin
+        unique case (ara_req_d.emul)
+          LMUL_1: begin
+            for (int i = 0; i < 1; i++) begin
+              eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
+              eew_valid_d[ara_req_d.vd + i] = 1'b1;
+            end
           end
-        end
-        LMUL_2: begin
-          for (int i = 0; i < 2; i++) begin
-            eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
-            eew_valid_d[ara_req_d.vd + i] = 1'b1;
+          LMUL_2: begin
+            for (int i = 0; i < 2; i++) begin
+              eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
+              eew_valid_d[ara_req_d.vd + i] = 1'b1;
+            end
           end
-        end
-        LMUL_4: begin
-          for (int i = 0; i < 4; i++) begin
-            eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
-            eew_valid_d[ara_req_d.vd + i] = 1'b1;
+          LMUL_4: begin
+            for (int i = 0; i < 4; i++) begin
+              eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
+              eew_valid_d[ara_req_d.vd + i] = 1'b1;
+            end
           end
-        end
-        LMUL_8: begin
-          for (int i = 0; i < 8; i++) begin
-            eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
-            eew_valid_d[ara_req_d.vd + i] = 1'b1;
+          LMUL_8: begin
+            for (int i = 0; i < 8; i++) begin
+              eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
+              eew_valid_d[ara_req_d.vd + i] = 1'b1;
+            end
           end
-        end
-        default: begin // EMUL < 1
-          for (int i = 0; i < 1; i++) begin
-            eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
-            eew_valid_d[ara_req_d.vd + i] = 1'b1;
+          default: begin // EMUL < 1
+            for (int i = 0; i < 1; i++) begin
+              eew_d[ara_req_d.vd + i]       = ara_req_d.vtype.vsew;
+              eew_valid_d[ara_req_d.vd + i] = 1'b1;
+            end
           end
-        end
-      endcase
-    end
+        endcase
+      end
     end
 
     // Any valid non-config instruction is a NOP if vl == 0, with some exceptions,
