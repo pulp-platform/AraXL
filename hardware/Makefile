@@ -263,35 +263,90 @@ riscv_tests_simv: $(tests)
 $(tests): rv%: $(app_path)/rv%
 	$(veril_library)/V$(veril_top) $(if $(trace),-t,) -l ram,$<,elf &> $(buildpath)/$@.trace
 
-# Run all RISC-V tests on QuestaSim
-.PHONY: riscv_tests_simc
-riscv_tests_simc: compile
-	@failed_tests=""; \
+# CI regression on QuestaSim: RISC-V vector tests and benchmarks for every cluster configuration
+ci_config ?= 4_lanes
+ci_cluster_configs ?= 4
+
+# Benchmarks from the CI simulate job
+ci_benchmarks ?= hello_world fmatmul imatmul exp softmax fdotproduct fconv2d iconv2d cos dropout _pathfinder _blackscholes _axpy _streamcluster _spmv _canneal _swaptions _lavaMD
+
+.PHONY: vsim-ci vsim-ci-prep vsim-ci-rvv vsim-ci-benchmarks
+vsim-ci:
+	@failed_steps=""; \
+	for nr in $(ci_cluster_configs); do \
+		$(MAKE) --no-print-directory vsim-ci-build config=$(ci_config) nr_clusters=$$nr || { failed_steps="$$failed_steps prep-$$nr"; continue; }; \
+		$(MAKE) --no-print-directory vsim-ci-rvv skip_build=1 config=$(ci_config) nr_clusters=$$nr || failed_steps="$$failed_steps rvv-$$nr"; \
+		$(MAKE) --no-print-directory vsim-ci-benchmarks skip_build=1 config=$(ci_config) nr_clusters=$$nr || failed_steps="$$failed_steps benchmarks-$$nr"; \
+	done; \
+	if [ -n "$$failed_steps" ]; then \
+		echo -e "\033[91mFAILED CI STEPS:$$failed_steps\033[0m"; \
+		exit 1; \
+	else \
+		echo -e "\033[92mALL CI STEPS PASSED\033[0m"; \
+	fi
+
+# Builds apps and compiles QuestaSim sources; skipped by the test targets when skip_build is set
+vsim-ci-build:
+	echo -e "===== Building RISC-V tests and benchmarks for AraXL CfG: $(config) and $(nr_clusters) clusters ====="; \
+	$(MAKE) --no-print-directory -C $(APPS_DIR) config=$(config) nr_clusters=$(nr_clusters) all || exit 1; \
+	rm -f $(buildpath)/compile_$(config).tcl; \
+	$(MAKE) --no-print-directory compile config=$(config) nr_clusters=$(nr_clusters) || exit 1; \
+	if [ ! -f $(buildpath)/compile_$(config).tcl ]; then echo -e "\033[91mQuestaSim compilation failed\033[0m"; exit 1; fi
+
+vsim-ci-rvv:
+	@$(if $(skip_build),,$(MAKE) --no-print-directory vsim-ci-build config=$(config) nr_clusters=$(nr_clusters) || exit 1;) \
 	GREEN='\033[92m'; RED='\033[91m'; RESET='\033[0m'; \
-	echo -e "========================================================================================="; \
-	echo -e "Running RISC-V Vector tests on QuestaSim $(nr_lanes) lanes and $(nr_clusters) clusters"; \
-	echo -e "========================================================================================="; \
+	failed_tests=""; \
+	echo -e ""; \
+	echo -e "===== Running RISC-V Vector tests on QuestaSim for AraXL CfG: $(nr_lanes) lanes and $(nr_clusters) clusters ====="; \
 	for test in $(tests); do \
-		make simc app=$$test > $(buildpath)/$${test}.log 2>&1; \
-		if grep -q "FAILED" $(buildpath)/transcript; then \
+		rm -f $(buildpath)/transcript; \
+		$(MAKE) --no-print-directory simc app=$$test config=$(config) nr_clusters=$(nr_clusters) > $(buildpath)/$${test}.log 2>&1; \
+		if grep -q "\*\*\* SUCCESS \*\*\*" $(buildpath)/transcript; then \
+			printf "  ✓ %-60s $${GREEN}PASSED$${RESET}\n" "$$test"; \
+		else \
 			printf "  ✗ %-60s $${RED}FAILED$${RESET}\n" "$$test"; \
 			failed_tests="$$failed_tests $$test"; \
-		else \
-			printf "  ✓ %-60s $${GREEN}PASSED$${RESET}\n" "$$test"; \
 		fi; \
 		cp $(buildpath)/transcript $(buildpath)/$${test}.transcript; \
 	done; \
 	if [ -n "$$failed_tests" ]; then \
 		echo -e ""; \
-		echo -e "==============================================="; \
-		echo -e "$${RED}FAILED TESTS:$$failed_tests$${RESET}"; \
-		echo -e "==============================================="; \
+		echo -e "$${RED}===== FAILED RVV TESTS ($(nr_clusters) clusters):$$failed_tests =====$${RESET}"; \
+		echo -e ""; \
 		exit 1; \
 	else \
 		echo -e ""; \
-		echo -e "==============================================="; \
-		echo -e "$${GREEN}ALL TESTS PASSED$${RESET}"; \
-		echo -e "==============================================="; \
+		echo -e "$${GREEN}===== ALL RVV TESTS PASSED ($(nr_clusters) clusters) =====$${RESET}"; \
+		echo -e ""; \
+	fi
+
+vsim-ci-benchmarks:
+	@$(if $(skip_build),,$(MAKE) --no-print-directory vsim-ci-build config=$(config) nr_clusters=$(nr_clusters) || exit 1;) \
+	GREEN='\033[92m'; RED='\033[91m'; RESET='\033[0m'; \
+	failed_apps=""; \
+	echo -e ""; \
+	echo -e "===== Running benchmarks on QuestaSim for AraXL CfG: $(nr_lanes) lanes and $(nr_clusters) clusters ====="; \
+	for app in $(ci_benchmarks); do \
+		rm -f $(buildpath)/transcript; \
+		$(MAKE) --no-print-directory simc app=$$app config=$(config) nr_clusters=$(nr_clusters) > $(buildpath)/$${app}.log 2>&1; \
+		if grep -q "\*\*\* SUCCESS \*\*\*" $(buildpath)/transcript; then \
+			printf "  ✓ %-60s $${GREEN}PASSED$${RESET}\n" "$$app"; \
+		else \
+			printf "  ✗ %-60s $${RED}FAILED$${RESET}\n" "$$app"; \
+			failed_apps="$$failed_apps $$app"; \
+		fi; \
+		cp $(buildpath)/transcript $(buildpath)/$${app}.transcript; \
+	done; \
+	if [ -n "$$failed_apps" ]; then \
+		echo -e ""; \
+		echo -e "$${RED}===== FAILED BENCHMARKS ($(nr_clusters) clusters):$$failed_apps =====$${RESET}"; \
+		echo -e ""; \
+		exit 1; \
+	else \
+		echo -e ""; \
+		echo -e "$${GREEN}===== ALL BENCHMARKS PASSED ($(nr_clusters) clusters) =====$${RESET}"; \
+		echo -e ""; \
 	fi
 
 # Lint
@@ -322,3 +377,4 @@ $(buildpath)/$(dpi_library)/ara_dpi.so: $(dpi)
 clean:
 	rm -rf $(buildpath)
 	rm -f  $(BENDER)
+	rm -rf deps
