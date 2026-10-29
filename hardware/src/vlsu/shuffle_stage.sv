@@ -356,7 +356,7 @@ for (genvar c=0; c<NrClusters; c++) begin
   stream_demux #(
     .N_OUP(2)
   ) i_demux_indexed_rd (
-    .inp_valid_i   (axi_resp_i[c].r_valid                                 ),
+    .inp_valid_i   (axi_resp_i[c].r_valid & ~stall_rd_resp                ),
     .inp_ready_o   (axi_req_out_r_ready[c]                                ),
     .oup_sel_i     (rd_op inside {VLXE, VLSE} ? 1'b0 : 1'b1               ),
     .oup_valid_o   ({axi_rd_unit_stride_valid[c], axi_rd_indexed_valid[c]}),
