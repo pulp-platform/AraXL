@@ -699,9 +699,10 @@ always_comb begin : p_global_ldst
     end
   end
 
-  // Update cluster and lane pointers for write data when data is received
-  // if (cluster_metadata_i.op inside {VSXE, VSSE} && w_cluster_ready_q[cluster_w_q] && axi_req_i[cluster_w_q].w_valid) begin
-  if (cluster_metadata_i.op inside {VSXE, VSSE} && axi_resp_i.w_ready && axi_req_i[cluster_w_q].w_valid) begin
+  // Advance the indexed-store selector when the corresponding beat is
+  // accepted downstream. A beat can be buffered while downstream is stalled,
+  // so the upstream valid may already be low when that buffered beat leaves.
+  if (cluster_metadata_i.op inside {VSXE, VSSE} && axi_req_o.w_valid && axi_resp_i.w_ready) begin
     // Increment lane counter for current cluster
     lane_w_d = lane_w_q + 1;
     
