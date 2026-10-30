@@ -406,13 +406,19 @@ vlen_cluster_t vl_idx_cluster_d, vl_idx_cluster_q;
 cluster_bitmask_t axi_req_unit_stride_ready, axi_req_unit_stride_valid;
 cluster_bitmask_t axi_wr_unit_stride_ready, axi_wr_unit_stride_valid;
 cluster_bitmask_t axi_wr_indexed_ready, axi_wr_indexed_valid;
+cluster_bitmask_t axi_w_ready, indexed_w_handshake_en;
 
 for (genvar c=0; c<NrClusters; c++) begin
+  // Indexed/strided write data is accepted from only the selected cluster.
+  // Gate both sides of the handshake so inactive clusters cannot consume data.
+  assign indexed_w_handshake_en[c] = !(wr_op inside {VSXE, VSSE}) || (c == cluster_w_q);
+  assign axi_resp_o[c].w_ready = axi_w_ready[c] && indexed_w_handshake_en[c];
+
   stream_demux #(
     .N_OUP(2)
   ) i_demux_indexed_wr (
-    .inp_valid_i   (axi_req_i[c].w_valid                                  ),
-    .inp_ready_o   (axi_resp_o[c].w_ready                                 ),
+    .inp_valid_i   (axi_req_i[c].w_valid && indexed_w_handshake_en[c]     ),
+    .inp_ready_o   (axi_w_ready[c]                                        ),
     .oup_sel_i     (wr_op inside {VSXE, VSSE} ? 1'b0 : 1'b1               ),
     .oup_valid_o   ({axi_wr_unit_stride_valid[c], axi_wr_indexed_valid[c]}),
     .oup_ready_i   ({axi_wr_unit_stride_ready[c], axi_wr_indexed_ready[c]})
