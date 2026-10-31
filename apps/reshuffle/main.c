@@ -2,8 +2,7 @@
 // Solderpad Hardware License, Version 0.51, see LICENSE for details.
 // SPDX-License-Identifier: SHL-0.51
 //
-// Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
-//         Basile Bougenot <bbougenot@student.ethz.ch>
+// Author: Luca Caballero Cusin <lcaballero@ethz.ch>
 
 #include "../common/macros/vector/vector_macros.h"
 #include "../common/macros/vector/long_array.h"
