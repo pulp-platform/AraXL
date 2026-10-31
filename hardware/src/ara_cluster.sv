@@ -457,8 +457,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   `FF(cluster_metadata_cut_rs, cluster_metadata_cut, cluster_metadata_t'('0), clk_i, rst_ni)
 
-  // Reshuffle unit
-  reshuffle_unit #(
+  // Reshuffle filter
+  reshuffle_filter #(
     .NrLanes            (NrLanes            ),
     .NrClusters         (NrClusters         ),
     .ClusterAxiDataWidth(ClusterAxiDataWidth),
@@ -466,7 +466,7 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     .cluster_axi_resp_t (cluster_axi_resp_t ),
     .axi_req_t          (axi_req_t          ),
     .axi_resp_t         (axi_resp_t         )
-  ) i_reshuffle_unit (
+  ) i_reshuffle_filter (
     .clk_i              (clk_i              ),
     .rst_ni             (rst_ni             ),
     // To Ara

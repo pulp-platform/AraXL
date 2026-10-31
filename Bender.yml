@@ -54,7 +54,7 @@ sources:
     - hardware/src/vlsu/vldu.sv
     - hardware/src/vlsu/vstu.sv
     - hardware/src/vlsu/global_ldst.sv
-    - hardware/src/vlsu/reshuffle_unit.sv
+    - hardware/src/vlsu/reshuffle_filter.sv
     - hardware/src/vlsu/align_stage.sv
     - hardware/src/vlsu/shuffle_stage.sv
     # Level 2

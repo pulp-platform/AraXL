@@ -183,7 +183,7 @@ endfunction
   // Keep track of the registers to be reshuffled |vs1|vs2|vd|
   logic [2:0] reshuffle_req_d, reshuffle_req_q;
 
-  // SEM PROJ :
+  // Keep track of issued reshuffle stores to avoid multiple stores for a same reshuffle
   logic reshuffle_ld_issued_d, reshuffle_ld_issued_q;
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -309,8 +309,8 @@ endfunction
     eew_new_buffer_d = eew_new_buffer_q;
     vs_buffer_d      = vs_buffer_q;
 
-    rs_lmul_cnt_d       = '0;
-    rs_lmul_cnt_limit_d = '0;
+    rs_lmul_cnt_d       = rs_lmul_cnt_q;
+    rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
     rs_mask_request_d   = rs_mask_request_q;
 
     illegal_insn = 1'b0;
@@ -375,280 +375,86 @@ endfunction
         if (ara_idle_i) state_d = NORMAL_OPERATION;
       end
 
-      // Inject a reshuffle instruction
+      ///////////////////////
+      //  RESHUFFLE STORE  //
+      ///////////////////////
+
       RESHUFFLE_ST: begin
-        // TODO: Proper reshuffling yet to be implemented
-        // Instruction is of one of the RVV types
-        // automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
-
-        // // Stall the interface, wait for the backend to accept the injected uop
-        // acc_resp_o.req_ready  = 1'b0;
-        // acc_resp_o.resp_valid = 1'b0;
-
-        // // Handle LMUL > 1
-        // rs_lmul_cnt_d       = rs_lmul_cnt_q;
-        // rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
-        // rs_mask_request_d   = 1'b0;
-
-        // // These generate a reshuffle request to Ara's backend
-        // // When LMUL > 1, not all the regs that compose a large
-        // // register should always be reshuffled
-        // ara_req_valid_d         = ~rs_mask_request_q;
-        // ara_req_d.use_scalar_op = 1'b1;
-        // ara_req_d.vs2           = vs_buffer_q;
-        // ara_req_d.eew_vs2       = eew_old_buffer_q;
-        // ara_req_d.use_vs2       = 1'b1;
-        // ara_req_d.vd            = vs_buffer_q;
-        // ara_req_d.use_vd        = 1'b1;
-        // ara_req_d.op            = ara_pkg::VSLIDEDOWN;
-        // ara_req_d.stride        = '0;
-        // ara_req_d.use_scalar_op = 1'b0;
-        // // Unmasked: reshuffle everything
-        // ara_req_d.vm            = 1'b1;
-        // // Shuffle the whole reg (vl refers to current vsew)
-        // ara_req_d.vtype.vsew    = eew_new_buffer_q;
-        // // Always reshuffle one vreg at a time
-        // ara_req_d.vl            = VLENB >> ara_req_d.vtype.vsew;
-        // ara_req_d.vl_cluster    = ara_req_d.vl << num_clusters_i;
-        // // Vl refers to current system vsew but operand requesters
-        // // will fetch from a register with a different eew
-        // ara_req_d.scale_vl      = 1'b1;
-
-        // // Backend ready - Decide what to do next
-        // if (ara_req_ready_i) begin
-        //   // Register completely reshuffled
-        //   if (rs_lmul_cnt_q == rs_lmul_cnt_limit_q) begin
-        //     rs_lmul_cnt_d = 0;
-
-        //     // Delete the already processed vector register from the notebook -> |vs1|vs2|vd|
-        //     unique casez (reshuffle_req_q)
-        //       3'b??1: reshuffle_req_d = {reshuffle_req_q[2:1], 1'b0};
-        //       3'b?10: reshuffle_req_d = {reshuffle_req_q[2  ], 2'b0};
-        //       3'b100: reshuffle_req_d =                        3'b0 ;
-        //       default:;
-        //     endcase
-
-        //     // Prepare the information to reshuffle the vector registers during the next cycles
-        //     // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
-        //     unique casez (reshuffle_req_d)
-        //       3'b??1: begin
-        //         eew_old_buffer_d = eew_q[insn.vmem_type.rd];
-        //         eew_new_buffer_d = ara_req_d.vtype.vsew;
-        //         vs_buffer_d      = insn.varith_type.rd;
-        //       end
-        //       3'b?10: begin
-        //         eew_old_buffer_d = eew_q[insn.vmem_type.rs2];
-        //         eew_new_buffer_d = ara_req_d.eew_vs2;
-        //         vs_buffer_d      = insn.varith_type.rs2;
-        //       end
-        //       3'b100: begin
-        //         eew_old_buffer_d = eew_q[insn.vmem_type.rs1];
-        //         eew_new_buffer_d = ara_req_d.eew_vs1;
-        //         vs_buffer_d      = insn.varith_type.rs1;
-        //       end
-        //       default:;
-        //     endcase
-
-        //     if (reshuffle_req_d == 3'b0) state_d = NORMAL_OPERATION;
-        //   // The register is not completely reshuffled (LMUL > 1)
-        //   end else begin
-        //     // Count up
-        //     rs_lmul_cnt_d = rs_lmul_cnt_q + 1;
-
-        //     // Prepare the information to reshuffle the vector registers during the next cycles
-        //     // Since LMUL > 1, we should go on and check if the next register needs a reshuffle
-        //     // at all.
-        //     unique casez (reshuffle_req_d)
-        //       3'b??1: begin
-        //         vs_buffer_d      = vs_buffer_q + 1;
-        //         eew_old_buffer_d = eew_q[vs_buffer_d];
-        //         eew_new_buffer_d = ara_req_d.vtype.vsew;
-        //       end
-        //       3'b?10: begin
-        //         vs_buffer_d      = vs_buffer_q + 1;
-        //         eew_old_buffer_d = eew_q[vs_buffer_d];
-        //         eew_new_buffer_d = ara_req_d.eew_vs2;
-        //       end
-        //       3'b100: begin
-        //         vs_buffer_d      = vs_buffer_q + 1;
-        //         eew_old_buffer_d = eew_q[vs_buffer_d];
-        //         eew_new_buffer_d = ara_req_d.eew_vs1;
-        //       end
-        //       default:;
-        //     endcase
-
-        //     // Mask the next request if we don't need to reshuffle the next reg
-        //     if (eew_new_buffer_d == eew_old_buffer_d) rs_mask_request_d = 1'b1;
-        //   end
-        // end
-        //if (~store_pending_i) begin
-
-        // SEM PROJ : START BY COPYING SIMPLE LOAD REQ
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
-        
-
-        rs_lmul_cnt_d       = rs_lmul_cnt_q;
-        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
-
-            
+        //rs_lmul_cnt_d       = rs_lmul_cnt_q;
+        //rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
 
         // The instruction is a store
-        is_vstore = 1'b1;
-
-        from_ld = 0;
-
+        is_vstore            = 1'b1;
+        from_ld              = 0;
         ignore_zero_vl_check = 1'b1;
 
         // Wait before acknowledging this instruction
-        acc_resp_o.req_ready = 1'b0;
-
-        //acc_resp_o.req_ready  = 1'b0;
-        // added
+        acc_resp_o.req_ready  = 1'b0;
         acc_resp_o.resp_valid = 1'b0;
 
-        // vl depends on the EEW encoded in the instruction.
-        // Ara does not reshuffle source vregs upon vector stores,
-        // thus the operand requesters will fetch Bytes referring
-        // to the encoding of the source register
-        ara_req_d.scale_vl = 1'b1;
-
         // These generate a request to Ara's backend
-        ara_req_d.vs1       = vs_buffer_q;
-        ara_req_d.use_vs1   = 1'b1;
-        // ara_req_d.eew_vs1   = EW8; // This is the vs1 EEW
-        ara_req_d.eew_vs1   = eew_old_buffer_q;
-        //ara_req_d.eew_vs2   = EW8; // This is the vs2 EEW
-        //ara_req_d.eew_vs2   = eew_old_buffer_q;
-        //ara_req_d.eew_vd_op = EW8;
-
+        ara_req_d.vs1          = vs_buffer_q;
+        ara_req_d.use_vs1      = 1'b1;
+        ara_req_d.eew_vs1      = eew_old_buffer_q;
         ara_req_d.is_reshuffle = 1'b1;
-        
+        ara_req_d.vm           = 1;
+        ara_req_d.scalar_op    = 64'h8FFF_0000;
+        ara_req_valid_d        = 1'b1;
+        ara_req_d.vtype.vsew   = eew_old_buffer_q;
+        ara_req_d.op           = VSE;
+        ara_req_d.vl           = VLENB >> ara_req_d.vtype.vsew;
+        ara_req_d.vl_cluster   = ara_req_d.vl << num_clusters_i;
+        ara_req_d.use_eew1     = 1'b0;
+        ara_req_d.scale_vl     = 1'b1;
 
-        ara_req_d.vm        = 1;
-        //ara_req_d.scalar_op = acc_req_i.rs1;
-        ara_req_d.scalar_op  = 64'h8FFF_0000;
-        ara_req_valid_d     = 1'b1;
+        reshuffle_pending_d    = 1;
 
-        //ara_req_d.vtype.vsew = EW8;
-        ara_req_d.vtype.vsew    = eew_old_buffer_q;
-        //ara_req_d.vtype.vsew    = vtype_q.vsew;
-
-        ara_req_d.op = VSE;
-
-        // ara_req_d.vl         = 8;
-        // ara_req_d.vl_cluster = 16;
-
-        ara_req_d.vl            = VLENB >> ara_req_d.vtype.vsew;
-        ara_req_d.vl_cluster    = ara_req_d.vl << num_clusters_i;
-
-        ara_req_d.use_eew1   = 1'b0;
-
-        reshuffle_pending_d = 1;
-
-        if (ara_resp_valid_i && ~(eew_new_buffer_d == eew_old_buffer_d)) begin
+        if (ara_resp_valid_i) begin //&& ~(eew_new_buffer_d == eew_old_buffer_d)) begin
           state_d = RESHUFFLE_WAIT;
           ara_req_valid_d  = 1'b0;
         end
 
-        // if (store_pending_i)begin
-        //   rs_mask_request_d = 1'b1;
-        //   ara_req_valid_d     = 1'b0;
-        //   state_d = RESHUFFLE_ST;
+        // If LMUL>1, skip reshuffle for vectors that don't need it
+        // if (eew_new_buffer_d == eew_old_buffer_d)begin
+        //   //rs_mask_request_d = 1'b1;
+        //   ara_req_valid_d   = 1'b0;
+        //   state_d = RESHUFFLE_WAIT;
         // end
-
-        // MASK REQUEST = SKIP
-        if (eew_new_buffer_d == eew_old_buffer_d)begin
-          rs_mask_request_d = 1'b1;
-          ara_req_valid_d     = 1'b0;
-          state_d = RESHUFFLE_WAIT;
-        end
-        // end else begin
-        //   state_d = RESHUFFLE_ST;
-
-        // end
-
-        
-
 
       end
 
+      //////////////////////
+      //  RESHUFFLE LOAD  //
+      //////////////////////
+
       RESHUFFLE_LD: begin
-
-
-        //from_ld =1;
-
-        //vl_temp = compute_cluster_vl(2, 0, cluster_id_i, 4, 8);
-
-        //if (vl_temp != 0) begin
-
         automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
 
         // The instruction is a load
         is_vload = 1'b1;
-
-        rs_lmul_cnt_d       = rs_lmul_cnt_q;
-        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
-
         ignore_zero_vl_check = 1'b1;
 
         // Wait before acknowledging this instruction
-        acc_resp_o.req_ready = 1'b0;
-
-        // vl depends on the EEW encoded in the instruction.
-        // Ara does not reshuffle source vregs upon vector stores,
-        // thus the operand requesters will fetch Bytes referring
-        // to the encoding of the source register
-        ara_req_d.scale_vl = 1'b1;
-
+        acc_resp_o.req_ready   = 1'b0;
+        ara_req_d.scale_vl     = 1'b1;
         ara_req_d.is_reshuffle = 1'b1;
+        ara_req_d.use_vd       = 1'b1;
+        ara_req_d.vd           = vs_buffer_q;
+        ara_req_d.vm           = 1;
+        ara_req_d.scalar_op    = 64'h8FFF_0000;
+        ara_req_valid_d        = ~reshuffle_ld_issued_q;
+        ara_req_d.vtype.vsew   = eew_new_buffer_q;
+        ara_req_d.op           = VLE;
+        ara_req_d.vl           = VLENB >> ara_req_d.vtype.vsew;
+        ara_req_d.vl_cluster   = ara_req_d.vl << num_clusters_i;
+        ara_req_d.use_eew1     = 1'b0;
 
-        // These generate a request to Ara's backend
-        //ara_req_d.eew_vs1   = EW64; // This is the vs1 EEW
-        //ara_req_d.eew_vs2   = EW64; // This is the vs2 EEW
-        //ara_req_d.eew_vd_op = EW64;
-
-        ara_req_d.use_vd   = 1'b1;
-
-        ara_req_d.vd = vs_buffer_q;
-        
-
-        ara_req_d.vm        = 1;
-        ara_req_d.scalar_op  = 64'h8FFF_0000;
-
-        ara_req_valid_d = ~reshuffle_ld_issued_q;
-
-        reshuffle_pending_d = 1;
-
-        // HARDCODED : store to EW64
-        ara_req_d.vtype.vsew = eew_new_buffer_q;
-
-        ara_req_d.op = VLE;
-
-        // HARDCODED
-        // ara_req_d.vl         = 2;
-        // ara_req_d.vl_cluster = 2;
-        ara_req_d.vl            = VLENB >> ara_req_d.vtype.vsew;
-        ara_req_d.vl_cluster    = ara_req_d.vl << num_clusters_i;
-
-        ara_req_d.use_eew1   = 1'b0;
-
-        reshuffle_pending_d = 1;
-
-        //end
+        reshuffle_pending_d    = 1;
 
         // Set eew to new eew
-        
-        eew_d[ara_req_d.vd]=eew_new_buffer_q;
-        //eew_d[10]=EW16;
-        
-
-        // Set these for convenience
-        //eew_d[3]=EW64;
-        //eew_d[4]=EW64;
-        //eew_d[0]=EW64;
-
-        
+        eew_d[ara_req_d.vd]    = eew_new_buffer_q;
 
         if (ara_resp_valid_i || vl_temp ==0) begin
             state_d = RESHUFFLE_WAIT;
@@ -659,16 +465,17 @@ endfunction
 
       end
 
+      //////////////////////
+      //  RESHUFFLE WAIT  //
+      //////////////////////
+
       RESHUFFLE_WAIT: begin
 
-        rs_lmul_cnt_d       = rs_lmul_cnt_q;
-        rs_lmul_cnt_limit_d = rs_lmul_cnt_limit_q;
-
+        // If LMUL>1, skip reshuffle for vectors that don't need it
         if (rs_mask_request_q) begin
           rs_mask_request_d = 1'b0;
 
           unique casez (reshuffle_req_d)
-
                   3'b??1: begin
                     vs_buffer_d      = vs_buffer_q + 1;
                     eew_old_buffer_d = eew_q[vs_buffer_d];
@@ -687,16 +494,13 @@ endfunction
                   default:;
                 endcase
 
-          //vs_buffer_d = vs_buffer_q +1; // move on to next reg holding vector
           rs_lmul_cnt_d =rs_lmul_cnt_q + 1;
           state_d = RESHUFFLE_ST;
           ara_req_valid_d  = 1'b0;
         end
 
-        
-
-        // If we come from store
-        // UPDATE ONLY IF ALL MULTS TAKEN CARE OF
+        // If we come from store, go to load state
+        // update rs request only if all the vectors have been reshuffled (when LMUL>1)
         if (rs_store_complete_q ) begin
 
           if (rs_lmul_cnt_q == rs_lmul_cnt_limit_q) begin
@@ -708,30 +512,19 @@ endfunction
             endcase
           end
 
-          // if (rs_lmul_cnt_q != rs_lmul_cnt_limit_q) begin
-          //   rs_lmul_cnt_d += 1;
-          // end
-
           state_d =RESHUFFLE_LD;
         end
-        
-        // if (vl_temp ==0 && from_ld) begin
-         
-        //     reshuffle_complete_d=1'b1;
-        // end
-       
+
         // If we come from load, finish reshuffle, respond to acc
         // Ack only when all reshuffles are done
         if (reshuffle_complete_q ) begin
           unique case (reshuffle_req_d)
             3'b000 : begin
               reshuffle_complete_d  = 1'b0;
-              state_d = NORMAL_OPERATION;
-              // rs_lmul_cnt_d ='0;
-              //acc_resp_o.req_ready  = 1'b1;
-              //acc_resp_o.error = ara_resp_i.error;
-              //acc_resp_o.resp_valid = 1'b1;
-              ara_req_valid_d  = 1'b0;
+              rs_lmul_cnt_d         = 1'b0;
+              rs_lmul_cnt_limit_d   = 1'b0;
+              state_d               = NORMAL_OPERATION;
+              ara_req_valid_d       = 1'b0;
               // If there is an error, change vstart
               if (ara_resp_i.error)
                 vstart_d = ara_resp_i.error_vl;
@@ -760,38 +553,15 @@ endfunction
                   end
                   default:;
                 endcase
-              end else begin
-                // unique casez (reshuffle_req_d)
-
-                //   3'b??1: begin
-                //     vs_buffer_d      = vs_buffer_q + 1;
-                //     eew_old_buffer_d = eew_q[vs_buffer_d];
-                //     eew_new_buffer_d = ara_req_d.vtype.vsew;
-                //   end
-                //   3'b?10: begin
-                //     vs_buffer_d      = vs_buffer_q + 1;
-                //     eew_old_buffer_d = eew_q[vs_buffer_d];
-                //     eew_new_buffer_d = ara_req_d.eew_vs2;
-                //   end
-                //   3'b100: begin
-                //     vs_buffer_d      = vs_buffer_q + 1;
-                //     eew_old_buffer_d = eew_q[vs_buffer_d];
-                //     eew_new_buffer_d = ara_req_d.eew_vs1;
-                //   end
-                //   default:;
-                // endcase
-
-                vs_buffer_d = vs_buffer_q +1; // move on to next reg holding vector
-                rs_lmul_cnt_d =rs_lmul_cnt_q + 1;
-
+              end else begin 
+                // if LMUL>1, reshuffle other vectors in group
+                vs_buffer_d   = vs_buffer_q +1; // move on to next reg holding vector
+                rs_lmul_cnt_d = rs_lmul_cnt_q + 1;
               end
-
-              
-              
-              ara_req_valid_d  = 1'b0;
-              reshuffle_complete_d  = 1'b0;
-              state_d = RESHUFFLE_ST;
-              ara_req_valid_d  = 1'b0;            
+              ara_req_valid_d      = 1'b0;
+              reshuffle_complete_d = 1'b0;
+              state_d              = RESHUFFLE_ST;
+              ara_req_valid_d      = 1'b0;            
             end
           endcase
         end
@@ -3672,13 +3442,13 @@ endfunction
       //eew_d[ara_req_d.vd]       = ara_req_d.vtype.vsew;
     end
 
-    //acc_resp_o.load_complete  = load_zero_vl  | load_complete_q;
+    // Maybe we don't need to differentiate reshuffle st from regular anymore
+    // as reshuffle waits for previous st to end
     acc_resp_o.load_complete = (~rs_load_complete_q)? load_zero_vl | load_complete_q : '0;
-    //acc_resp_o.store_complete = store_zero_vl | store_complete_q;
     acc_resp_o.store_complete = (~rs_store_complete_q)? store_zero_vl | store_complete_q : '0;
     if (reshuffle_pending_q && rs_load_complete_i) begin
       reshuffle_complete_d = '1;
-      reshuffle_pending_d = '0;
+      reshuffle_pending_d  = '0;
     end
 
     // The token must change at every new instruction
