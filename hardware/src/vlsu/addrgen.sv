@@ -482,7 +482,10 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
 
   // Assign cluster metadata
   assign cluster_metadata_o.vew = axi_addrgen_q.vew;
-  assign cluster_metadata_o.vl = axi_addrgen_q.vl_cluster;
+  assign cluster_metadata_o.vl = axi_addrgen_q.use_eew1 ?
+      (axi_addrgen_q.vl_cluster >> 3) + vlen_cluster_t'(|axi_addrgen_q.vl_cluster[2:0]) :
+      axi_addrgen_q.vl_cluster;
+  assign cluster_metadata_o.mask_vl = axi_addrgen_q.use_eew1 ? axi_addrgen_q.vl_cluster : '0;
   assign cluster_metadata_o.use_eew1 = axi_addrgen_q.use_eew1;
   assign cluster_metadata_o.op = pe_req_q.op;
   assign cluster_metadata_o.is_reshuffle = pe_req_q.is_reshuffle;

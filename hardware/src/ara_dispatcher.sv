@@ -2749,7 +2749,9 @@ endfunction
                   5'b01011: begin // Unit-strided, mask load, EEW=1
                     // We operate ceil(vl/8) bytes
                     ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                    // Keep the global bit count for cluster participation. The
+                    // address generator rounds the shared memory length to bytes.
+                    ara_req_d.vl_cluster = vl_cluster_q;
                     ara_req_d.vtype.vsew = EW8;
                     ara_req_d.use_eew1   = 1'b1;
                   end
@@ -2965,7 +2967,8 @@ endfunction
                   5'b01011: begin // Unit-strided, mask store, EEW=1
                     // We operate ceil(vl/8) bytes
                     ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                    // Keep the global bit count, as for mask loads above.
+                    ara_req_d.vl_cluster = vl_cluster_q;
                     ara_req_d.vtype.vsew = EW8;
                     ara_req_d.use_eew1   = 1'b1;
                   end
