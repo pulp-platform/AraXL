@@ -22,8 +22,8 @@ module reshuffle_filter import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic                               clk_i,
   input  logic                               rst_ni,
 
-  input  cluster_metadata_t                  cluster_metadata_i,
-  output cluster_metadata_t                  cluster_metadata_o,
+  input  cluster_metadata_t [NrClusters-1:0] aw_metadata_i,
+  input  cluster_metadata_t [NrClusters-1:0] ar_metadata_i,
   
   // To ARA
   input  cluster_axi_req_t  [NrClusters-1:0] axi_req_i,
@@ -44,7 +44,6 @@ logic [$clog2(DEPTH):0] rs_w_count_q, rs_w_count_d;
 logic [$clog2(DEPTH):0] rs_r_count_q, rs_r_count_d;
 
 logic rs_ar_valid_toggle_d, rs_ar_valid_toggle_q;
-cluster_metadata_t cluster_metadata_d;
 
 // Response to ARA
 cluster_axi_resp_t [NrClusters-1:0] axi_resp_d;
@@ -56,12 +55,13 @@ logic [$bits(axi_req_i[0].aw.id)-1:0] aw_id_d, aw_id_q;
 logic ar_all_valid, r_all_ready, b_all_ready;
 logic [$bits(axi_req_i[0].ar.id)-1:0] ar_id_q [NrClusters], ar_id_d [NrClusters];
 
-logic rs_store_en;
+logic rs_store_en, rs_store, rs_load;
 
 assign axi_resp_o = axi_resp_d;
 assign axi_req_o = axi_req_d;
-assign cluster_metadata_o = cluster_metadata_d;
-assign rs_store_en = cluster_metadata_i.is_reshuffle && (cluster_metadata_i.op == VSE) && (&rs_w_clusters_valid);
+assign rs_store = aw_metadata_i[0].is_reshuffle && (aw_metadata_i[0].op == VSE);
+assign rs_load = ar_metadata_i[0].is_reshuffle && (ar_metadata_i[0].op == VLE);
+assign rs_store_en = rs_store && (&rs_w_clusters_valid);
 
 
 always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -100,7 +100,6 @@ always_comb begin
   rs_w_count_d         = rs_w_count_q;
   rs_r_count_d         = rs_r_count_q;
   rs_ar_valid_toggle_d = rs_ar_valid_toggle_q;
-  cluster_metadata_d   = cluster_metadata_i;
   b_pending_d          = b_pending_q;
   aw_id_d              = aw_id_q;
 
@@ -119,49 +118,45 @@ always_comb begin
     b_all_ready  &= axi_req_i[j].b_ready;
   end
 
-  if (cluster_metadata_i.is_reshuffle && cluster_metadata_i.op == VSE) begin
+  if (rs_store) begin
     if (axi_req_i[0].aw_valid) begin
       aw_id_d = axi_req_i[0].aw.id;
     end
   end
 
 
-  if (cluster_metadata_i.is_reshuffle) begin
+  if (rs_store || rs_load) begin
 
     for (int j = 0; j < NrClusters; j++) begin
-      axi_req_d[j].aw_valid = 1'b0;   // no writes reach GLSU
-      axi_req_d[j].w_valid  = 1'b0;   // no write data reaches GLSU
-      axi_req_d[j].ar_valid = 1'b0;   // no reads reach GLSU
-      // B channel held until every cluster accepts it
-      axi_resp_d[j].b_valid = b_pending_q;
-      axi_resp_d[j].b.id    = aw_id_q;
-      axi_resp_d[j].b.resp  = 2'b00;
-      axi_resp_d[j].b.user  = '0;
+      if (rs_store) begin
+        axi_req_d[j].aw_valid = 1'b0;   // no reshuffle writes reach GLSU
+        axi_req_d[j].w_valid  = 1'b0;
+        // B channel held until every cluster accepts it
+        axi_resp_d[j].b_valid = b_pending_q;
+        axi_resp_d[j].b.id    = aw_id_q;
+        axi_resp_d[j].b.resp  = 2'b00;
+        axi_resp_d[j].b.user  = '0;
+      end
+      if (rs_load) axi_req_d[j].ar_valid = 1'b0;
     end
 
-    if (b_pending_q && b_all_ready) begin
+    if (rs_store && b_pending_q && b_all_ready) begin
       b_pending_d = 1'b0;
     end
 
-    case(cluster_metadata_i.op)
 
       ////////////////////////
       //  RESHUFFLE STORES  //
       ////////////////////////
 
-      VSE : begin
+      if (rs_store) begin
         // Fill Reshuffle Buffer and generate response
   
         if (&rs_w_clusters_valid) begin
 
           for (int j=0; j < NrClusters; j++) begin
-            axi_resp_d[j].r.resp   = 2'b00;
-            axi_resp_d[j].r.user   = '0;
-            axi_resp_d[j].ar_ready = 1'b1;
             axi_resp_d[j].aw_ready = 1'b1;
             axi_resp_d[j].w_ready  = 1'b1;
-            axi_resp_d[j].r_valid  = 1'b0;
-            axi_resp_d[j].r.last   = 1'b0;
           end
       
           if (rs_w_count_q == (DEPTH-1)) begin
@@ -187,7 +182,7 @@ always_comb begin
       //  RESHUFFLE LOADS  //
       ///////////////////////
 
-      VLE: begin
+      if (rs_load) begin
 
         if (!rs_ar_valid_toggle_q) begin
           // Accept the group AR only when every cluster presents one
@@ -212,10 +207,6 @@ always_comb begin
             axi_resp_d[j].r.resp   = 2'b00;
             axi_resp_d[j].r.user   = '0;
             axi_resp_d[j].ar_ready = 1'b1;
-            axi_resp_d[j].aw_ready = 1'b1;
-            axi_resp_d[j].w_ready  = 1'b1;
-            axi_resp_d[j].b_valid  = 1'b0;
-            axi_resp_d[j].b        = '0;
             axi_resp_d[j].r.last   = (rs_r_count_q == DEPTH-1);
           end
 
@@ -229,8 +220,6 @@ always_comb begin
           end
         end
       end
-      default: ;
-    endcase
   end
 
 end

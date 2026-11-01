@@ -32,7 +32,8 @@ module shuffle_stage import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic                        clk_i,
   input  logic                        rst_ni,
 
-  input  cluster_metadata_t [NrClusters-1:0]  cluster_metadata_i,
+  input  cluster_metadata_t [NrClusters-1:0]  aw_metadata_i,
+  input  cluster_metadata_t [NrClusters-1:0]  ar_metadata_i,
 
   // Synchronization with cluster addrgen for indexed operations 
   output logic                                idx_completed_o,
@@ -96,12 +97,11 @@ typedef struct packed {
 // Helper function to compute vector length for a specific cluster
 function automatic int unsigned compute_cluster_vl(
   input int unsigned vl,
-  input logic use_eew1,
   input int unsigned cluster_idx,
   input int unsigned nr_lanes,
   input int unsigned total_nr_lanes
 );
-  automatic int unsigned vl_tot = use_eew1 ? vl << 3 : vl;
+  automatic int unsigned vl_tot = vl;
   automatic int unsigned vl_rem = vl_tot & (total_nr_lanes - 1);
   automatic int unsigned vl_base = vl_tot >> $clog2(total_nr_lanes);
   automatic int unsigned vl_rem_diff = vl_rem - (cluster_idx * nr_lanes);
@@ -137,8 +137,9 @@ function automatic void init_tracker_entry(
   tracker.op = cluster_metadata.op;
   
   for (int c=0; c<NrClusters; c++) begin
-    vl_computed = compute_cluster_vl(cluster_metadata.vl, cluster_metadata.use_eew1, c, NrLanes, TotalNrLanes);
-    tracker.vl[c] = cluster_metadata.use_eew1 ? (vl_computed < 8) ? 1 : vl_computed >> 3 : vl_computed;
+    vl_computed = compute_cluster_vl(cluster_metadata.use_eew1 ?
+        cluster_metadata.mask_vl : cluster_metadata.vl, c, NrLanes, TotalNrLanes);
+    tracker.vl[c] = cluster_metadata.use_eew1 ? (vl_computed + 7) >> 3 : vl_computed;
     tracker.len[c] = len_value;
   end
   
@@ -189,6 +190,51 @@ cluster_bitmask_t axi_wr_shuffle_ready_inp, axi_wr_shuffle_valid_inp;
 logic rd_full, wr_full;
 assign rd_full = (rd_cnt_q == NumTrackers);
 assign wr_full = (wr_cnt_q == NumTrackers);
+
+cluster_bitmask_t unit_stride_ar_participating;
+logic unit_stride_ar_pending, unit_stride_ar_complete;
+cluster_bitmask_t unit_stride_aw_participating;
+logic unit_stride_aw_pending, unit_stride_aw_complete;
+
+// The GLSU performs one shared read for a unit-stride load. Wait until all
+// participating clusters have issued their local request before forwarding
+// cluster 0's request. Consume the other requests here as redundant copies.
+// Mask byte rounding must not turn a zero-length cluster into a participant.
+always_comb begin
+  unit_stride_ar_pending = axi_req_i[0].ar_valid && ar_metadata_i[0].op == VLE;
+  unit_stride_ar_complete = unit_stride_ar_pending;
+  unit_stride_ar_participating = '0;
+  for (int c = 0; c < NrClusters; c++) begin
+    unit_stride_ar_participating[c] =
+        compute_cluster_vl(ar_metadata_i[0].use_eew1 ?
+                           ar_metadata_i[0].mask_vl : ar_metadata_i[0].vl,
+                           c, NrLanes, TotalNrLanes) != 0;
+    if (unit_stride_ar_participating[c]) begin
+      unit_stride_ar_complete &= axi_req_i[c].ar_valid &&
+          ar_metadata_i[c] == ar_metadata_i[0] &&
+          axi_req_i[c].ar.addr == axi_req_i[0].ar.addr;
+    end
+  end
+end
+
+// Shared stores likewise consume all local AW copies as one request. This
+// prevents a delayed peer's AW from being interpreted as a subsequent store.
+always_comb begin
+  unit_stride_aw_pending = axi_req_i[0].aw_valid && aw_metadata_i[0].op == VSE;
+  unit_stride_aw_complete = unit_stride_aw_pending;
+  unit_stride_aw_participating = '0;
+  for (int c = 0; c < NrClusters; c++) begin
+    unit_stride_aw_participating[c] =
+        compute_cluster_vl(aw_metadata_i[0].use_eew1 ?
+                           aw_metadata_i[0].mask_vl : aw_metadata_i[0].vl,
+                           c, NrLanes, TotalNrLanes) != 0;
+    if (unit_stride_aw_participating[c]) begin
+      unit_stride_aw_complete &= axi_req_i[c].aw_valid &&
+          aw_metadata_i[c] == aw_metadata_i[0] &&
+          axi_req_i[c].aw.addr == axi_req_i[0].aw.addr;
+    end
+  end
+end
 
 logic [$clog2(NrLanes):0] lane_ar_d, lane_ar_q;
 logic [$clog2(NrLanes):0] lane_aw_d, lane_aw_q;
@@ -411,7 +457,8 @@ cluster_bitmask_t axi_w_ready, indexed_w_handshake_en;
 for (genvar c=0; c<NrClusters; c++) begin
   // Indexed/strided write data is accepted from only the selected cluster.
   // Gate both sides of the handshake so inactive clusters cannot consume data.
-  assign indexed_w_handshake_en[c] = !(wr_op inside {VSXE, VSSE}) || (c == cluster_w_q);
+  assign indexed_w_handshake_en[c] = wr_cnt_q != 0 &&
+      (!(wr_op inside {VSXE, VSSE}) || (c == cluster_w_q));
   assign axi_resp_o[c].w_ready = axi_w_ready[c] && indexed_w_handshake_en[c];
 
   stream_demux #(
@@ -619,7 +666,7 @@ always_comb begin
   idx_completed_o = 1'b0;
   
   if (axi_req_i[cluster_ar_q].ar_valid & axi_resp_o[cluster_ar_q].ar_ready) begin
-    automatic cluster_metadata_t cluster_metadata = cluster_metadata_i[cluster_ar_q];
+    automatic cluster_metadata_t cluster_metadata = ar_metadata_i[cluster_ar_q];
     // Initialize tracker entry with metadata and request length (isRead=1)
     init_tracker_entry(rd_tracker_d[rd_accept_pnt_q], cluster_metadata, axi_req_i[cluster_ar_q].ar.len+1, 1'b1);
     
@@ -656,7 +703,7 @@ always_comb begin
   wr_idx_accepted_d = wr_idx_accepted_q;
   
   if (axi_req_i[cluster_aw_q].aw_valid & axi_resp_o[cluster_aw_q].aw_ready) begin
-    automatic cluster_metadata_t cluster_metadata = cluster_metadata_i[cluster_aw_q];
+    automatic cluster_metadata_t cluster_metadata = aw_metadata_i[cluster_aw_q];
 
     if (!wr_idx_accepted_q) begin
       // Initialize tracker entry with metadata and request length (isRead=0)
@@ -1065,10 +1112,20 @@ end
 // Handle Response path
 for (genvar c=0; c < NrClusters; c++) begin  
   // Bypass the registers for signals other than R channel
-  assign axi_resp_o[c].aw_ready = ((cluster_metadata_i[c].op inside {VSXE, VSSE}) ? (c==cluster_aw_q) ? 1'b1 : 1'b0 : 1'b1) && axi_resp_i[c].aw_ready && !wr_full;
+  assign axi_resp_o[c].aw_ready = unit_stride_aw_pending ?
+      (unit_stride_aw_complete && unit_stride_aw_participating[c] &&
+       axi_resp_i[0].aw_ready && !wr_full) :
+      (aw_metadata_i[c].op != VSE &&
+       (!(aw_metadata_i[c].op inside {VSXE, VSSE}) || c == cluster_aw_q) &&
+       axi_resp_i[c].aw_ready && !wr_full);
 
   // If indexed/strided load send ready only to one of the clusters
-  assign axi_resp_o[c].ar_ready = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? (c==cluster_ar_q) ? 1'b1 : 1'b0 : 1'b1) && axi_resp_i[c].ar_ready && !rd_full;
+  assign axi_resp_o[c].ar_ready = unit_stride_ar_pending ?
+      (unit_stride_ar_complete && unit_stride_ar_participating[c] &&
+       axi_resp_i[0].ar_ready && !rd_full) :
+      (ar_metadata_i[c].op != VLE &&
+       (!(ar_metadata_i[c].op inside {VLXE, VLSE}) || c == cluster_ar_q) &&
+       axi_resp_i[c].ar_ready && !rd_full);
   
   assign axi_resp_o[c].b_valid = axi_resp_i[c].b_valid;
   assign axi_resp_o[c].b = axi_resp_i[c].b;
@@ -1083,13 +1140,24 @@ end
 // Handle Request path
 for (genvar c=0; c < NrClusters; c++) begin
   assign axi_req_o[c].aw = axi_req_i[c].aw;
-  assign axi_req_o[c].aw_valid = ((cluster_metadata_i[c].op inside {VSXE, VSSE}) ? ((c==cluster_aw_q) ? 1'b1 : 1'b0) : 1'b1) && axi_req_i[c].aw_valid && !wr_full;
+  assign axi_req_o[c].aw_valid = unit_stride_aw_pending ?
+      (c == 0 && unit_stride_aw_complete && !wr_full) :
+      (aw_metadata_i[c].op != VSE &&
+       (!(aw_metadata_i[c].op inside {VSXE, VSSE}) || c == cluster_aw_q) &&
+       axi_req_i[c].aw_valid && !wr_full);
   assign axi_req_o[c].ar = axi_req_i[c].ar;
-  assign axi_req_o[c].ar_valid = ((cluster_metadata_i[c].op inside {VLXE, VLSE}) ? ((c==cluster_ar_q) ? 1'b1 : 1'b0) : 1'b1) && axi_req_i[c].ar_valid && !rd_full;
+  assign axi_req_o[c].ar_valid = unit_stride_ar_pending ?
+      (c == 0 && unit_stride_ar_complete && !rd_full) :
+      (ar_metadata_i[c].op != VLE &&
+       (!(ar_metadata_i[c].op inside {VLXE, VLSE}) || c == cluster_ar_q) &&
+       axi_req_i[c].ar_valid && !rd_full);
   assign axi_req_o[c].b_ready = axi_req_i[c].b_ready;
   
   // Reads
-  assign r_ready_i[c] = axi_req_i[c].r_ready;           // From input request, get ready inputs to stream fork
+  // A zero-length cluster has no VLDU instruction and need not accept a
+  // response. Let the fork retire its unused branch without asserting RVALID.
+  assign r_ready_i[c] = axi_req_i[c].r_ready ||
+      rd_tracker_q[rd_issue_pnt_q[NumStages-1]].vl[c] == 0;
 
   // Writes
   assign w_data_in[0][c] =  axi_req_i[c].w_valid ? axi_req_i[c].w : '0;

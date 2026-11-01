@@ -50,7 +50,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // AXI interface
     output axi_req_t          axi_req_o,
     input  axi_resp_t         axi_resp_i,
-    output cluster_metadata_t cluster_metadata_o,
+    output cluster_metadata_t aw_metadata_o,
+    output cluster_metadata_t ar_metadata_o,
 
     // Synchronization for indexed operations
     output logic                    idx_completed_o,
@@ -373,7 +374,8 @@ module ara import ara_pkg::*; import rvv_pkg::*; #(
     // AXI memory interface
     .axi_req_o                  (axi_req_o                                             ),
     .axi_resp_i                 (axi_resp_i                                            ),
-    .cluster_metadata_o         (cluster_metadata_o                                    ),
+    .aw_metadata_o              (aw_metadata_o                                         ),
+    .ar_metadata_o              (ar_metadata_o                                         ),
     .idx_completed_o            (idx_completed_o                                       ),
     .idx_completed_sync_i       (idx_completed_sync_i                                  ),
     // Interface with the dispatcher
