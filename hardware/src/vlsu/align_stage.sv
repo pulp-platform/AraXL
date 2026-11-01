@@ -267,7 +267,8 @@ always_comb begin
     last_d = axi_resp_i_cut[NumStages].r.last && (tracker_q[rd_resp_pnt_q[NumStages-1]].num_requests[NumStages-1] == 1);
   end
 
-  if (!(tracker_q[rd_resp_pnt_q[NumStages-1]].op inside {VLXE, VLSE})) begin
+  // data_q belongs to the delayed tracker
+  if (!(tracker_q[rd_resp_pnt_q_del[NumStages-1]].op inside {VLXE, VLSE})) begin
     // Combine the previous data and the current data packets using byte enable
     if (data_valid_q && axi_req_i.r_ready) begin
       // Number of elements in a single AXI transaction
@@ -305,7 +306,9 @@ always_comb begin
           if (!is_load_aligned & last_q) begin
             axi_req_cut_ready[NumStages] = 1'b0;
           end
-          last_d = 1'b0;
+          // An aligned next response may have entered data_d concurrently.
+          // Preserve its last flag when retiring this instruction last packet
+          if (!(is_load_aligned && is_load_resp_valid)) last_d = 1'b0;
         end
       end
     end else if (data_valid_q & !axi_req_i.r_ready) begin
@@ -313,12 +316,17 @@ always_comb begin
       rd_resp_pnt_d_del[NumStages-1] = rd_resp_pnt_q_del[NumStages-1];
     end
   end else begin
-    // Indexed operation
-    axi_resp_o.r_valid  = data_valid_d;
-    axi_resp_o.r.last   = last_d;
-    axi_resp_o.r.data = data_d;
-    last_d = 1'b0;
-    data_valid_d = 1'b0;
+    // Indexed responses use the same output buffer data_q as unit-stride responses.
+    axi_resp_o.r_valid = data_valid_q;
+    axi_resp_o.r.last = last_q;
+    axi_resp_o.r.data = data_q;
+    if (data_valid_q && axi_req_i.r_ready) begin
+      data_valid_d = is_load_resp_valid;
+      if (!is_load_resp_valid) last_d = 1'b0;
+    end else if (data_valid_q) begin
+      // Maintain the delayed pointer in the case data cannot be sent out
+      rd_resp_pnt_d_del[NumStages-1] = rd_resp_pnt_q_del[NumStages-1];
+    end
   end
 
   // If a stage receives a valid packet, shift the byte enable
