@@ -108,12 +108,13 @@ always_comb begin
   end
 
   // Handshake summaries
-  ar_all_valid = 1'b1;
+  // The shuffle stage synchronizes unit-stride loads across clusters and
+  // forwards only cluster 0's AR request.
+  ar_all_valid = axi_req_i[0].ar_valid;
   r_all_ready  = 1'b1;
   b_all_ready  = 1'b1;
 
   for (int j = 0; j < NrClusters; j++) begin
-    ar_all_valid &= axi_req_i[j].ar_valid;
     r_all_ready  &= axi_req_i[j].r_ready;
     b_all_ready  &= axi_req_i[j].b_ready;
   end
@@ -185,7 +186,7 @@ always_comb begin
       if (rs_load) begin
 
         if (!rs_ar_valid_toggle_q) begin
-          // Accept the group AR only when every cluster presents one
+          // Accept the synchronized group request from cluster 0.
           for (int j = 0; j < NrClusters; j++) begin
             axi_resp_d[j].ar_ready = 1'b1;
             axi_resp_d[j].r_valid  = 1'b0;
@@ -195,7 +196,7 @@ always_comb begin
             rs_r_count_d         = '0;
 
             for (int j = 0; j < NrClusters; j++) begin
-              ar_id_d[j] = axi_req_i[j].ar.id;
+              ar_id_d[j] = axi_req_i[0].ar.id;
             end
 
           end
