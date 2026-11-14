@@ -196,3 +196,8 @@ riscv_unit_tests:
 
 clean:
 	rm -rf $(INSTALL_DIR)
+
+# Run hardware CI from the repository root with the same simulator/config options.
+.PHONY: ci ci-tb ci-build ci-rvv ci-benchmarks
+ci ci-tb ci-build ci-rvv ci-benchmarks:
+	$(MAKE) -C hardware $@

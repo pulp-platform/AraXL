@@ -205,6 +205,14 @@ make riscv_tests_simv
 
 Alternatively, you can also use the `riscv_tests` target at Ara's top-level Makefile to both compile the RISC-V tests and run their simulation.
 
+### Run CI regressions
+
+Run the complete CI flow from the repository root (or from `hardware/`):
+
+```bash
+make ci cluster_configs="2 4 8" sim=questa
+```
+
 ### Traces
 
 Add `trace=1` to the `verilate`, `simv`, and `riscv_tests_simv` commands to generate waveform traces in the `fst` format.
