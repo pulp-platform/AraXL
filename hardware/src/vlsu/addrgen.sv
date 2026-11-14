@@ -485,6 +485,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   assign cluster_metadata_o.vl = axi_addrgen_q.vl_cluster;
   assign cluster_metadata_o.use_eew1 = axi_addrgen_q.use_eew1;
   assign cluster_metadata_o.op = pe_req_q.op;
+  assign cluster_metadata_o.is_reshuffle = pe_req_q.is_reshuffle;
 
   always_comb begin: axi_addrgen
     // Maintain state

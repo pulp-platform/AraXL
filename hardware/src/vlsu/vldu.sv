@@ -28,6 +28,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     output logic                           axi_r_ready_o,
     // Interface with dispatcher
     output logic                           load_complete_o,
+    output logic                           rs_load_complete_o,
     // Interface with the main sequencer
     input  pe_req_t                        pe_req_i,
     input  logic                           pe_req_valid_i,
@@ -220,6 +221,7 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
     axi_r_ready_o           = 1'b0;
     mask_ready_o            = 1'b0;
     load_complete_o         = 1'b0;
+    rs_load_complete_o         = 1'b0;
 
     // Inform the main sequencer if we are idle
     pe_req_ready_o = !vinsn_queue_full;
@@ -406,6 +408,9 @@ module vldu import ara_pkg::*; import rvv_pkg::*; #(
 
       // Signal complete load
       load_complete_o = 1'b1;
+      if (vinsn_queue_q.vinsn[vinsn_queue_d.commit_pnt].is_reshuffle) begin
+        rs_load_complete_o = 1'b1;
+      end
 
       // Update the commit counters and pointers
       vinsn_queue_d.commit_cnt -= 1;

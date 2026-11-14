@@ -365,6 +365,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               use_eew1      : ara_req_i.use_eew1,
               vstart        : ara_req_i.vstart,
               vtype         : ara_req_i.vtype,
+              is_reshuffle  : ara_req_i.is_reshuffle,
               hazard_vd     : pe_req_d.hazard_vd,
               hazard_vm     : pe_req_d.hazard_vm,
               hazard_vs1    : pe_req_d.hazard_vs1,

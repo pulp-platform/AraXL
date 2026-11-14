@@ -181,7 +181,8 @@ ara_tests_all = vaadd \
             vfrec7 \
             vfrsqrt7 \
             vrgather \
-            vcompress
+            vcompress \
+            vreshuffle
 
 ara_tests = vadd \
                vwadd \
@@ -223,4 +224,5 @@ ara_tests = vadd \
                vfwredusum \
                vls \
                vsuxei \
-               vss
+               vss \
+               vreshuffle

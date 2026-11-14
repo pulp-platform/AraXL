@@ -327,6 +327,9 @@ package ara_pkg;
 
     // Request token, for registration in the sequencer
     logic token;
+    
+    // Indicates if request is reshuffle
+    logic is_reshuffle;
   } ara_req_t;
 
   typedef struct packed {
@@ -432,6 +435,9 @@ package ara_pkg;
     logic [NrVInsn-1:0] hazard_vs2;
     logic [NrVInsn-1:0] hazard_vm;
     logic [NrVInsn-1:0] hazard_vd;
+
+    // Reshuffle variable
+    logic is_reshuffle;
   } pe_req_t;
 
   typedef struct packed {
@@ -447,6 +453,7 @@ package ara_pkg;
     vlen_cluster_t    vl;
     logic             use_eew1;
     ara_op_e          op;
+    logic             is_reshuffle;
   } cluster_metadata_t;
 
   /* The VRF data is stored into the lanes in a shuffled way, similar to how it was done
