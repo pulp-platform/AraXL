@@ -435,10 +435,17 @@ cluster_bitmask_t wr_shift_d, wr_shift_q;
 cluster_bitmask_t wrbuf_valid, wrbuf_valid_q;
 cluster_bitmask_t wrbuf_full, wrbuf_full_q;
 
+// Input stage datapath and operation from the first stage's tracker
 datapath_t wr_datapath;
 ara_op_e wr_op;
 assign wr_datapath = wr_tracker_q[wr_issue_pnt_q[0]].datapath;
 assign wr_op = wr_tracker_q[wr_issue_pnt_q[0]].op;
+
+// Output stage datapath and operation from the last stage's tracker
+datapath_t wr_output_datapath;
+ara_op_e wr_output_op;
+assign wr_output_datapath = wr_tracker_q[wr_issue_pnt_q[NumStages-1]].datapath;
+assign wr_output_op = wr_tracker_q[wr_issue_pnt_q[NumStages-1]].op;
 
 cluster_bitmask_t rd_cluster_completed_d, rd_cluster_completed_q;
 logic [NumBuffers-1:0] rd_buffer_completed_d, rd_buffer_completed_q;
@@ -537,7 +544,7 @@ for (genvar c=0; c<NrClusters; c++) begin
     .inp_data_i    ({wr_buf_data_o[c], w_data_out[NumStages-1][c]}),
     .inp_ready_o   ({wr_buf_ready_o[c], w_ready_shuffle[c]}       ),
     .inp_valid_i   ({wr_buf_data_valid[c], w_valid[NumStages-1]}  ),
-    .inp_sel_i     (wr_datapath                                   ),
+    .inp_sel_i     (wr_output_datapath                            ),
     .oup_ready_i   (axi_req_unit_stride_ready[c]                  ),
     .oup_valid_o   (axi_req_unit_stride_valid[c]                  ),
     .oup_data_o    (axi_req_unit_stride_o[c]                      )
@@ -550,7 +557,7 @@ for (genvar c=0; c<NrClusters; c++) begin
     .inp_data_i    ({axi_req_unit_stride_o[c], axi_req_i[c].w}             ),
     .inp_ready_o   ({axi_req_unit_stride_ready[c], axi_wr_indexed_ready[c]}),
     .inp_valid_i   ({axi_req_unit_stride_valid[c], axi_wr_indexed_valid[c]}),
-    .inp_sel_i     (wr_op inside {VSXE, VSSE} ? 1'b0 : 1'b1                ),
+    .inp_sel_i     (wr_output_op inside {VSXE, VSSE} ? 1'b0 : 1'b1         ),
     .oup_ready_i   (axi_resp_i[c].w_ready                                  ),
     .oup_valid_o   (axi_req_o[c].w_valid                                   ),
     .oup_data_o    (axi_req_o[c].w                                         )
