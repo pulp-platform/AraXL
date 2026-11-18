@@ -72,6 +72,14 @@ To build it, run the following command in the project's root directory.
 make verilator
 ```
 
+### Formatting on commit
+
+Install Verible and enable the commit hook once per checkout:
+
+```bash
+make install-hooks
+```
+
 ## AraXL Configuration
 
 ### Ara cluster

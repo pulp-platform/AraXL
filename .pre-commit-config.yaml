@@ -1,0 +1,19 @@
+# Copyright 2026 ETH Zurich and University of Bologna.
+# Solderpad Hardware License, Version 0.51, see LICENSE for details.
+# SPDX-License-Identifier: SHL-0.51
+
+repos:
+  - repo: local
+    hooks:
+      - id: verible-format
+        name: Verible Verilog/SystemVerilog formatting
+        entry: python3 scripts/verible_format.py
+        language: system
+        files: '\.(sv|svh|v|vh)$'
+        exclude: '^(hardware/(deps|build)/|toolchain/|install/|\.tools/)'
+        stages: [pre-commit]
+        args:
+          - --inplace
+          - --failsafe_success=false
+          - --column_limit=100
+          - --indentation_spaces=2
