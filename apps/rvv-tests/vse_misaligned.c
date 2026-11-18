@@ -1,31 +1,16 @@
-#include "../common/macros/vector/vector_macros.h"
-#include "../common/macros/vector/long_array.h"
-#include <stdio.h>
+// Copyright 2026 ETH Zurich and University of Bologna.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
+//
+// Author: Luca Caballero Cusin <lcaballero@ethz.ch>
+
+#include "vector_macros.h"
+#include "long_array.h"
 
 #define AXI_DWIDTH 128
 
 #define INIT 98
 
-
-// the header defines MEMORY_BARRIER as empty; make it a real fence for this test
-#undef MEMORY_BARRIER
-#define MEMORY_BARRIER asm volatile ("fence");
-
-// VSET clobbers t0 without declaring it; fix that too
-#undef VSET
-#define VSET(VLEN,VTYPE,LMUL) do {                                                          \
-    asm volatile ("vsetvli t0, %[A]," #VTYPE "," #LMUL ", ta, ma \n" :: [A] "r" (VLEN) : "t0"); \
-  } while(0)
-
-
-  #undef VSET
-#define VSET(VLEN,VTYPE,LMUL) do {                                                  \
-    asm volatile ("vsetvli zero, %[A]," #VTYPE "," #LMUL ", ta, ma \n" :: [A] "r" (VLEN)); \
-  } while(0)
-
-// Every buffer is pre filled with INIT, which acts as the poison value.
-// Each test stores into a misaligned address and compares the stored window plus
-// one element on each side (which must still be INIT).
 
 static volatile uint16_t B1[48]    __attribute__((aligned(AXI_DWIDTH))) = {[0 ... 47] = INIT};
 static volatile uint8_t B2[96]     __attribute__((aligned(AXI_DWIDTH))) = {[0 ... 95] = INIT};

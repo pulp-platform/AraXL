@@ -182,7 +182,8 @@ ara_tests_all = vaadd \
             vfrsqrt7 \
             vrgather \
             vcompress \
-            vreshuffle
+            vreshuffle \
+            vse_misaligned
 
 ara_tests = vadd \
                vwadd \
@@ -225,4 +226,5 @@ ara_tests = vadd \
                vls \
                vsuxei \
                vss \
-               vreshuffle
+               vreshuffle \
+               vse_misaligned
