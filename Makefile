@@ -192,6 +192,10 @@ riscv_unit_tests:
 	cd ../../../ && make riscv_tests_standard))
 
 # Helper targets
+.PHONY: install-hooks
+install-hooks:
+	python3 "$(ROOT_DIR)/scripts/verible_format.py" --install
+
 .PHONY: clean
 
 clean:
