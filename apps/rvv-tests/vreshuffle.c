@@ -1,12 +1,11 @@
-// Copyright 2021 ETH Zurich and University of Bologna.
+// Copyright 2026 ETH Zurich and University of Bologna.
 // Solderpad Hardware License, Version 0.51, see LICENSE for details.
 // SPDX-License-Identifier: SHL-0.51
 //
 // Author: Luca Caballero Cusin <lcaballero@ethz.ch>
 
-#include "../common/macros/vector/vector_macros.h"
-#include "../common/macros/vector/long_array.h"
-#include <stdio.h>
+#include "vector_macros.h"
+#include "long_array.h"
 
 
 // EW8 to EW64 to EW8

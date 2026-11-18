@@ -466,7 +466,7 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
   //////////////////////////////
 
   enum logic [1:0] {
-    AXI_ADDRGEN_IDLE, AXI_ADDRGEN_MISALIGNED, AXI_ADDRGEN_WAITING, AXI_ADDRGEN_REQUESTING
+    AXI_ADDRGEN_IDLE, AXI_ADDRGEN_WAITING, AXI_ADDRGEN_REQUESTING
   } axi_addrgen_state_d, axi_addrgen_state_q;
 
   axi_addr_t aligned_start_addr_d, aligned_start_addr_q;
@@ -531,47 +531,12 @@ module addrgen import ara_pkg::*; import rvv_pkg::*; #(
           axi_addrgen_d       = addrgen_req;
           axi_addrgen_state_d = core_st_pending_i ? AXI_ADDRGEN_WAITING : AXI_ADDRGEN_REQUESTING;
 
-          // In case of a misaligned store, reduce the effective width of the AXI transaction,
-          // since the store unit does not support misalignments between the AXI bus and the lanes
-          if ((axi_addrgen_d.addr[$clog2(AxiDataWidth/8)-1:0] != '0) && !axi_addrgen_d.is_load)
-          begin
-            // Calculate the start and the end addresses in the AXI_ADDRGEN_MISALIGNED state
-            axi_addrgen_state_d = AXI_ADDRGEN_MISALIGNED;
-
-            eff_axi_dw_d     = {1'b0, narrow_axi_data_bwidth};
-            eff_axi_dw_log_d = zeroes_cnt;
-          end else begin
-            eff_axi_dw_d     = AxiDataWidth/8;
-            eff_axi_dw_log_d = $clog2(AxiDataWidth/8);
-          end
-
+          eff_axi_dw_d     = AxiDataWidth/8;
+          eff_axi_dw_log_d = $clog2(AxiDataWidth/8);
+          
           // For VLSE, each cluster should have different address to issue:
           // For cluster X, the initial address should be (baseaddr_cluster0 + stride*(cluster_id_i*NrLanes))
           strided_addr_d = axi_addrgen_d.addr + (axi_addrgen_d.stride << $clog2(NrLanes)) * cluster_id_i;
-        end
-      end
-      AXI_ADDRGEN_MISALIGNED: begin
-        axi_addrgen_state_d = core_st_pending_i ? AXI_ADDRGEN_WAITING : AXI_ADDRGEN_REQUESTING;
-
-        // The start address is found by aligning the original request address by the width of
-        // the memory interface.
-        aligned_start_addr_d = aligned_addr(axi_addrgen_q.addr, eff_axi_dw_log_q);
-        // The final address can be found similarly...
-        if (axi_addrgen_q.len << int'(axi_addrgen_q.vew) >= (256 << eff_axi_dw_log_q)) begin
-          aligned_next_start_addr_d =
-            aligned_addr(axi_addrgen_q.addr + (256 << eff_axi_dw_log_q), eff_axi_dw_log_q);
-          aligned_end_addr_d = aligned_next_start_addr_d - 1;
-        end else begin
-          aligned_next_start_addr_d =
-            aligned_addr(axi_addrgen_q.addr + (axi_addrgen_q.len << int'(axi_addrgen_q.vew)) - 1,
-            eff_axi_dw_log_q) + eff_axi_dw_q;
-          aligned_end_addr_d = aligned_next_start_addr_d - 1;
-        end
-        // But since AXI requests are aligned in 4 KiB pages, aligned_end_addr must be in the
-        // same page as aligned_start_addr
-        if (aligned_start_addr_d[AxiAddrWidth-1:12] != aligned_end_addr_d[AxiAddrWidth-1:12]) begin
-          aligned_end_addr_d = {aligned_start_addr_d[AxiAddrWidth-1:12], 12'hFFF};
-          aligned_next_start_addr_d = {                next_2page_msb_q, 12'h000};
         end
       end
       AXI_ADDRGEN_WAITING: begin
