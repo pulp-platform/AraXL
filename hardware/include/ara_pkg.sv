@@ -450,7 +450,10 @@ package ara_pkg;
 
   typedef struct packed {
     rvv_pkg::vew_e    vew;
+    // Transfer elements (EW8 granularity for mask memory operations)
     vlen_cluster_t    vl;
+    // Original mask bit count, before rounding the memory transfer EW8 transfers
+    vlen_cluster_t    mask_vl;
     logic             use_eew1;
     ara_op_e          op;
     logic             is_reshuffle;

@@ -31,7 +31,8 @@ module align_stage import ara_pkg::*; import rvv_pkg::*;  #(
   input  logic              clk_i,
   input  logic              rst_ni,
 
-  input cluster_metadata_t  cluster_metadata_i,
+  input cluster_metadata_t  ar_metadata_i,
+  input cluster_metadata_t  aw_metadata_i,
   
   input  axi_req_t axi_req_i,
   output axi_req_t axi_req_o, 
@@ -194,7 +195,7 @@ always_comb begin
   // If a request arrives, add to tracker.
   // Assign shift enable for different stages
   if (axi_req_i.ar_valid && axi_resp_o.ar_ready) begin
-    automatic vew_e     vew          = cluster_metadata_i.vew;  
+    automatic vew_e     vew          = ar_metadata_i.vew;
     automatic int       burst        = axi_req_i.ar.len + 1;
     automatic int       axi_bytes    = AxiDataBytes;
     automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataBytes)) - (axi_req_i.ar.addr[$clog2(AxiDataBytes)-1:0])) >> vew;
@@ -203,9 +204,9 @@ always_comb begin
     tracker_d[rd_req_pnt_q].addr  = axi_req_i.ar.addr;
     // Track vl expected to receive including misalignment
     // Set len only the for the first ar req received in case the req was split by global_ldst unit
-    tracker_d[rd_req_pnt_q].len   = (tracker_q[rd_req_pnt_q].num_requests[0] == 0) ? cluster_metadata_i.vl : tracker_q[rd_req_pnt_q].len;
+    tracker_d[rd_req_pnt_q].len   = (tracker_q[rd_req_pnt_q].num_requests[0] == 0) ? ar_metadata_i.vl : tracker_q[rd_req_pnt_q].len;
     tracker_d[rd_req_pnt_q].vew   = vew;
-    tracker_d[rd_req_pnt_q].op    = cluster_metadata_i.op;
+    tracker_d[rd_req_pnt_q].op    = ar_metadata_i.op;
     for (int s=0; s < NumStages; s++)
       tracker_d[rd_req_pnt_q].num_requests[s] += 1;
     
@@ -221,7 +222,7 @@ always_comb begin
     end
 
     // If last request
-    if (vl_d >= cluster_metadata_i.vl || (cluster_metadata_i.op inside {VLXE, VLSE})) begin
+    if (vl_d >= ar_metadata_i.vl || (ar_metadata_i.op inside {VLXE, VLSE})) begin
       // Reset vl
       vl_d = 0;
       
@@ -266,7 +267,8 @@ always_comb begin
     last_d = axi_resp_i_cut[NumStages].r.last && (tracker_q[rd_resp_pnt_q[NumStages-1]].num_requests[NumStages-1] == 1);
   end
 
-  if (!(tracker_q[rd_resp_pnt_q[NumStages-1]].op inside {VLXE, VLSE})) begin
+  // data_q belongs to the delayed tracker
+  if (!(tracker_q[rd_resp_pnt_q_del[NumStages-1]].op inside {VLXE, VLSE})) begin
     // Combine the previous data and the current data packets using byte enable
     if (data_valid_q && axi_req_i.r_ready) begin
       // Number of elements in a single AXI transaction
@@ -304,7 +306,9 @@ always_comb begin
           if (!is_load_aligned & last_q) begin
             axi_req_cut_ready[NumStages] = 1'b0;
           end
-          last_d = 1'b0;
+          // An aligned next response may have entered data_d concurrently.
+          // Preserve its last flag when retiring this instruction last packet
+          if (!(is_load_aligned && is_load_resp_valid)) last_d = 1'b0;
         end
       end
     end else if (data_valid_q & !axi_req_i.r_ready) begin
@@ -312,12 +316,17 @@ always_comb begin
       rd_resp_pnt_d_del[NumStages-1] = rd_resp_pnt_q_del[NumStages-1];
     end
   end else begin
-    // Indexed operation
-    axi_resp_o.r_valid  = data_valid_d;
-    axi_resp_o.r.last   = last_d;
-    axi_resp_o.r.data = data_d;
-    last_d = 1'b0;
-    data_valid_d = 1'b0;
+    // Indexed responses use the same output buffer data_q as unit-stride responses.
+    axi_resp_o.r_valid = data_valid_q;
+    axi_resp_o.r.last = last_q;
+    axi_resp_o.r.data = data_q;
+    if (data_valid_q && axi_req_i.r_ready) begin
+      data_valid_d = is_load_resp_valid;
+      if (!is_load_resp_valid) last_d = 1'b0;
+    end else if (data_valid_q) begin
+      // Maintain the delayed pointer in the case data cannot be sent out
+      rd_resp_pnt_d_del[NumStages-1] = rd_resp_pnt_q_del[NumStages-1];
+    end
   end
 
   // If a stage receives a valid packet, shift the byte enable
@@ -359,6 +368,7 @@ end
 typedef struct packed {
   int len;
   ara_op_e op;
+  vew_e vew;
   axi_addr_t addr;
 } wr_req_track_t;
 
@@ -427,11 +437,11 @@ always_comb begin
   
   // Indexed/strided stores issue bus-aligned addresses and the element offset is applied on the W channel byte-enables
   axi_req_o.aw = axi_req_i.aw;
-  if (cluster_metadata_i.op inside {VSXE, VSSE})
+  if (aw_metadata_i.op inside {VSXE, VSSE})
     axi_req_o.aw.addr = axi_req_i.aw.addr & ~axi_addr_t'(AxiDataBytes-1);
 
   if (axi_req_i.aw_valid && axi_resp_o.aw_ready) begin
-    automatic vew_e     vew          = cluster_metadata_i.vew;
+    automatic vew_e     vew          = aw_metadata_i.vew;
     automatic int       burst        = axi_req_i.aw.len + 1;
     automatic int       axi_bytes    = AxiDataBytes;
     automatic vlen_cluster_t vlen_request = ((burst << $clog2(AxiDataBytes)) - (axi_req_i.aw.addr[$clog2(AxiDataBytes)-1:0])) >> vew;
@@ -439,12 +449,13 @@ always_comb begin
     
     wr_track_d[wr_pnt_q].addr          = axi_req_i.aw.addr;
     wr_track_d[wr_pnt_q].len           = axi_req_i.aw.len;
-    wr_track_d[wr_pnt_q].op            = cluster_metadata_i.op;
+    wr_track_d[wr_pnt_q].op            = aw_metadata_i.op;
+    wr_track_d[wr_pnt_q].vew           = aw_metadata_i.vew;
     b_track_d[b_pnt_q].count          += 1;
 
     wr_cnt_d += 1;
     wr_pnt_d = (wr_pnt_q == NumTrackers-1) ? 0 : wr_pnt_q + 1;
-    if (wr_vl_d >= cluster_metadata_i.vl || cluster_metadata_i.op inside {VSXE, VSSE}) begin
+    if (wr_vl_d >= aw_metadata_i.vl || aw_metadata_i.op inside {VSXE, VSSE}) begin
       wr_vl_d = 0;
       b_pnt_d = (b_pnt_q == NumTrackers-1) ? 0 : b_pnt_q + 1;
     end
@@ -475,7 +486,7 @@ always_comb begin
       axi_req_o.w.strb = '0;
       axi_req_o.w.data = '0;
       // Set the strb at the correct byte position depending on the address and the element width
-      unique case (cluster_metadata_i.vew)
+      unique case (wr_track_q[wr_commit_pnt_q].vew)
         EW8:  begin 
           axi_req_o.w.strb[start_byte_pos +: 1]    = axi_req_i.w.strb[0 +: 1];
           axi_req_o.w.data[start_byte_pos*8 +: 8]  = axi_req_i.w.data[0 +: 8];

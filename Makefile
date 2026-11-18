@@ -192,7 +192,16 @@ riscv_unit_tests:
 	cd ../../../ && make riscv_tests_standard))
 
 # Helper targets
+.PHONY: install-hooks
+install-hooks:
+	python3 "$(ROOT_DIR)/scripts/verible_format.py" --install
+
 .PHONY: clean
 
 clean:
 	rm -rf $(INSTALL_DIR)
+
+# Run hardware CI from the repository root with the same simulator/config options.
+.PHONY: ci ci-tb ci-build ci-rvv ci-benchmarks
+ci ci-tb ci-build ci-rvv ci-benchmarks:
+	$(MAKE) -C hardware $@

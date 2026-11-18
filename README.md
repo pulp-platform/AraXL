@@ -72,6 +72,14 @@ To build it, run the following command in the project's root directory.
 make verilator
 ```
 
+### Formatting on commit
+
+Install Verible and enable the commit hook once per checkout:
+
+```bash
+make install-hooks
+```
+
 ## AraXL Configuration
 
 ### Ara cluster
@@ -204,6 +212,14 @@ make riscv_tests_simv
 ```
 
 Alternatively, you can also use the `riscv_tests` target at Ara's top-level Makefile to both compile the RISC-V tests and run their simulation.
+
+### Run CI regressions
+
+Run the complete CI flow from the repository root (or from `hardware/`):
+
+```bash
+make ci cluster_configs="2 4 8" sim=questa
+```
 
 ### Traces
 

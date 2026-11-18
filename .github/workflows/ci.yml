@@ -237,6 +237,31 @@ jobs:
 #  Compile stage  #
 ###################
 
+  rtl-testbenches:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    needs: ["tc-verilator"]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Get Verilator artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: tc-verilator
+    - name: Untar Verilator
+      run: tar xvf tc-verilator.tar
+    - name: Download RTL dependencies
+      run: make -C hardware checkout sim=verilator
+    - name: Check CI runner behavior
+      run: python3 -m unittest discover -s hardware/scripts/regressions
+    - name: Run RTL testbench regressions with Verilator
+      run: make ci-tb sim=verilator CXX=g++
+    - name: Upload testbench regression logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: rtl-testbench-regressions
+        path: hardware/build/tb-regression/**/run.log
+
   compile-apps:
     runs-on: ubuntu-22.04
     strategy:
@@ -323,7 +348,7 @@ jobs:
       matrix:
         ara_config: [4_lanes]
         cluster_config : [2, 4]
-    needs: ["tc-verilator", "tc-isa-sim"]
+    needs: ["tc-verilator", "tc-isa-sim", "rtl-testbenches"]
     steps:
     - uses: actions/checkout@v4
     - name: Download Spike

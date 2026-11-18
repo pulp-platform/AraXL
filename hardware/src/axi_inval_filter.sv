@@ -55,8 +55,9 @@ module axi_inval_filter #(
   assign inval_addr_o  = aw_fifo_data.addr + inval_offset_q;
   assign inval_valid_o = ~aw_fifo_empty;
 
-  // Counter to track no. of invalidations
-  logic [$clog2(NumSets)-1:0] inv_cnt_d, inv_cnt_q;
+  // Count consecutive cache sets within the current burst. Separate bursts
+  // can revisit the same sets, so their counts do not prove cache coverage.
+  logic [idx_width(NumSets)-1:0] inv_cnt_d, inv_cnt_q;
 
   //////////////////
   // AXI Handling //
@@ -78,7 +79,7 @@ module axi_inval_filter #(
   // Invalidation FSM  //
   ///////////////////////
 
-  enum logic [1:0] { Idle, Invalidating, Invalidated} state_d, state_q;
+  enum logic { Idle, Invalidating} state_d, state_q;
 
   always_comb begin : inval_fsm
     // Default assignments
@@ -96,13 +97,13 @@ module axi_inval_filter #(
           if (inval_ready_i) begin
             // Continue if we are not done yet
             // If the addr is misaligned wrt the cache line, we should invalidate one line more
-            inv_cnt_d = inv_cnt_q + 1;
-            if ((L1LineWidth - aw_fifo_data.addr[idx_width(L1LineWidth)-1:0]) < ((aw_fifo_data.len + 1) << aw_fifo_data.size)) begin
+            if (NumSets > 1 && (L1LineWidth - aw_fifo_data.addr[idx_width(L1LineWidth)-1:0]) < ((aw_fifo_data.len + 1) << aw_fifo_data.size)) begin
               state_d        = Invalidating;
+              inv_cnt_d      = 1;
               inval_offset_d = L1LineWidth - aw_fifo_data.addr[idx_width(L1LineWidth)-1:0];
             end else begin
               aw_fifo_pop = 1'b1;
-              inv_cnt_d = aw_fifo_empty ? '0 : inv_cnt_d;
+              inv_cnt_d = '0;
             end
           end
         end
@@ -114,30 +115,15 @@ module axi_inval_filter #(
         if (inval_ready_i) begin
           inval_offset_d = inval_offset_q + L1LineWidth;
           inv_cnt_d = inv_cnt_q + 1;
-          if (inv_cnt_q == (NumSets-1)) begin
-            // If all the sets have been invalidated, go to state Invalidated
-            state_d = Invalidated;
-            inval_offset_d = '0;
-            aw_fifo_pop    = 1'b1;
-          end else if (inval_offset_d >= ((aw_fifo_data.len + 1) << aw_fifo_data.size)) begin
-            // Are we done?
+          if (inv_cnt_q == (NumSets-1) ||
+              inval_offset_d >= ((aw_fifo_data.len + 1) << aw_fifo_data.size)) begin
+            // This burst is covered after its last line or a full cache-set
+            // sweep. The next AW must establish its own coverage.
             state_d        = Idle;
             inval_offset_d = '0;
             aw_fifo_pop    = 1'b1;
-            inv_cnt_d = aw_fifo_empty ? '0 : inv_cnt_d;
+            inv_cnt_d      = '0;
           end
-        end
-      end
-
-      Invalidated: begin
-        if (!aw_fifo_empty) begin
-          // Avoid redundant invalidations, so just pop requests here
-          aw_fifo_pop    = 1'b1;
-        end else begin
-          // No available requests, go to state Idle
-          state_d = Idle;
-          inv_cnt_d = '0;
-          inval_offset_d = '0;
         end
       end
     endcase

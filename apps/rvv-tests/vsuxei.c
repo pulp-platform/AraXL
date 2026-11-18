@@ -6,7 +6,7 @@
 
 #include "vector_macros.h"
 
-#define AXI_DWIDTH 128
+#define AXI_DWIDTH (4 * NR_CLUSTERS * NR_LANES)
 
 #define INIT 98
 
@@ -38,6 +38,70 @@ static volatile uint32_t BUFFER_O32[16] __attribute__((aligned(AXI_DWIDTH))) = {
 static volatile uint64_t BUFFER_O64[16] __attribute__((aligned(AXI_DWIDTH))) = {
     INIT, INIT, INIT, INIT, INIT, INIT, INIT, INIT,
     INIT, INIT, INIT, INIT, INIT, INIT, INIT, INIT};
+
+#define REGRESSION_MAX_VL 255
+
+#define DECLARE_REGRESSION_VECTORS(bits, type)                              \
+  static volatile type REG_SOURCE_##bits[REGRESSION_MAX_VL]                 \
+      __attribute__((aligned(AXI_DWIDTH)));                                 \
+  static volatile type REG_INDEX_##bits[REGRESSION_MAX_VL]                  \
+      __attribute__((aligned(AXI_DWIDTH)));                                 \
+  static volatile type REG_OUTPUT_##bits[REGRESSION_MAX_VL]                 \
+      __attribute__((aligned(AXI_DWIDTH)));                                 \
+  static volatile type REG_EXPECTED_##bits[REGRESSION_MAX_VL]               \
+      __attribute__((aligned(AXI_DWIDTH)));
+
+DECLARE_REGRESSION_VECTORS(8, uint8_t)
+DECLARE_REGRESSION_VECTORS(16, uint16_t)
+DECLARE_REGRESSION_VECTORS(32, uint32_t)
+DECLARE_REGRESSION_VECTORS(64, uint64_t)
+
+#define DEFINE_REGRESSION_TEST(bits, type, vsew)                             \
+  static void run_regression_##bits(uint64_t vl, int case_num) {             \
+    const type sentinel = (type)0x5a;                                        \
+    for (uint64_t i = 0; i < REGRESSION_MAX_VL; ++i) {                       \
+      REG_SOURCE_##bits[i] = (type)((i * 157U) ^ (vl + bits));               \
+      REG_INDEX_##bits[i] = 0;                                               \
+      REG_OUTPUT_##bits[i] = sentinel;                                       \
+      REG_EXPECTED_##bits[i] = sentinel;                                     \
+    }                                                                        \
+    for (uint64_t i = 0; i < vl; ++i) {                                      \
+      uint64_t destination = vl - 1 - i;                                     \
+      REG_INDEX_##bits[i] = (type)(destination * sizeof(type));              \
+      REG_EXPECTED_##bits[destination] = REG_SOURCE_##bits[i];                \
+    }                                                                        \
+    VSET(vl, vsew, m8);                                                       \
+    asm volatile("vle" #bits ".v v8, (%0)"                                  \
+                 :                                                           \
+                 : "r"(&REG_SOURCE_##bits[0])                                \
+                 : "memory");                                                \
+    asm volatile("vle" #bits ".v v16, (%0)"                                 \
+                 :                                                           \
+                 : "r"(&REG_INDEX_##bits[0])                                 \
+                 : "memory");                                                \
+    asm volatile("vsuxei" #bits ".v v8, (%0), v16"                          \
+                 :                                                           \
+                 : "r"(&REG_OUTPUT_##bits[0])                                \
+                 : "memory");                                                \
+    asm volatile("fence" ::: "memory");                                     \
+    printf("Checking vsuxei%d.v with vl=%d (test case %d):\n", bits,         \
+           (int)vl, case_num);                                               \
+    for (uint64_t i = 0; i < REGRESSION_MAX_VL; ++i) {                       \
+      if (REG_OUTPUT_##bits[i] != REG_EXPECTED_##bits[i]) {                  \
+        printf("Index %d FAILED. Got %lx, expected %lx.\n", (int)i,          \
+               (uint64_t)REG_OUTPUT_##bits[i],                               \
+               (uint64_t)REG_EXPECTED_##bits[i]);                            \
+        num_failed++;                                                        \
+        return;                                                              \
+      }                                                                      \
+    }                                                                        \
+    printf("PASSED.\n");                                                     \
+  }
+
+DEFINE_REGRESSION_TEST(8, uint8_t, e8)
+DEFINE_REGRESSION_TEST(16, uint16_t, e16)
+DEFINE_REGRESSION_TEST(32, uint32_t, e32)
+DEFINE_REGRESSION_TEST(64, uint64_t, e64)
 
 // Naive test
 void TEST_CASE1(void) {
@@ -132,12 +196,32 @@ void TEST_CASE2(void) {
             0x8913984898951989);
 }
 
+// Exercise indexed stores across lane and cluster boundaries for all supported
+// data and index element widths.
+void TEST_CASE3(void) {
+  // With four lanes per cluster, these cover selector boundaries for 2, 4,
+  // 8, and 16 clusters (8, 16, 32, and 64 elements), plus repeated wraps.
+  const uint64_t vl_list[] = {1,   7,   8,   9,   15,  16,  17,
+                              31,  32,  33,  63,  64,  65,  95,
+                              127, 128, 129, 191, 192, 193, 223, 254,
+                              REGRESSION_MAX_VL};
+  int case_num = 9;
+
+  for (unsigned int i = 0; i < sizeof(vl_list) / sizeof(vl_list[0]); ++i) {
+    run_regression_8(vl_list[i], case_num++);
+    run_regression_16(vl_list[i], case_num++);
+    run_regression_32(vl_list[i], case_num++);
+    run_regression_64(vl_list[i], case_num++);
+  }
+}
+
 int main(void) {
   INIT_CHECK();
   enable_vec();
 
   TEST_CASE1();
   TEST_CASE2();
+  TEST_CASE3();
 
   EXIT_CHECK();
 }

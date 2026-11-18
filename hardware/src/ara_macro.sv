@@ -82,7 +82,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     output logic         ring_data_l_valid_o,
     input logic          ring_data_l_ready_i,
 
-    output cluster_metadata_t cluster_metadata_o
+    output cluster_metadata_t aw_metadata_o,
+    output cluster_metadata_t ar_metadata_o
   );
 
   `include "common_cells/registers.svh"
@@ -127,9 +128,34 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
   // Cuts for the macro ///
   /////////////////////////
 
-  cluster_metadata_t cluster_metadata;
+  cluster_metadata_t aw_metadata;
+  cluster_metadata_t ar_metadata;
 
-  `FF(cluster_metadata_o, cluster_metadata, cluster_metadata_t'('0), clk_i, rst_ni);
+  spill_register #(
+    .T(cluster_metadata_t)
+  ) i_aw_metadata_cut (
+    .clk_i(clk_i), 
+    .rst_ni(rst_ni),
+    .valid_i(ara_axi_req.aw_valid), 
+    .ready_o(), 
+    .data_i(aw_metadata),
+    .valid_o(), 
+    .ready_i(axi_resp_i.aw_ready), 
+    .data_o(aw_metadata_o)
+  );
+  spill_register #(
+    .T(cluster_metadata_t)
+  ) i_ar_metadata_cut (
+    .clk_i(clk_i), 
+    .rst_ni(rst_ni),
+    .valid_i(ara_axi_req.ar_valid), 
+    .ready_o(), 
+    .data_i(ar_metadata),
+    .valid_o(), 
+    .ready_i(axi_resp_i.ar_ready), 
+    .data_o(ar_metadata_o)
+  );
+
   `FF(cluster_id, cluster_id_i, '0, clk_i, rst_ni);
   `FF(num_clusters, num_clusters_i, '0, clk_i, rst_ni);
   
@@ -263,7 +289,8 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     .axi_resp_i      (ara_axi_resp     ),
 
     // To GLSU
-    .cluster_metadata_o  (cluster_metadata   ),
+    .aw_metadata_o       (aw_metadata        ),
+    .ar_metadata_o       (ar_metadata        ),
 
     // Synchronization for indexed operations and reductions
     .idx_completed_o     (idx_completed_o    ),

@@ -105,15 +105,14 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   group_req_t [ShuffleCuts:0] ara_axi_req_shuffle_cut;
   group_resp_t [ShuffleCuts:0] ara_axi_resp_shuffle_cut;
 
-  cluster_metadata_t cluster_metadata_cut, 
-                     cluster_metadata_cut_rs,
-                     cluster_metadata_cut_glsu,
-                     cluster_metadata_cut_glsu2align,
-                     cluster_metadata_cut_align;
+  cluster_metadata_t ar_metadata_glsu, aw_metadata_glsu;
+  cluster_metadata_t ar_metadata_align, aw_metadata_align;
 
   typedef cluster_metadata_t [NrClusters-1:0] cluster_metadata_group_t;
-  cluster_metadata_group_t cluster_metadata;
-  cluster_metadata_group_t [ShuffleCuts:0] cluster_metadata_shuffle_cut;
+  cluster_metadata_group_t [ShuffleCuts:0] aw_metadata_shuffle_cut;
+  cluster_metadata_group_t [ShuffleCuts:0] ar_metadata_shuffle_cut;
+  cluster_metadata_group_t ar_metadata_ldst;
+  cluster_metadata_group_t aw_metadata_ldst;
 
   /////////
   // ARA //
@@ -210,7 +209,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         // Interface with GLSU
         .axi_req_o          (ara_axi_req[cluster]      ),
         .axi_resp_i         (ara_axi_resp[cluster]     ),
-        .cluster_metadata_o (cluster_metadata[cluster] ),
+        .aw_metadata_o      (aw_metadata_shuffle_cut[0][cluster]),
+        .ar_metadata_o      (ar_metadata_shuffle_cut[0][cluster]),
 
         // Synchronization for indexed operations and reductions
         .idx_completed_o     (   /* unused */          ),
@@ -241,7 +241,6 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
       // Cuts from ara macro to the shuffle stage
       assign ara_axi_req_shuffle_cut[0][cluster] = ara_axi_req[cluster];
       assign ara_axi_resp[cluster] = ara_axi_resp_shuffle_cut[0][cluster];
-      assign cluster_metadata_shuffle_cut[0][cluster] = cluster_metadata[cluster];
 
       for (genvar s=0; s < ShuffleCuts; s++) begin
         axi_cut #(
@@ -262,7 +261,30 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
           .mst_req_o   (ara_axi_req_shuffle_cut [s+1][cluster]),
           .mst_resp_i  (ara_axi_resp_shuffle_cut[s+1][cluster])
         );
-        `FF(cluster_metadata_shuffle_cut[s+1][cluster], cluster_metadata_shuffle_cut[s][cluster], cluster_metadata_t'('0), clk_i, rst_ni)
+        spill_register #(
+          .T(cluster_metadata_t)
+          ) i_aw_metadata_cut (
+          .clk_i(clk_i), 
+          .rst_ni(rst_ni),
+          .valid_i(ara_axi_req_shuffle_cut[s][cluster].aw_valid), 
+          .ready_o(),
+          .data_i(aw_metadata_shuffle_cut[s][cluster]), 
+          .valid_o(),
+          .ready_i(ara_axi_resp_shuffle_cut[s+1][cluster].aw_ready),
+          .data_o(aw_metadata_shuffle_cut[s+1][cluster])
+        );
+        spill_register #(
+          .T(cluster_metadata_t)
+          ) i_ar_metadata_cut (
+          .clk_i(clk_i), 
+          .rst_ni(rst_ni),
+          .valid_i(ara_axi_req_shuffle_cut[s][cluster].ar_valid), 
+          .ready_o(),
+          .data_i(ar_metadata_shuffle_cut[s][cluster]), 
+          .valid_o(),
+          .ready_i(ara_axi_resp_shuffle_cut[s+1][cluster].ar_ready),
+          .data_o(ar_metadata_shuffle_cut[s+1][cluster])
+        );
       end
   end
 
@@ -412,7 +434,6 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   // Shuffle stage
   assign ara_axi_req_cut = ara_axi_req_shuffle_cut[ShuffleCuts];
   assign ara_axi_resp_shuffle_cut[ShuffleCuts] = ara_axi_resp_cut;
-  assign cluster_metadata_cut = cluster_metadata_shuffle_cut[ShuffleCuts][0];
 
   shuffle_stage #(
     .NrLanes              (NrLanes              ),
@@ -426,7 +447,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     ) i_shuffle_stage (
       .clk_i              (clk_i                ),
       .rst_ni             (rst_ni               ),
-      .cluster_metadata_i (cluster_metadata_shuffle_cut[ShuffleCuts]  ),
+      .aw_metadata_i      (aw_metadata_shuffle_cut[ShuffleCuts]       ),
+      .ar_metadata_i      (ar_metadata_shuffle_cut[ShuffleCuts]       ),
       .idx_completed_o    (idx_completed_sync_all                     ),
       .axi_req_i          (ara_axi_req_cut      ),
       .axi_resp_o         (ara_axi_resp_cut     ),
@@ -453,9 +475,31 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
         .mst_req_o   (rs_axi_req[cluster]),
         .mst_resp_i  (rs_axi_resp[cluster])
       );
+    spill_register #(
+      .T(cluster_metadata_t)
+      ) i_ar_metadata_cut (
+      .clk_i(clk_i), 
+      .rst_ni(rst_ni),
+      .valid_i(ldst_axi_req_cut[cluster].ar_valid), 
+      .ready_o(),
+      .data_i(ar_metadata_shuffle_cut[ShuffleCuts][cluster]), 
+      .valid_o(),
+      .ready_i(rs_axi_resp[cluster].ar_ready),
+      .data_o(ar_metadata_ldst[cluster])
+    );
+    spill_register #(
+      .T(cluster_metadata_t)
+      ) i_aw_metadata_cut (
+      .clk_i(clk_i), 
+      .rst_ni(rst_ni),
+      .valid_i(ldst_axi_req_cut[cluster].aw_valid), 
+      .ready_o(),
+      .data_i(aw_metadata_shuffle_cut[ShuffleCuts][cluster]), 
+      .valid_o(),
+      .ready_i(rs_axi_resp[cluster].aw_ready),
+      .data_o(aw_metadata_ldst[cluster])
+    );
   end
-
-  `FF(cluster_metadata_cut_rs, cluster_metadata_cut, cluster_metadata_t'('0), clk_i, rst_ni)
 
   // Reshuffle filter
   reshuffle_filter #(
@@ -467,16 +511,16 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     .axi_req_t          (axi_req_t          ),
     .axi_resp_t         (axi_resp_t         )
   ) i_reshuffle_filter (
-    .clk_i              (clk_i              ),
-    .rst_ni             (rst_ni             ),
+    .clk_i        (clk_i           ),
+    .rst_ni       (rst_ni          ),
     // To Ara
-    .axi_req_i          (rs_axi_req       ),
-    .axi_resp_o         (rs_axi_resp      ),
-    .cluster_metadata_i (cluster_metadata_cut_rs  ),
-    .cluster_metadata_o (cluster_metadata_cut_glsu),
+    .axi_req_i    (rs_axi_req      ),
+    .axi_resp_o   (rs_axi_resp     ),
+    .aw_metadata_i(aw_metadata_ldst),
+    .ar_metadata_i(ar_metadata_ldst),
     // To GLSU
-    .axi_resp_i         (ldst_axi_resp       ),
-    .axi_req_o          (ldst_axi_req        )
+    .axi_resp_i   (ldst_axi_resp   ),
+    .axi_req_o    (ldst_axi_req    )
   );
 
   // Global Ld/St Unit
@@ -496,8 +540,10 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     // To Ara
     .axi_req_i          (ldst_axi_req       ),
     .axi_resp_o         (ldst_axi_resp      ),
-    .cluster_metadata_i (cluster_metadata_cut_glsu      ),
-    .cluster_metadata_o (cluster_metadata_cut_glsu2align),
+    .aw_metadata_i      (aw_metadata_ldst   ),
+    .ar_metadata_i      (ar_metadata_ldst   ),
+    .ar_metadata_o      (ar_metadata_glsu   ),
+    .aw_metadata_o      (aw_metadata_glsu   ),
     // To System
     .axi_resp_i         (axi_resp_cut       ),
     .axi_req_o          (axi_req_cut        )
@@ -520,7 +566,30 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     .mst_resp_i  (axi_resp_ldst)
   );
 
-  `FF(cluster_metadata_cut_align, cluster_metadata_cut_glsu2align, cluster_metadata_t'('0), clk_i, rst_ni)
+  spill_register #(
+    .T(cluster_metadata_t)
+    ) i_align_ar_metadata_cut (
+    .clk_i(clk_i), 
+    .rst_ni(rst_ni),
+    .valid_i(axi_req_cut.ar_valid), 
+    .ready_o(), 
+    .data_i(ar_metadata_glsu),
+    .valid_o(), 
+    .ready_i(axi_resp_ldst.ar_ready), 
+    .data_o(ar_metadata_align)
+  );
+  spill_register #(
+    .T(cluster_metadata_t)
+    ) i_align_aw_metadata_cut (
+    .clk_i(clk_i), 
+    .rst_ni(rst_ni),
+    .valid_i(axi_req_cut.aw_valid), 
+    .ready_o(), 
+    .data_i(aw_metadata_glsu),
+    .valid_o(), 
+    .ready_i(axi_resp_ldst.aw_ready), 
+    .data_o(aw_metadata_align)
+  );
 
   // Align stage
   align_stage #(
@@ -537,7 +606,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     ) i_align_stage (
       .clk_i               (clk_i                        ),
       .rst_ni              (rst_ni                       ),
-      .cluster_metadata_i  (cluster_metadata_cut_align   ),
+      .ar_metadata_i       (ar_metadata_align            ),
+      .aw_metadata_i       (aw_metadata_align            ),
       .axi_req_i           (axi_req_ldst                 ),
       .axi_resp_o          (axi_resp_ldst                ),
       .axi_req_o           (axi_req_align                ),

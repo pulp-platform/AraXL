@@ -241,6 +241,8 @@ module ara_system import axi_pkg::*; import ara_pkg::*; #(
     .axi_req_t   (ara_axi_req_t   ),
     .axi_resp_t  (ara_axi_resp_t  )
   ) i_ara (
+    .ar_metadata_o   (/* Unused */  ),
+    .aw_metadata_o   (/* Unused */  ),
     .clk_i           (clk_i         ),
     .rst_ni          (rst_ni        ),
     .scan_enable_i   (scan_enable_i ),

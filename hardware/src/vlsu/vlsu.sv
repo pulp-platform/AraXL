@@ -33,7 +33,8 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
     // AXI Memory Interface
     output axi_req_t                axi_req_o,
     input  axi_resp_t               axi_resp_i,
-    output cluster_metadata_t       cluster_metadata_o,
+    output cluster_metadata_t       aw_metadata_o,
+    output cluster_metadata_t       ar_metadata_o,
     // Synchronization for indexed operations
     output logic                    idx_completed_o,
     input  logic                    idx_completed_sync_i,
@@ -111,7 +112,31 @@ module vlsu import ara_pkg::*; import rvv_pkg::*; #(
   `include "common_cells/registers.svh" 
 
   cluster_metadata_t cluster_metadata;
-  `FF(cluster_metadata_o, cluster_metadata, cluster_metadata_t'('0), clk_i, rst_ni);
+
+  // Both address channels capture the same source metadata, but retain
+  // independent snapshots using their respective AXI cut handshakes.
+  spill_register #(.T(cluster_metadata_t)) i_ar_metadata_cut (
+    .clk_i(clk_i), .rst_ni(rst_ni),
+    .valid_i(axi_req.ar_valid), 
+    .ready_o(), 
+    .data_i(cluster_metadata),
+    .valid_o(), 
+    .ready_i(axi_resp_i.ar_ready), 
+    .data_o(ar_metadata_o)
+  );
+
+  spill_register #(
+    .T(cluster_metadata_t)
+    ) i_aw_metadata_cut (
+    .clk_i(clk_i), 
+    .rst_ni(rst_ni),
+    .valid_i(axi_req.aw_valid), 
+    .ready_o(), 
+    .data_i(cluster_metadata),
+    .valid_o(), 
+    .ready_i(axi_resp_i.aw_ready), 
+    .data_o(aw_metadata_o)
+  );
 
   logic idx_completed;
   logic idx_completed_sync;

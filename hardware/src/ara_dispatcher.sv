@@ -2749,7 +2749,9 @@ endfunction
                   5'b01011: begin // Unit-strided, mask load, EEW=1
                     // We operate ceil(vl/8) bytes
                     ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                    // Keep the global bit count for cluster participation. The
+                    // address generator rounds the shared memory length to bytes.
+                    ara_req_d.vl_cluster = vl_cluster_q;
                     ara_req_d.vtype.vsew = EW8;
                     ara_req_d.use_eew1   = 1'b1;
                   end
@@ -2965,7 +2967,8 @@ endfunction
                   5'b01011: begin // Unit-strided, mask store, EEW=1
                     // We operate ceil(vl/8) bytes
                     ara_req_d.vl         = (vl_q >> 3) + |vl_q[2:0];
-                    ara_req_d.vl_cluster = (vl_cluster_q >> 3) + |vl_cluster_q[2:0];
+                    // Keep the global bit count, as for mask loads above.
+                    ara_req_d.vl_cluster = vl_cluster_q;
                     ara_req_d.vtype.vsew = EW8;
                     ara_req_d.use_eew1   = 1'b1;
                   end
@@ -3296,7 +3299,8 @@ endfunction
         // Optimization: reshuffle vd only if we are not overwriting the whole vector register!
         reshuffle_req_d = {ara_req_d.use_vs1 && (ara_req_d.eew_vs1    != eew_q[ara_req_d.vs1]) && eew_valid_q[ara_req_d.vs1] && in_lane_op,
                            ara_req_d.use_vs2 && (ara_req_d.eew_vs2    != eew_q[ara_req_d.vs2]) && eew_valid_q[ara_req_d.vs2] && in_lane_op,
-                           ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] && vl_q != (VLENB >> ara_req_d.vtype.vsew)};
+                           ara_req_d.use_vd  && (ara_req_d.vtype.vsew != eew_q[ara_req_d.vd ]) && eew_valid_q[ara_req_d.vd ] &&
+                           vl_cluster_q != ((VLENB >> ara_req_d.vtype.vsew) << num_clusters_i)};
         
         // Prepare the information to reshuffle the vector registers during the next cycles
         // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.

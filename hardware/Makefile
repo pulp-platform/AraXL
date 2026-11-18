@@ -56,6 +56,8 @@ ifeq ($(vcd_dump), 1)
 else
   questa_version ?= 2021.3
 endif
+# Simulator used by the CI targets
+sim            ?= questa
 # QuestaSim command
 questa_cmd     ?= questa-$(questa_version)
 # QuestaSim arguments
@@ -77,11 +79,13 @@ ifeq ($(vcd_dump), 1)
   bender_defs += --define VCD_DUMP=1 --define VCD_PATH=$(vcd_path)
 endif
 
-# Check if the specified QuestaSim version exists
+# Check the Questa wrapper only when it is needed.
+ifneq ($(sim),verilator)
 ifeq (, $(shell which $(questa_cmd)))
   # Spaces are needed for indentation here!
   $(warning "Specified QuestaSim version ($(questa_cmd)) not found in PATH $(PATH)")
   questa_cmd =
+endif
 endif
 
 questa_args += +UVM_NO_RELNOTES
@@ -128,8 +132,11 @@ ifneq ($(ring_latency), 0)
 	bender_defs += --define ADD_RING_LATENCY=1 --define RING_LATENCY=$(ring_latency) 
 endif
 
-# By default tracing enabled
+# By default tracing is disabled
+perfetto_trace ?= 0
+ifneq ($(perfetto_trace),0)
 bender_defs += --define PERFETTO_TRACE
+endif
 
 bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 
@@ -263,91 +270,49 @@ riscv_tests_simv: $(tests)
 $(tests): rv%: $(app_path)/rv%
 	$(veril_library)/V$(veril_top) $(if $(trace),-t,) -l ram,$<,elf &> $(buildpath)/$@.trace
 
-# CI regression on QuestaSim: RISC-V vector tests and benchmarks for every cluster configuration
-ci_config ?= 4_lanes
-ci_cluster_configs ?= 4
+# CI
+cluster_configs ?= 2 4
+ci_timeout ?= 600
+ci_build_timeout ?= 1800
+ci_questa_sim_time ?= 100ms
+ci_verilator_max_cycles ?= 100000000
+ci_tb_buildpath ?= $(abspath $(buildpath))/tb-regression
+ci_tb_timeout ?= 300s
+ci_tb_simulator ?= $(sim)
+ci_tb_sim_time ?= 2ms
 
-# Benchmarks from the CI simulate job
 ci_benchmarks ?= hello_world fmatmul imatmul exp softmax fdotproduct fconv2d iconv2d cos dropout _pathfinder _blackscholes _axpy _streamcluster _spmv _canneal _swaptions _lavaMD
 
-.PHONY: vsim-ci vsim-ci-prep vsim-ci-rvv vsim-ci-benchmarks
-vsim-ci:
-	@failed_steps=""; \
-	for nr in $(ci_cluster_configs); do \
-		$(MAKE) --no-print-directory vsim-ci-build config=$(ci_config) nr_clusters=$$nr || { failed_steps="$$failed_steps prep-$$nr"; continue; }; \
-		$(MAKE) --no-print-directory vsim-ci-rvv skip_build=1 config=$(ci_config) nr_clusters=$$nr || failed_steps="$$failed_steps rvv-$$nr"; \
-		$(MAKE) --no-print-directory vsim-ci-benchmarks skip_build=1 config=$(ci_config) nr_clusters=$$nr || failed_steps="$$failed_steps benchmarks-$$nr"; \
-	done; \
-	if [ -n "$$failed_steps" ]; then \
-		echo -e "\033[91mFAILED CI STEPS:$$failed_steps\033[0m"; \
-		exit 1; \
-	else \
-		echo -e "\033[92mALL CI STEPS PASSED\033[0m"; \
-	fi
+ifneq ($(filter ci ci-% vsim-ci%,$(MAKECMDGOALS)),)
+  ifeq ($(filter $(sim),questa verilator),)
+    $(error Unsupported sim '$(sim)'; use questa or verilator)
+  endif
+endif
 
-# Builds apps and compiles QuestaSim sources; skipped by the test targets when skip_build is set
-vsim-ci-build:
-	echo -e "===== Building RISC-V tests and benchmarks for AraXL CfG: $(config) and $(nr_clusters) clusters ====="; \
-	$(MAKE) --no-print-directory -C $(APPS_DIR) config=$(config) nr_clusters=$(nr_clusters) all || exit 1; \
-	rm -f $(buildpath)/compile_$(config).tcl; \
-	$(MAKE) --no-print-directory compile config=$(config) nr_clusters=$(nr_clusters) || exit 1; \
-	if [ ! -f $(buildpath)/compile_$(config).tcl ]; then echo -e "\033[91mQuestaSim compilation failed\033[0m"; exit 1; fi
+ifeq ($(sim),questa)
+ci_tool_args = --questa-cmd "$(questa_cmd)" --questa-sim-time "$(ci_questa_sim_time)"
+else ifeq ($(sim),verilator)
+ci_tool_args = --verilator-max-cycles "$(ci_verilator_max_cycles)"
+endif
 
-vsim-ci-rvv:
-	@$(if $(skip_build),,$(MAKE) --no-print-directory vsim-ci-build config=$(config) nr_clusters=$(nr_clusters) || exit 1;) \
-	GREEN='\033[92m'; RED='\033[91m'; RESET='\033[0m'; \
-	failed_tests=""; \
-	echo -e ""; \
-	echo -e "===== Running RISC-V Vector tests on QuestaSim for AraXL CfG: $(nr_lanes) lanes and $(nr_clusters) clusters ====="; \
-	for test in $(tests); do \
-		rm -f $(buildpath)/transcript; \
-		$(MAKE) --no-print-directory simc app=$$test config=$(config) nr_clusters=$(nr_clusters) > $(buildpath)/$${test}.log 2>&1; \
-		if grep -q "\*\*\* SUCCESS \*\*\*" $(buildpath)/transcript; then \
-			printf "  ✓ %-60s $${GREEN}PASSED$${RESET}\n" "$$test"; \
-		else \
-			printf "  ✗ %-60s $${RED}FAILED$${RESET}\n" "$$test"; \
-			failed_tests="$$failed_tests $$test"; \
-		fi; \
-		cp $(buildpath)/transcript $(buildpath)/$${test}.transcript; \
-	done; \
-	if [ -n "$$failed_tests" ]; then \
-		echo -e ""; \
-		echo -e "$${RED}===== FAILED RVV TESTS ($(nr_clusters) clusters):$$failed_tests =====$${RESET}"; \
-		echo -e ""; \
-		exit 1; \
-	else \
-		echo -e ""; \
-		echo -e "$${GREEN}===== ALL RVV TESTS PASSED ($(nr_clusters) clusters) =====$${RESET}"; \
-		echo -e ""; \
-	fi
+ci_args = --sim "$(sim)" --config "$(config)" --lanes "$(nr_lanes)" --vlen "$(vlen)" \
+  --make "$(MAKE)" --timeout "$(ci_timeout)" --build-timeout "$(ci_build_timeout)" \
+  $(ci_tool_args) \
+  $(if $(filter 1,$(skip_build)),--skip-build,) \
+  --rvv $(tests) --benchmarks $(ci_benchmarks)
 
-vsim-ci-benchmarks:
-	@$(if $(skip_build),,$(MAKE) --no-print-directory vsim-ci-build config=$(config) nr_clusters=$(nr_clusters) || exit 1;) \
-	GREEN='\033[92m'; RED='\033[91m'; RESET='\033[0m'; \
-	failed_apps=""; \
-	echo -e ""; \
-	echo -e "===== Running benchmarks on QuestaSim for AraXL CfG: $(nr_lanes) lanes and $(nr_clusters) clusters ====="; \
-	for app in $(ci_benchmarks); do \
-		rm -f $(buildpath)/transcript; \
-		$(MAKE) --no-print-directory simc app=$$app config=$(config) nr_clusters=$(nr_clusters) > $(buildpath)/$${app}.log 2>&1; \
-		if grep -q "\*\*\* SUCCESS \*\*\*" $(buildpath)/transcript; then \
-			printf "  ✓ %-60s $${GREEN}PASSED$${RESET}\n" "$$app"; \
-		else \
-			printf "  ✗ %-60s $${RED}FAILED$${RESET}\n" "$$app"; \
-			failed_apps="$$failed_apps $$app"; \
-		fi; \
-		cp $(buildpath)/transcript $(buildpath)/$${app}.transcript; \
-	done; \
-	if [ -n "$$failed_apps" ]; then \
-		echo -e ""; \
-		echo -e "$${RED}===== FAILED BENCHMARKS ($(nr_clusters) clusters):$$failed_apps =====$${RESET}"; \
-		echo -e ""; \
-		exit 1; \
-	else \
-		echo -e ""; \
-		echo -e "$${GREEN}===== ALL BENCHMARKS PASSED ($(nr_clusters) clusters) =====$${RESET}"; \
-		echo -e ""; \
-	fi
+.PHONY: ci ci-tb ci-build ci-rvv ci-benchmarks vsim-ci vsim-ci-tb vsim-ci-build vsim-ci-rvv vsim-ci-benchmarks
+ci: ci-tb
+	python3 "$(ROOT_DIR)/scripts/regressions/run_ci.py" --stage all --clusters $(cluster_configs) $(ci_args)
+
+# The testbenches cover all supported cluster configurations internally.
+ci-tb:
+	@BUILD_DIR="$(ci_tb_buildpath)" TB_TIMEOUT="$(ci_tb_timeout)" \
+	 TB_SIMULATOR="$(ci_tb_simulator)" TB_SIM_TIME="$(ci_tb_sim_time)" \
+	 QUESTA_CMD="$(questa_cmd)" bash "$(ROOT_DIR)/scripts/regressions/run_tb_regression.sh"
+
+ci-build ci-rvv ci-benchmarks:
+	python3 "$(ROOT_DIR)/scripts/regressions/run_ci.py" --stage $(patsubst ci-%,%,$@) --clusters $(nr_clusters) $(ci_args)
 
 # Lint
 .PHONY: lint spyglass/tmp/files
