@@ -73,7 +73,7 @@ sources:
     - hardware/src/ara_macro.sv
     # Level 7
     - hardware/src/ara_cluster.sv
-    - hardware/src/axi_inval_filter.sv
+    - hardware/src/axi_inval_filter_local.sv
     # Level 8
     - hardware/src/ara_system.sv
     - hardware/src/l2_mem_interconnect.sv
