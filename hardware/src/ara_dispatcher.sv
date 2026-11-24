@@ -403,7 +403,7 @@ endfunction
       //////////////////////
 
       RESHUFFLE_LD: begin
-        automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+        automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
 
         // The instruction is a load
         is_vload               = 1'b1;
@@ -503,7 +503,7 @@ endfunction
                 vstart_d = ara_resp_i.error_vl;
             end
             default: begin
-              automatic rvv_instruction_t insn = rvv_instruction_t'(acc_req_i.insn.instr);
+              automatic rvv_instruction_t insn = rvv_instruction_t'(instr.instr);
               // Prepare the information to reshuffle the vector registers during the next cycles
               // Reshuffle in the following order: vd, v2, v1. The order is arbitrary.
               if (rs_lmul_cnt_q == rs_lmul_cnt_limit_q) begin
