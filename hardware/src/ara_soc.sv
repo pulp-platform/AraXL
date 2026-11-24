@@ -25,10 +25,6 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     parameter  int           unsigned AxiIdWidth   = 5,
     // AXI Resp Delay [ps] for gate-level simulation
     parameter  int           unsigned AxiRespDelay = 200,
-    // Main memory
-    parameter  int           unsigned L2NumWords   = 2**20,
-    // Number of L2 banks the address space is word-interleaved across.
-    // Must be a power of two. Defaults to one bank per core.
     parameter  int           unsigned NrL2Banks    = NrCores,
     // Dependant parameters. DO NOT CHANGE!
     localparam type                   axi_data_t   = logic [AxiDataWidth-1:0],
@@ -88,10 +84,13 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   localparam NrAXISlaves = CTRL + 1;
 
   // Memory Map
-  // 1GByte of DDR (split between two chips on Genesys2)
-  localparam logic [63:0] DRAMLength = 64'h40000000;
+  // Physical L2 size, spread over NrL2Banks banks
+  localparam logic [63:0] DRAMLength = 64'h0200_0000;
+  localparam int unsigned L2NumWords = DRAMLength / (NrL2Banks * (AxiDataWidth / 8));
   localparam logic [63:0] UARTLength = 64'h1000;
   localparam logic [63:0] CTRLLength = 64'h1000;
+
+  localparam logic [63:0] DRAMLengthPerCore = DRAMLength / NrCores;
 
   typedef enum logic [63:0] {
     DRAMBase = 64'h8000_0000,
@@ -104,8 +103,8 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
   ////////////////////////////
 
   // Non-cacheable window at the top of DRAM (see apps/common/arch.link.ld).
-  localparam logic [63:0] AMOLength = 64'h800;
-  localparam logic [63:0] AMOBase   = DRAMBase + DRAMLength - AMOLength;
+  localparam logic [63:0] DRAMAtomLength = 64'h800;
+  localparam logic [63:0] DRAMAtomBase   = DRAMBase + DRAMLength - DRAMAtomLength;
 
   // L2 is one contiguous address range, word-interleaved across NrL2Banks
   // ara_tb.sv's ELF loader must reproduce this mapping exactly.
@@ -583,7 +582,7 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
 
   ctrl_registers #(
     .DRAMBaseAddr   (DRAMBase              ),
-    .DRAMLength     (DRAMLength - 2048     ), // Keep last 2KB free for the non-cacheable region
+    .DRAMLength     (DRAMLength -DRAMAtomLength), // stack starts before the mem allocated for non-cacheable region
     .DataWidth      (AxiNarrowDataWidth    ),
     .AddrWidth      (AxiAddrWidth          ),
     .axi_lite_req_t (soc_narrow_lite_req_t ),
@@ -655,7 +654,13 @@ module ara_soc import axi_pkg::*; import ara_pkg::*; #(
     // cached region
     cfg.NrCachedRegionRules   = 1;
     cfg.CachedRegionAddrBase  = {DRAMBase};
-    cfg.CachedRegionLength    = {DRAMLength - 2048};
+    cfg.CachedRegionLength    = {DRAMLength -DRAMAtomLength};
+    // Shared-memory software uses FENCE for cache maintenance between the
+    // non-coherent cores. Keep this behavior when starting from CVA6's template.
+    if (NrCores > 1) begin
+      cfg.DcacheFlushOnFence      = 1'b1;
+      cfg.DcacheInvalidateOnFlush = 1'b1;
+    end
     // Return modified config
     return cfg;
   endfunction
@@ -793,14 +798,11 @@ for (genvar hart_id = 0; hart_id < NrCores; hart_id++) begin : gen_ara_system
 
   axi_pkg::xbar_rule_64_t [1:0] routing_rules_pre;
 
-  // The two DRAM rules must not overlap. The atomics window is carved off the
-  // top of DRAM so that every AMO converges on the single shared
-  // axi_riscv_atomics adapter; the rest of DRAM goes to the word-interleaved
-  // L2. Anything matching neither rule (UART, CTRL) falls through to NONL2 via
-  // en_default_mst_port_i below.
+  // Rules must not overlap. Anything matching neither (UART, CTRL) falls through
+  // to NONL2 via en_default_mst_port_i below.
   assign routing_rules_pre = '{
-      '{idx: AMO,     start_addr: AMOBase,  end_addr: AMOBase + AMOLength},
-      '{idx: L2MEM,   start_addr: DRAMBase, end_addr: AMOBase            }
+      '{idx: AMO,   start_addr: DRAMAtomBase, end_addr: DRAMAtomBase + DRAMAtomLength},
+      '{idx: L2MEM, start_addr: DRAMBase,     end_addr: DRAMAtomBase                 }
   };
 
   axi_xbar #(

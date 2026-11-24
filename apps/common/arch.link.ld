@@ -4,14 +4,10 @@
 OUTPUT_ARCH("riscv")
 ENTRY(_start)
 
-/* One L2 bank holds L2NumWords x (AxiDataWidth/8) bytes. L2NumWords is 2^20
-   (ara_soc.sv's parameter, also mirrored in ara_tb.sv); AxiDataWidth/8 equals
-   ALIGNMENT, substituted by align_sections.sh along with NRL2BANKS.
-   The top 2 KB is reserved: tc_sram decodes only $clog2(L2NumWords) index
-   bits, so the non-cacheable window at 0xBFFFF800 aliases onto exactly those
-   bytes and no section may be placed there. */
+/* The L2 spans 32 MB (ara_soc.sv's DRAMLength). The top 2 KB is the
+   non-cacheable atomics window at 0x81FFF800 and no section may be placed there. */
 MEMORY {
-  L2 : ORIGIN = 0x80000000, LENGTH = NRL2BANKS * 1048576 * ALIGNMENT - 2048
+  L2 : ORIGIN = 0x80000000, LENGTH = 0x02000000 - 2048
 }
 
 /*
@@ -58,15 +54,15 @@ SECTIONS {
   .comment : ALIGN(ALIGNMENT) { *(.comment) } > L2
 
   /* In non-cacheable region of main memory */
-  sync_flag              = 0xBFFFF800;
-  sync_generation        = 0xBFFFF804;
+  sync_flag              = 0x81FFF800;
+  sync_generation        = 0x81FFF804;
   /* to later use l2 alloc base within applications to allocate the following atomic pointers */
-  canneal_keep_going_global_flag        = 0xBFFFF808;
-  streamcluster_pspeedy_cond_generation = 0xBFFFF810;
-  streamcluster_pspeedy_i               = 0xBFFFF814;
-  printf_lock                           = 0xBFFFF818;
-  mutex_lock                            = 0xBFFFF840;
-  l2_atomic_alloc_base                  = 0xBFFFF848;
+  canneal_keep_going_global_flag        = 0x81FFF808;
+  streamcluster_pspeedy_cond_generation = 0x81FFF810;
+  streamcluster_pspeedy_i               = 0x81FFF814;
+  printf_lock                           = 0x81FFF818;
+  mutex_lock                            = 0x81FFF840;
+  l2_atomic_alloc_base                  = 0x81FFF848;
 
   eoc_address_reg        = 0xD0000000;
   dram_start_address_reg = 0xD0000008;
