@@ -92,4 +92,4 @@ SVScoped::Error::Error(const std::string &scope_name)
   std::ostringstream oss;
   oss << "No such SystemVerilog scope: `" << scope_name << "'.";
   msg_ = oss.str();
-}
+} 

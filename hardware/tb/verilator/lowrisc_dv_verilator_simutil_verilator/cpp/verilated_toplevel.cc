@@ -9,4 +9,4 @@ TOPLEVEL_NAME &VerilatedToplevel::dut() {
   // It's safe for these.
   TOPLEVEL_NAME &dut = static_cast<TOPLEVEL_NAME &>(*this);
   return dut;
-}
+} 

@@ -86,4 +86,4 @@
     // signals when a guest virtual address is written to tval \
     logic gva  ;                                               \
     logic valid;                                               \
-  } exception_t;
+  } exception_t; 

@@ -7,49 +7,53 @@
 // Ara's sequencer controls the ordering and the dependencies between the
 // parallel vector instructions in execution.
 
-module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::idx_width; #(
+module ara_sequencer
+  import ara_pkg::*;
+  import rvv_pkg::*;
+  import cf_math_pkg::idx_width;
+#(
     // RVV Parameters
-    parameter  int unsigned NrLanes = 1,          // Number of parallel vector lanes
+    parameter  int unsigned NrLanes = 1,           // Number of parallel vector lanes
     // Dependant parameters. DO NOT CHANGE!
     // Ara has NrLanes + 3 processing elements: each one of the lanes, the vector load unit, the
     // vector store unit, the slide unit, and the mask unit.
     localparam int unsigned NrPEs   = NrLanes + 4,
-    
-    // CVA6-related parameters
-    parameter type                              exception_t        = logic,
 
-    parameter type          ara_req_t = logic,
-    parameter type          ara_resp_t = logic
-  ) (
-    input  logic                            clk_i,
-    input  logic                            rst_ni,
+    // CVA6-related parameters
+    parameter type exception_t = logic,
+
+    parameter type ara_req_t  = logic,
+    parameter type ara_resp_t = logic
+) (
+    input  logic                                  clk_i,
+    input  logic                                  rst_ni,
     // Interface with Ara's dispatcher
-    input  ara_req_t                        ara_req_i,
-    input  logic                            ara_req_valid_i,
-    output logic                            ara_req_ready_o,
-    output ara_resp_t                       ara_resp_o,
-    output logic                            ara_resp_valid_o,
-    output logic                            ara_idle_o,
+    input  ara_req_t                              ara_req_i,
+    input  logic                                  ara_req_valid_i,
+    output logic                                  ara_req_ready_o,
+    output ara_resp_t                             ara_resp_o,
+    output logic                                  ara_resp_valid_o,
+    output logic                                  ara_idle_o,
     // Interface with the processing elements
-    output pe_req_t                         pe_req_o,
-    output logic                            pe_req_valid_o,
-    output logic              [NrVInsn-1:0] pe_vinsn_running_o,
-    input  logic                [NrPEs-1:0] pe_req_ready_i,
-    input  pe_resp_t            [NrPEs-1:0] pe_resp_i,
-    input  logic                            alu_vinsn_done_i,
-    input  logic                            mfpu_vinsn_done_i,
+    output pe_req_t                               pe_req_o,
+    output logic                                  pe_req_valid_o,
+    output logic       [NrVInsn-1:0]              pe_vinsn_running_o,
+    input  logic       [  NrPEs-1:0]              pe_req_ready_i,
+    input  pe_resp_t   [  NrPEs-1:0]              pe_resp_i,
+    input  logic                                  alu_vinsn_done_i,
+    input  logic                                  mfpu_vinsn_done_i,
     // Interface with the operand requesters
-    output logic [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_o,
+    output logic       [NrVInsn-1:0][NrVInsn-1:0] global_hazard_table_o,
     // Only the slide unit can answer with a scalar response
-    input  elen_t                           pe_scalar_resp_i,
-    input  logic                            pe_scalar_resp_valid_i,
-    output logic                            pe_scalar_resp_ready_o,
+    input  elen_t                                 pe_scalar_resp_i,
+    input  logic                                  pe_scalar_resp_valid_i,
+    output logic                                  pe_scalar_resp_ready_o,
     // Interface with the Address Generation
-    input  logic                            addrgen_ack_i,
-    input  exception_t                      addrgen_exception_i,
-    input  vlen_t                           addrgen_exception_vstart_i,
-    input  logic                            addrgen_fof_exception_i
-  );
+    input  logic                                  addrgen_ack_i,
+    input  exception_t                            addrgen_exception_i,
+    input  vlen_t                                 addrgen_exception_vstart_i,
+    input  logic                                  addrgen_fof_exception_i
+);
 
   ///////////////////////////////////
   //  Running vector instructions  //
@@ -60,30 +64,32 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   // A set bit indicates that the corresponding vector instruction in running somewhere in Ara.
   logic [NrVInsn-1:0] vinsn_running_d, vinsn_running_q;
-  vid_t               vinsn_id_n;
-  logic               vinsn_running_full;
+  vid_t                          vinsn_id_n;
+  logic                          vinsn_running_full;
 
   // NrLanes bits that indicate if the sequencer must stall because of a lane desynchronization.
-  logic [NrVInsn-1:0] stall_lanes_desynch_vec;
-  logic               stall_lanes_desynch;
+  logic [NrVInsn-1:0]            stall_lanes_desynch_vec;
+  logic                          stall_lanes_desynch;
   // Transpose the matrix, as vertical slices are not allowed in System Verilog
   logic [NrVInsn-1:0][NrPEs-1:0] pe_vinsn_running_q_trns;
 
   // Ara is idle if no instruction is currently running on it.
   assign ara_idle_o = !(|vinsn_running_q);
 
-  lzc #(.WIDTH(NrVInsn)) i_next_id (
-    .in_i   (~vinsn_running_q  ),
-    .cnt_o  (vinsn_id_n        ),
-    .empty_o(vinsn_running_full)
+  lzc #(
+      .WIDTH(NrVInsn)
+  ) i_next_id (
+      .in_i   (~vinsn_running_q),
+      .cnt_o  (vinsn_id_n),
+      .empty_o(vinsn_running_full)
   );
 
-  always_comb begin: p_vinsn_running
+  always_comb begin : p_vinsn_running
     vinsn_running_d = '0;
     for (int unsigned pe = 0; pe < NrPEs; pe++) vinsn_running_d |= pe_vinsn_running_d[pe];
-  end: p_vinsn_running
+  end : p_vinsn_running
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin: p_vinsn_running_ff
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_vinsn_running_ff
     if (!rst_ni) begin
       vinsn_running_q    <= '0;
       pe_vinsn_running_q <= '0;
@@ -142,7 +148,11 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   /////////////////
 
   // If the instruction requires an answer to Ariane, the sequencer needs to wait.
-  enum logic { IDLE, WAIT } state_d, state_q;
+  enum logic {
+    IDLE,
+    WAIT
+  }
+      state_d, state_q;
 
   // For hazard detection, we need to know which vector instruction is reading/writing to each
   // vector register
@@ -159,13 +169,13 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   // This function determines the VFU responsible for handling this operation.
   function automatic vfu_e vfu(ara_op_e op);
     unique case (op) inside
-      [VADD:VWREDSUM]      : vfu = VFU_Alu;
-      [VMUL:VFWREDOSUM]    : vfu = VFU_MFpu;
-      [VMFEQ:VMXNOR]       : vfu = VFU_MaskUnit;
-      [VLE:VLXE]           : vfu = VFU_LoadUnit;
-      [VSE:VSXE]           : vfu = VFU_StoreUnit;
-      [VSLIDEUP:VSLIDEDOWN]: vfu = VFU_SlideUnit;
-      [VMVXS:VFMVFS]       : vfu = VFU_None;
+      [VADD : VWREDSUM]:       vfu = VFU_Alu;
+      [VMUL : VFWREDOSUM]:     vfu = VFU_MFpu;
+      [VMFEQ : VMXNOR]:        vfu = VFU_MaskUnit;
+      [VLE : VLXE]:            vfu = VFU_LoadUnit;
+      [VSE : VSXE]:            vfu = VFU_StoreUnit;
+      [VSLIDEUP : VSLIDEDOWN]: vfu = VFU_SlideUnit;
+      [VMVXS : VFMVFS]:        vfu = VFU_None;
     endcase
   endfunction : vfu
 
@@ -175,61 +185,49 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   function automatic logic [NrVFUs-1:0] target_vfus(ara_op_e op);
     target_vfus = '0;
     unique case (op) inside
-      [VADD:VFMVSF]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_Alu) target_vfus[i] = 1'b1;
-      [VREDSUM:VWREDSUM]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_Alu || i == VFU_SlideUnit) target_vfus[i] = 1'b1;
-      [VFREDUSUM:VFWREDOSUM]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_MFpu || i == VFU_SlideUnit) target_vfus[i] = 1'b1;
-      [VMUL:VFCVTFF]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_MFpu) target_vfus[i] = 1'b1;
-      [VMSEQ:VMXNOR]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_Alu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
-      [VMFEQ:VMFGE]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_MFpu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
-      [VLE:VLXE]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_LoadUnit) target_vfus[i] = 1'b1;
-      [VSE:VSXE]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_StoreUnit) target_vfus[i] = 1'b1;
-      [VSLIDEUP:VSLIDEDOWN]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_SlideUnit) target_vfus[i] = 1'b1;
-      [VMVXS:VFMVFS]:
-        for (int i = 0; i < NrVFUs; i++)
-          if (i == VFU_None) target_vfus[i] = 1'b1;
+      [VADD : VFMVSF]: for (int i = 0; i < NrVFUs; i++) if (i == VFU_Alu) target_vfus[i] = 1'b1;
+      [VREDSUM : VWREDSUM]:
+      for (int i = 0; i < NrVFUs; i++)
+      if (i == VFU_Alu || i == VFU_SlideUnit) target_vfus[i] = 1'b1;
+      [VFREDUSUM : VFWREDOSUM]:
+      for (int i = 0; i < NrVFUs; i++)
+      if (i == VFU_MFpu || i == VFU_SlideUnit) target_vfus[i] = 1'b1;
+      [VMUL : VFCVTFF]: for (int i = 0; i < NrVFUs; i++) if (i == VFU_MFpu) target_vfus[i] = 1'b1;
+      [VMSEQ : VMXNOR]:
+      for (int i = 0; i < NrVFUs; i++) if (i == VFU_Alu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
+      [VMFEQ : VMFGE]:
+      for (int i = 0; i < NrVFUs; i++)
+      if (i == VFU_MFpu || i == VFU_MaskUnit) target_vfus[i] = 1'b1;
+      [VLE : VLXE]: for (int i = 0; i < NrVFUs; i++) if (i == VFU_LoadUnit) target_vfus[i] = 1'b1;
+      [VSE : VSXE]: for (int i = 0; i < NrVFUs; i++) if (i == VFU_StoreUnit) target_vfus[i] = 1'b1;
+      [VSLIDEUP : VSLIDEDOWN]:
+      for (int i = 0; i < NrVFUs; i++) if (i == VFU_SlideUnit) target_vfus[i] = 1'b1;
+      [VMVXS : VFMVFS]: for (int i = 0; i < NrVFUs; i++) if (i == VFU_None) target_vfus[i] = 1'b1;
     endcase
   endfunction : target_vfus
 
-  localparam int unsigned InsnQueueDepth [NrVFUs] = '{
-    ValuInsnQueueDepth,
-    MfpuInsnQueueDepth,
-    SlduInsnQueueDepth,
-    MaskuInsnQueueDepth,
-    VlduInsnQueueDepth,
-    VstuInsnQueueDepth,
-    NoneInsnQueueDepth
+  localparam int unsigned InsnQueueDepth[NrVFUs] = '{
+      ValuInsnQueueDepth,
+      MfpuInsnQueueDepth,
+      SlduInsnQueueDepth,
+      MaskuInsnQueueDepth,
+      VlduInsnQueueDepth,
+      VstuInsnQueueDepth,
+      NoneInsnQueueDepth
   };
 
   logic ara_req_token_d, ara_req_token_q;
 
   // Counters keep track of how many instructions each unit is running.
   // They have the same size only to keep the code easy.
-  logic [NrVFUs-1:0] [idx_width(MaxVInsnQueueDepth + 1)-1:0] insn_queue_cnt_q;
+  logic [NrVFUs-1:0][idx_width(MaxVInsnQueueDepth + 1)-1:0] insn_queue_cnt_q;
   logic [NrVFUs-1:0] insn_queue_done;
   logic [NrVFUs-1:0] insn_queue_cnt_en, insn_queue_cnt_down, insn_queue_cnt_up;
   // Each FU has its own ready signal
   logic [NrVFUs-1:0] vinsn_queue_ready;
   // Bit [i] is 1'b1 if the respective PE is ready for the issue of this insn
   logic [NrVFUs-1:0] vinsn_queue_issue;
-  logic              accepted_insn, accepted_insn_stalled;
+  logic accepted_insn, accepted_insn_stalled;
   logic [NrVFUs-1:0] target_vfus_vec;
   // Gold tickets and passes
   // Normally, instructions can be issued to the lane sequencer only if
@@ -262,31 +260,31 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
   ///////
 
-  always_comb begin: p_sequencer
+  always_comb begin : p_sequencer
     // Default assignments
-    state_d               = state_q;
-    pe_vinsn_running_d    = pe_vinsn_running_q;
-    read_list_d           = read_list_q;
-    write_list_d          = write_list_q;
-    global_hazard_table_d = global_hazard_table_o;
+    state_d                = state_q;
+    pe_vinsn_running_d     = pe_vinsn_running_q;
+    read_list_d            = read_list_q;
+    write_list_d           = write_list_q;
+    global_hazard_table_d  = global_hazard_table_o;
 
     // Maintain request
-    pe_req_d       = '0;
-    pe_req_valid_d = 1'b0;
+    pe_req_d               = '0;
+    pe_req_valid_d         = 1'b0;
 
     // No response
-    ara_resp_o       = '0;
-    ara_resp_valid_o = 1'b0;
+    ara_resp_o             = '0;
+    ara_resp_valid_o       = 1'b0;
 
     // Always ready to receive a new request
-    ara_req_ready_o = 1'b1;
+    ara_req_ready_o        = 1'b1;
 
     // Not ready by default
     pe_scalar_resp_ready_o = 1'b0;
 
     // Update vector register's access list
     for (int unsigned v = 0; v < 32; v++) begin
-      read_list_d[v].valid &= vinsn_running_q[read_list_q[v].vid] ;
+      read_list_d[v].valid &= vinsn_running_q[read_list_q[v].vid];
       write_list_d[v].valid &= vinsn_running_q[write_list_q[v].vid];
     end
 
@@ -298,30 +296,34 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
       IDLE: begin
         // Sent a request, but the operand requesters are not ready
         // Do not trap here the instructions that do not need any operands at all
-        if (pe_req_valid_o && !(&operand_requester_ready || (is_load(pe_req_o.op) && pe_req_o.vm))) begin
+        if (pe_req_valid_o && !(&operand_requester_ready || (is_load(
+                pe_req_o.op
+            ) && pe_req_o.vm))) begin
           // Maintain output
-          pe_req_d               = pe_req_o;
-          pe_req_valid_d         = pe_req_valid_o;
+          pe_req_d        = pe_req_o;
+          pe_req_valid_d  = pe_req_valid_o;
 
           // We are not ready
           ara_req_ready_o = 1'b0;
-        // Received a new request
+          // Received a new request
         end else if (ara_req_valid_i) begin
           // The target PE is ready, and we can handle another running vector instruction
           // Let instructions with priority pass be issued
-          
+
           if (&vinsn_queue_issue && !stall_lanes_desynch && !vinsn_running_full) begin
             ///////////////
             //  Hazards  //
             ///////////////
 
             // RAW
-            if (ara_req_i.use_vs1) pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
+            if (ara_req_i.use_vs1)
+              pe_req_d.hazard_vs1[write_list_d[ara_req_i.vs1].vid] |=
               write_list_d[ara_req_i.vs1].valid;
-            if (ara_req_i.use_vs2) pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid] |=
+            if (ara_req_i.use_vs2)
+              pe_req_d.hazard_vs2[write_list_d[ara_req_i.vs2].vid] |=
               write_list_d[ara_req_i.vs2].valid;
-            if (!ara_req_i.vm) pe_req_d.hazard_vm[write_list_d[VMASK].vid] |=
-              write_list_d[VMASK].valid;
+            if (!ara_req_i.vm)
+              pe_req_d.hazard_vm[write_list_d[VMASK].vid] |= write_list_d[VMASK].valid;
 
             // WAR
             if (ara_req_i.use_vd) begin
@@ -331,7 +333,8 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
             end
 
             // WAW
-            if (ara_req_i.use_vd) pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
+            if (ara_req_i.use_vd)
+              pe_req_d.hazard_vd[write_list_d[ara_req_i.vd].vid] |=
               write_list_d[ara_req_i.vd].valid;
 
             /////////////
@@ -340,44 +343,44 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
 
             // Populate the PE request
             pe_req_d = '{
-              id            : vinsn_id_n,
-              op            : ara_req_i.op,
-              vm            : ara_req_i.vm,
-              eew_vmask     : ara_req_i.eew_vmask,
-              vfu           : vfu(ara_req_i.op),
-              vs1           : ara_req_i.vs1,
-              use_vs1       : ara_req_i.use_vs1,
-              conversion_vs1: ara_req_i.conversion_vs1,
-              eew_vs1       : ara_req_i.eew_vs1,
-              vs2           : ara_req_i.vs2,
-              use_vs2       : ara_req_i.use_vs2,
-              conversion_vs2: ara_req_i.conversion_vs2,
-              eew_vs2       : ara_req_i.eew_vs2,
-              use_vd_op     : ara_req_i.use_vd_op,
-              eew_vd_op     : ara_req_i.eew_vd_op,
-              scalar_op     : ara_req_i.scalar_op,
-              use_scalar_op : ara_req_i.use_scalar_op,
-              swap_vs2_vd_op: ara_req_i.swap_vs2_vd_op,
-              stride        : ara_req_i.stride,
-              is_stride_np2 : ara_req_i.is_stride_np2,
-              vd            : ara_req_i.vd,
-              use_vd        : ara_req_i.use_vd,
-              emul          : ara_req_i.emul,
-              fp_rm         : ara_req_i.fp_rm,
-              wide_fp_imm   : ara_req_i.wide_fp_imm,
-              cvt_resize    : ara_req_i.cvt_resize,
-              scale_vl      : ara_req_i.scale_vl,
-              vl            : ara_req_i.vl,
-              vl_cluster    : ara_req_i.vl_cluster,
-              use_eew1      : ara_req_i.use_eew1,
-              vstart        : ara_req_i.vstart,
-              vtype         : ara_req_i.vtype,
-              is_reshuffle  : ara_req_i.is_reshuffle,
-              hazard_vd     : pe_req_d.hazard_vd,
-              hazard_vm     : pe_req_d.hazard_vm,
-              hazard_vs1    : pe_req_d.hazard_vs1,
-              hazard_vs2    : pe_req_d.hazard_vs2,
-              default       : '0
+                id            : vinsn_id_n,
+                op            : ara_req_i.op,
+                vm            : ara_req_i.vm,
+                eew_vmask     : ara_req_i.eew_vmask,
+                vfu           : vfu(ara_req_i.op),
+                vs1           : ara_req_i.vs1,
+                use_vs1       : ara_req_i.use_vs1,
+                conversion_vs1: ara_req_i.conversion_vs1,
+                eew_vs1       : ara_req_i.eew_vs1,
+                vs2           : ara_req_i.vs2,
+                use_vs2       : ara_req_i.use_vs2,
+                conversion_vs2: ara_req_i.conversion_vs2,
+                eew_vs2       : ara_req_i.eew_vs2,
+                use_vd_op     : ara_req_i.use_vd_op,
+                eew_vd_op     : ara_req_i.eew_vd_op,
+                scalar_op     : ara_req_i.scalar_op,
+                use_scalar_op : ara_req_i.use_scalar_op,
+                swap_vs2_vd_op: ara_req_i.swap_vs2_vd_op,
+                stride        : ara_req_i.stride,
+                is_stride_np2 : ara_req_i.is_stride_np2,
+                vd            : ara_req_i.vd,
+                use_vd        : ara_req_i.use_vd,
+                emul          : ara_req_i.emul,
+                fp_rm         : ara_req_i.fp_rm,
+                wide_fp_imm   : ara_req_i.wide_fp_imm,
+                cvt_resize    : ara_req_i.cvt_resize,
+                scale_vl      : ara_req_i.scale_vl,
+                vl            : ara_req_i.vl,
+                vl_cluster    : ara_req_i.vl_cluster,
+                use_eew1      : ara_req_i.use_eew1,
+                vstart        : ara_req_i.vstart,
+                vtype         : ara_req_i.vtype,
+                is_reshuffle  : ara_req_i.is_reshuffle,
+                hazard_vd     : pe_req_d.hazard_vd,
+                hazard_vm     : pe_req_d.hazard_vm,
+                hazard_vs1    : pe_req_d.hazard_vs1,
+                hazard_vs2    : pe_req_d.hazard_vs2,
+                default: '0
             };
 
             // Populate the global hazard table
@@ -399,19 +402,22 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               ara_req_ready_o = 1'b1;
 
               // Remember that the vector instruction is running
-              unique case (vfu(ara_req_i.op))
-                VFU_LoadUnit : pe_vinsn_running_d[NrLanes + OffsetLoad][vinsn_id_n]  = 1'b1;
-                VFU_StoreUnit: pe_vinsn_running_d[NrLanes + OffsetStore][vinsn_id_n] = 1'b1;
-                VFU_SlideUnit: pe_vinsn_running_d[NrLanes + OffsetSlide][vinsn_id_n] = 1'b1;
-                VFU_MaskUnit : pe_vinsn_running_d[NrLanes + OffsetMask][vinsn_id_n]  = 1'b1;
-                VFU_None     : ;
-                default: for (int l = 0; l < NrLanes; l++)
-                    // Instruction is running on the lanes
-                    pe_vinsn_running_d[l][vinsn_id_n] = 1'b1;
+              unique case (vfu(
+                  ara_req_i.op
+              ))
+                VFU_LoadUnit: pe_vinsn_running_d[NrLanes+OffsetLoad][vinsn_id_n] = 1'b1;
+                VFU_StoreUnit: pe_vinsn_running_d[NrLanes+OffsetStore][vinsn_id_n] = 1'b1;
+                VFU_SlideUnit: pe_vinsn_running_d[NrLanes+OffsetSlide][vinsn_id_n] = 1'b1;
+                VFU_MaskUnit: pe_vinsn_running_d[NrLanes+OffsetMask][vinsn_id_n] = 1'b1;
+                VFU_None: ;
+                default:
+                for (int l = 0; l < NrLanes; l++)
+                // Instruction is running on the lanes
+                pe_vinsn_running_d[l][vinsn_id_n] = 1'b1;
               endcase
 
               // Masked vector instructions also run on the mask unit
-              pe_vinsn_running_d[NrLanes + OffsetMask][vinsn_id_n] |= !ara_req_i.vm;
+              pe_vinsn_running_d[NrLanes+OffsetMask][vinsn_id_n] |= !ara_req_i.vm;
 
               // Some instructions need to wait for an acknowledgment
               // before being committed with Ariane
@@ -429,9 +435,9 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
               // Mark that this loop is reading vs
               if (ara_req_i.use_vs1) read_list_d[ara_req_i.vs1] = '{vid: vinsn_id_n, valid: 1'b1};
               if (ara_req_i.use_vs2) read_list_d[ara_req_i.vs2] = '{vid: vinsn_id_n, valid: 1'b1};
-              if (!ara_req_i.vm) read_list_d[VMASK]             = '{vid: vinsn_id_n, valid: 1'b1};
+              if (!ara_req_i.vm) read_list_d[VMASK] = '{vid: vinsn_id_n, valid: 1'b1};
             end
-          end else ara_req_ready_o = 1'b0; // Wait until the PEs are ready
+          end else ara_req_ready_o = 1'b0;  // Wait until the PEs are ready
         end
       end
 
@@ -440,21 +446,20 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
         ara_req_ready_o = 1'b0;
 
         // Maintain output
-        pe_req_d       = pe_req_o;
-        pe_req_valid_d = pe_req_valid_o;
+        pe_req_d        = pe_req_o;
+        pe_req_valid_d  = pe_req_valid_o;
 
         // Consume the request if acknowledged during a scalar move
-        if (pe_req_valid_o && &operand_requester_ready)
-          pe_req_valid_d = 1'b0;
+        if (pe_req_valid_o && &operand_requester_ready) pe_req_valid_d = 1'b0;
 
         // Wait for the address translation
         if ((is_load(pe_req_d.op) || is_store(pe_req_d.op)) && addrgen_ack_i) begin
-          state_d             = IDLE;
-          ara_req_ready_o     = 1'b1;
-          ara_resp_valid_o    = 1'b1;
-          ara_resp_o.exception = addrgen_exception_i;
+          state_d                     = IDLE;
+          ara_req_ready_o             = 1'b1;
+          ara_resp_valid_o            = 1'b1;
+          ara_resp_o.exception        = addrgen_exception_i;
           ara_resp_o.exception_vstart = addrgen_exception_vstart_i;
-          ara_resp_o.fof_exception = addrgen_fof_exception_i;
+          ara_resp_o.fof_exception    = addrgen_fof_exception_i;
         end
 
         // Wait for the scalar result
@@ -473,37 +478,37 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     for (int id = 0; id < NrVInsn; id++) global_hazard_table_d[id] &= vinsn_running_d;
   end : p_sequencer
 
-  always_ff @(posedge clk_i or negedge rst_ni) begin: p_sequencer_ff
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_sequencer_ff
     if (!rst_ni) begin
-      state_q <= IDLE;
+      state_q               <= IDLE;
 
-      read_list_q  <= '0;
-      write_list_q <= '0;
+      read_list_q           <= '0;
+      write_list_q          <= '0;
 
-      pe_req_o       <= '0;
-      pe_req_valid_o <= 1'b0;
+      pe_req_o              <= '0;
+      pe_req_valid_o        <= 1'b0;
 
-      ara_req_token_q <= 1'b1;
-      gold_ticket_q   <= 1'b0;
+      ara_req_token_q       <= 1'b1;
+      gold_ticket_q         <= 1'b0;
 
       global_hazard_table_o <= '0;
 
-      running_mask_insn_q <= 1'b0;
+      running_mask_insn_q   <= 1'b0;
     end else begin
-      state_q <= state_d;
+      state_q               <= state_d;
 
-      read_list_q  <= read_list_d;
-      write_list_q <= write_list_d;
+      read_list_q           <= read_list_d;
+      write_list_q          <= write_list_d;
 
-      pe_req_o       <= pe_req_d;
-      pe_req_valid_o <= pe_req_valid_d;
+      pe_req_o              <= pe_req_d;
+      pe_req_valid_o        <= pe_req_valid_d;
 
-      ara_req_token_q <= ara_req_token_d;
-      gold_ticket_q   <= gold_ticket_d;
+      ara_req_token_q       <= ara_req_token_d;
+      gold_ticket_q         <= gold_ticket_d;
 
       global_hazard_table_o <= global_hazard_table_d;
 
-      running_mask_insn_q <= running_mask_insn_d;
+      running_mask_insn_q   <= running_mask_insn_d;
     end
   end
 
@@ -519,8 +524,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   always_comb begin
     running_mask_insn_d = running_mask_insn_q;
 
-    if (|pe_resp_i[NrLanes+OffsetMask].vinsn_done)
-      running_mask_insn_d = 1'b0;
+    if (|pe_resp_i[NrLanes+OffsetMask].vinsn_done) running_mask_insn_d = 1'b0;
 
     if (pe_req_valid_o && &operand_requester_ready && pe_req_o.vfu == VFU_MaskUnit)
       running_mask_insn_d = 1'b1;
@@ -543,14 +547,14 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
   assign insn_queue_done[VFU_None]      = insn_queue_cnt_up[VFU_None];
 
   // Register the incoming instruction if it is valid
-  assign accepted_insn = ara_req_valid_i & (ara_req_token_q != ara_req_i.token);
+  assign accepted_insn                  = ara_req_valid_i & (ara_req_token_q != ara_req_i.token);
 
   // The new accepted instruction will not be immediately issued
-  assign accepted_insn_stalled = accepted_insn & ~ara_req_ready_o;
+  assign accepted_insn_stalled          = accepted_insn & ~ara_req_ready_o;
 
   // Masked instructions do use the mask unit as well
   always_comb begin
-    target_vfus_vec                = target_vfus(ara_req_i.op);
+    target_vfus_vec = target_vfus(ara_req_i.op);
     target_vfus_vec[VFU_MaskUnit] |= ~ara_req_i.vm;
   end
 
@@ -560,18 +564,18 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
     localparam CNT_WIDTH = idx_width(MaxVInsnQueueDepth + 1);
 
     counter #(
-        .WIDTH           (CNT_WIDTH),
-        .STICKY_OVERFLOW (0)
+        .WIDTH          (CNT_WIDTH),
+        .STICKY_OVERFLOW(0)
     ) i_insn_queue_cnt (
-        .clk_i           (clk_i                 ),
-        .rst_ni          (rst_ni                ),
-        .clear_i         (1'b0                  ),
-        .en_i            (insn_queue_cnt_en[i]  ),
-        .load_i          (1'b0                  ),
-        .down_i          (insn_queue_cnt_down[i]),
-        .d_i             ('0                    ),
-        .q_o             (insn_queue_cnt_q[i]   ),
-        .overflow_o      (/* Unconnected */     )
+        .clk_i     (clk_i),
+        .rst_ni    (rst_ni),
+        .clear_i   (1'b0),
+        .en_i      (insn_queue_cnt_en[i]),
+        .load_i    (1'b0),
+        .down_i    (insn_queue_cnt_down[i]),
+        .d_i       ('0),
+        .q_o       (insn_queue_cnt_q[i]),
+        .overflow_o(  /* Unconnected */)
     );
 
     // Each PE is ready only if it can accept a new instruction in the queue
@@ -592,7 +596,7 @@ module ara_sequencer import ara_pkg::*; import rvv_pkg::*; import cf_math_pkg::i
                             : gold_ticket_q[i];
     // The instructions with a gold ticket can pass the checks even if the cnt is full,
     // but not when (insn_queue_cnt_q[i] == InsnQueueDepth[i] + 1)
-	// Moreover, just arrived instructions cannot use the golden ticket of a previous instruction
+    // Moreover, just arrived instructions cannot use the golden ticket of a previous instruction
     assign priority_pass[i] = gold_ticket_q[i] & (insn_queue_cnt_q[i] == InsnQueueDepth[i]) &
       (ara_req_token_q == ara_req_i.token);
     // The instruction queue [i] allows us to issue the instruction

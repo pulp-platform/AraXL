@@ -407,4 +407,4 @@ void VerilatorSimCtrl::Trace() {
   }
 
   tracer_.dump(GetTime());
-}
+} 

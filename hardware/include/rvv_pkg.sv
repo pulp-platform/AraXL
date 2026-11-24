@@ -41,10 +41,10 @@ package rvv_pkg;
 
   // Vector type register
   typedef struct packed {
-    logic vill;
-    logic vma;
-    logic vta;
-    vew_e vsew;
+    logic   vill;
+    logic   vma;
+    logic   vta;
+    vew_e   vsew;
     vlmul_e vlmul;
   } vtype_t;
 
@@ -64,7 +64,7 @@ package rvv_pkg;
   //  Vector CSRs  //
   ///////////////////
 
-  function automatic logic is_vector_csr (riscv::csr_reg_t csr);
+  function automatic logic is_vector_csr(riscv::csr_reg_t csr);
     case (csr)
       riscv::CSR_VSTART,
       riscv::CSR_VXSAT,
@@ -144,8 +144,8 @@ package rvv_pkg;
   } vsetvl_type_t;
 
   typedef union packed {
-    logic [31:0] instr ;
-    riscv::itype_t i_type; // For CSR instructions
+    logic [31:0] instr;
+    riscv::itype_t i_type;  // For CSR instructions
     vmem_type_t vmem_type;
     vamo_type_t vamo_type;
     varith_type_t varith_type;

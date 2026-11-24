@@ -7,12 +7,15 @@
 // Ara's Serial Divider, operating on elements 64-bit wide.
 // The unit serializes the whole computation, so it cannot parallelize sub-64-bit arithmetic.
 
-module simd_div import ara_pkg::*; import rvv_pkg::*; #(
+module simd_div
+  import ara_pkg::*;
+  import rvv_pkg::*;
+#(
     // Dependant parameters. DO NOT CHANGE!
-    localparam int  unsigned DataWidth = $bits(elen_t),
-    localparam int  unsigned StrbWidth = DataWidth/8,
-    localparam type          strb_t    = logic [DataWidth/8-1:0]
-  ) (
+    localparam int unsigned DataWidth = $bits(elen_t),
+    localparam int unsigned StrbWidth = DataWidth / 8,
+    localparam type         strb_t    = logic         [DataWidth/8-1:0]
+) (
     input  logic    clk_i,
     input  logic    rst_ni,
     input  elen_t   operand_a_i,
@@ -27,7 +30,7 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
     output logic    ready_o,
     input  logic    ready_i,
     output logic    valid_o
-  );
+);
 
   ///////////////////
   //  Definitions  //
@@ -41,16 +44,27 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
   // When all the operands have been issued, it waits until the whole result is formed before
   // accepting another external request, as vew_q is used by the serdiv output MUX and
   // should therefore remain stable until the end
-  typedef enum logic [2:0] {ISSUE_IDLE, LOAD, ISSUE_VALID, ISSUE_SKIP, WAIT_DONE} issue_state_t;
+  typedef enum logic [2:0] {
+    ISSUE_IDLE,
+    LOAD,
+    ISSUE_VALID,
+    ISSUE_SKIP,
+    WAIT_DONE
+  } issue_state_t;
   // The commit CU stores the various serdiv results in the result buffer
   // It handles the valid_o signal and the serdiv_out_ready
   // After the issue CU has accepted a new request, the commit CU tracks how many operands
   // should be still committed and which results to skip
   // When the whole result is complete, it asserts the valid_o and waits until the result is
   // accepted before committing new data
-  typedef enum logic [1:0] {COMMIT_IDLE, COMMIT_READY, COMMIT_SKIP, COMMIT_DONE} commit_state_t;
+  typedef enum logic [1:0] {
+    COMMIT_IDLE,
+    COMMIT_READY,
+    COMMIT_SKIP,
+    COMMIT_DONE
+  } commit_state_t;
 
-  issue_state_t  issue_state_d, issue_state_q;
+  issue_state_t issue_state_d, issue_state_q;
   commit_state_t commit_state_d, commit_state_q;
 
   // Input registers, buffers for the input operands and related data
@@ -59,31 +73,31 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
     logic [0:0][63:0] w64;
     logic [1:0][31:0] w32;
     logic [3:0][15:0] w16;
-    logic [7:0][ 7:0] w8;
+    logic [7:0][7:0]  w8;
   } operand_t;
   operand_t opa_d, opa_q, opb_d, opb_q;
-  vew_e     vew_d, vew_q;
-  ara_op_e  op_d, op_q;
-  strb_t    be_d, be_q;
+  vew_e vew_d, vew_q;
+  ara_op_e op_d, op_q;
+  strb_t be_d, be_q;
   // Output buffer, directly linked to result_o
-  elen_t    result_d, result_q;
+  elen_t result_d, result_q;
   assign result_o = result_q;
   // Mask buffer, directly linked to mask_o
   strb_t mask_d, mask_q;
   assign mask_o = mask_q;
 
   // Counters
-  logic       load_cnt, issue_cnt_en, commit_cnt_en;
+  logic load_cnt, issue_cnt_en, commit_cnt_en;
   logic [2:0] cnt_init_val, issue_cnt_d, issue_cnt_q, commit_cnt_d, commit_cnt_q;
 
   // Serial Divider
-  logic           serdiv_out_ready, serdiv_out_valid, serdiv_in_valid, serdiv_in_ready;
-  logic     [1:0] serdiv_opcode;
-  elen_t          serdiv_opa, serdiv_opb;
-  operand_t       serdiv_result;
+  logic serdiv_out_ready, serdiv_out_valid, serdiv_in_valid, serdiv_in_ready;
+  logic [1:0] serdiv_opcode;
+  elen_t serdiv_opa, serdiv_opb;
+  operand_t serdiv_result;
 
   // Partially processed data
-  elen_t    opa_w8, opb_w8, opa_w16, opb_w16, opa_w32, opb_w32, opa_w64, opb_w64;
+  elen_t opa_w8, opb_w8, opa_w16, opb_w16, opa_w32, opb_w32, opa_w64, opb_w64;
   operand_t serdiv_result_masked, shifted_result;
 
   ////////////////////////
@@ -93,10 +107,10 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
   // Input registers
   assign opa_d  = (valid_i && ready_o) ? operand_a_i : opa_q;
   assign opb_d  = (valid_i && ready_o) ? operand_b_i : opb_q;
-  assign vew_d  = (valid_i && ready_o) ? vew_i       : vew_q;
-  assign op_d   = (valid_i && ready_o) ? op_i        : op_q;
-  assign be_d   = (valid_i && ready_o) ? be_i        : be_q;
-  assign mask_d = (valid_i && ready_o) ? mask_i      : mask_q;
+  assign vew_d  = (valid_i && ready_o) ? vew_i : vew_q;
+  assign op_d   = (valid_i && ready_o) ? op_i : op_q;
+  assign be_d   = (valid_i && ready_o) ? be_i : be_q;
+  assign mask_d = (valid_i && ready_o) ? mask_i : mask_q;
 
   ///////////////
   //  Control  //
@@ -120,7 +134,7 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
         // The request was accepted: load how many elements to process/commit
         load_cnt      = 1'b1;
         // Check if the next byte is valid or not. If not, skip it.
-        issue_state_d = (be_q[cnt_init_val << vew_q]) ? ISSUE_VALID : ISSUE_SKIP;
+        issue_state_d = (be_q[cnt_init_val<<vew_q]) ? ISSUE_VALID : ISSUE_SKIP;
       end
       ISSUE_VALID: begin
         // The inputs are valid
@@ -132,9 +146,9 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
           // If we are issuing the last operands, wait for the whole result to be completed
           if (issue_cnt_q == '0) begin
             issue_state_d = WAIT_DONE;
-          // If we are not issuing the last operands, decide if to process or skip the next byte
+            // If we are not issuing the last operands, decide if to process or skip the next byte
           end else begin
-            issue_state_d = (be_q[issue_cnt_d << vew_q]) ? ISSUE_VALID : ISSUE_SKIP;
+            issue_state_d = (be_q[issue_cnt_d<<vew_q]) ? ISSUE_VALID : ISSUE_SKIP;
           end
         end
       end
@@ -144,9 +158,9 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
         // If we are issuing the last operands, wait for the whole result to be completed
         if (issue_cnt_q == '0) begin
           issue_state_d = WAIT_DONE;
-        // If we are not issuing the last operands, decide if to process or skip the next byte
+          // If we are not issuing the last operands, decide if to process or skip the next byte
         end else begin
-          issue_state_d = (be_q[issue_cnt_d << vew_q]) ? ISSUE_VALID : ISSUE_SKIP;
+          issue_state_d = (be_q[issue_cnt_d<<vew_q]) ? ISSUE_VALID : ISSUE_SKIP;
         end
       end
       WAIT_DONE: begin
@@ -171,7 +185,7 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
       COMMIT_IDLE: begin
         // Start if the issue CU has already started
         if (issue_state_q != ISSUE_IDLE) begin
-          commit_state_d = (be_q[cnt_init_val << vew_q]) ? COMMIT_READY : COMMIT_SKIP;
+          commit_state_d = (be_q[cnt_init_val<<vew_q]) ? COMMIT_READY : COMMIT_SKIP;
         end
       end
       COMMIT_READY: begin
@@ -182,20 +196,20 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
           // If we are committing the last result, complete the execution
           if (commit_cnt_q == '0) begin
             commit_state_d = COMMIT_DONE;
-          // If we are not committing the last result, decide if to process or skip the next one
+            // If we are not committing the last result, decide if to process or skip the next one
           end else begin
-            commit_state_d = (be_q[commit_cnt_d << vew_q]) ? COMMIT_READY : COMMIT_SKIP;
+            commit_state_d = (be_q[commit_cnt_d<<vew_q]) ? COMMIT_READY : COMMIT_SKIP;
           end
         end
       end
       COMMIT_SKIP: begin
-        commit_cnt_en    = 1'b1;
+        commit_cnt_en = 1'b1;
         // If we are skipping the last result, complete the execution
         if (commit_cnt_q == '0) begin
           commit_state_d = COMMIT_DONE;
-        // If we are not committing the last result, decide if to process or skip the next one
+          // If we are not committing the last result, decide if to process or skip the next one
         end else begin
-          commit_state_d = (be_q[commit_cnt_d << vew_q]) ? COMMIT_READY : COMMIT_SKIP;
+          commit_state_d = (be_q[commit_cnt_d<<vew_q]) ? COMMIT_READY : COMMIT_SKIP;
         end
       end
       COMMIT_DONE: begin
@@ -220,7 +234,7 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
 
     // Track how many elements we should process (load #elements-1)
     case (vew_q)
-      EW8 : cnt_init_val = 3'h7;
+      EW8:  cnt_init_val = 3'h7;
       EW16: cnt_init_val = 3'h3;
       EW32: cnt_init_val = 3'h1;
       EW64: cnt_init_val = 3'h0;
@@ -240,10 +254,10 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
   // Opcode selection
   always_comb begin
     case (op_q)
-      VDIVU: serdiv_opcode   = 2'b00;
-      VDIV : serdiv_opcode   = 2'b01;
-      VREMU: serdiv_opcode   = 2'b10;
-      VREM : serdiv_opcode   = 2'b11;
+      VDIVU: serdiv_opcode = 2'b00;
+      VDIV: serdiv_opcode = 2'b01;
+      VREMU: serdiv_opcode = 2'b10;
+      VREM: serdiv_opcode = 2'b11;
       default: serdiv_opcode = 2'b00;
     endcase
   end
@@ -308,22 +322,22 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
 
   // Serial divider
   serdiv #(
-    .WIDTH           (ELEN),
-    .STABLE_HANDSHAKE(1   )
+      .WIDTH           (ELEN),
+      .STABLE_HANDSHAKE(1)
   ) i_serdiv (
-    .clk_i    (clk_i            ),
-    .rst_ni   (rst_ni           ),
-    .id_i     ('0               ),
-    .op_a_i   (serdiv_opa       ),
-    .op_b_i   (serdiv_opb       ),
-    .opcode_i (serdiv_opcode    ),
-    .in_vld_i (serdiv_in_valid  ),
-    .in_rdy_o (serdiv_in_ready  ),
-    .flush_i  (1'b0             ),
-    .out_vld_o(serdiv_out_valid ),
-    .out_rdy_i(serdiv_out_ready ),
-    .id_o     (/* unconnected */),
-    .res_o    (serdiv_result    )
+      .clk_i    (clk_i),
+      .rst_ni   (rst_ni),
+      .id_i     ('0),
+      .op_a_i   (serdiv_opa),
+      .op_b_i   (serdiv_opb),
+      .opcode_i (serdiv_opcode),
+      .in_vld_i (serdiv_in_valid),
+      .in_rdy_o (serdiv_in_ready),
+      .flush_i  (1'b0),
+      .out_vld_o(serdiv_out_valid),
+      .out_rdy_i(serdiv_out_ready),
+      .id_o     (  /* unconnected */),
+      .res_o    (serdiv_result)
   );
 
   // Output buffer
@@ -366,30 +380,30 @@ module simd_div import ara_pkg::*; import rvv_pkg::*; #(
       issue_state_q  <= ISSUE_IDLE;
       commit_state_q <= COMMIT_IDLE;
 
-      opa_q    <= '0;
-      opb_q    <= '0;
-      vew_q    <= EW8;
-      op_q     <= VDIV;
-      be_q     <= '0;
-      mask_q   <= '0;
-      result_q <= '0;
+      opa_q          <= '0;
+      opb_q          <= '0;
+      vew_q          <= EW8;
+      op_q           <= VDIV;
+      be_q           <= '0;
+      mask_q         <= '0;
+      result_q       <= '0;
 
-      issue_cnt_q  <= '0;
-      commit_cnt_q <= '0;
+      issue_cnt_q    <= '0;
+      commit_cnt_q   <= '0;
     end else begin
       issue_state_q  <= issue_state_d;
       commit_state_q <= commit_state_d;
 
-      opa_q    <= opa_d;
-      opb_q    <= opb_d;
-      vew_q    <= vew_d;
-      op_q     <= op_d;
-      be_q     <= be_d;
-      mask_q   <= mask_d;
-      result_q <= result_d;
+      opa_q          <= opa_d;
+      opb_q          <= opb_d;
+      vew_q          <= vew_d;
+      op_q           <= op_d;
+      be_q           <= be_d;
+      mask_q         <= mask_d;
+      result_q       <= result_d;
 
-      issue_cnt_q  <= issue_cnt_d;
-      commit_cnt_q <= commit_cnt_d;
+      issue_cnt_q    <= issue_cnt_d;
+      commit_cnt_q   <= commit_cnt_d;
     end
   end
 endmodule : simd_div

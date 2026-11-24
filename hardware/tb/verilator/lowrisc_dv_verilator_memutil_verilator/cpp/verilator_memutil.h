@@ -39,4 +39,4 @@ class VerilatorMemUtil : public SimCtrlExtension {
  private:
   DpiMemUtil *mem_util_;
   std::unique_ptr<DpiMemUtil> allocation_;
-};
+}; 

@@ -6,8 +6,8 @@
 // Description: Ara-SoC wrap for SpyGlass analysis.
 
 module ara_soc_wrap (
- input logic clk_i,
- input logic rst_ni
+    input logic clk_i,
+    input logic rst_ni
 );
 
   localparam int unsigned NrLanes      = `NR_LANES;
@@ -19,19 +19,19 @@ module ara_soc_wrap (
   logic clk_i, rst_ni;
 
   ara_soc #(
-    .NrLanes     (NrLanes      ),
-    .AxiAddrWidth(AxiAddrWidth ),
-    .AxiDataWidth(AxiDataWidth ),
-    .AxiIdWidth  (AxiIdWidth   ),
-    .AxiUserWidth(AxiUserWidth )
+      .NrLanes     (NrLanes),
+      .AxiAddrWidth(AxiAddrWidth),
+      .AxiDataWidth(AxiDataWidth),
+      .AxiIdWidth  (AxiIdWidth),
+      .AxiUserWidth(AxiUserWidth)
   ) i_ara_soc (
-    .clk_i         (clk_i       ),
-    .rst_ni        (rst_ni      ),
-    .scan_enable_i (1'b0        ),
-    .scan_data_i   (1'b0        ),
-    .uart_prdata_i ('0          ),
-    .uart_pready_i ('0          ),
-    .uart_pslverr_i('0          )
+      .clk_i         (clk_i),
+      .rst_ni        (rst_ni),
+      .scan_enable_i (1'b0),
+      .scan_data_i   (1'b0),
+      .uart_prdata_i ('0),
+      .uart_pready_i ('0),
+      .uart_pslverr_i('0)
   );
 
 endmodule

@@ -178,4 +178,4 @@ class RangedMap {
 
  private:
   std::map<rng_t, val_t> map_;
-};
+}; 

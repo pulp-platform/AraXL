@@ -10,35 +10,35 @@ module ara_tb_verilator #(
     parameter int unsigned NrCores    = `NR_CORES,
     parameter int unsigned NrLanes    = `NR_LANES,
     parameter int unsigned NrClusters = `NR_CLUSTERS
-  )(
+) (
     input  logic        clk_i,
     input  logic        rst_ni,
     output logic [63:0] exit_o
-  );
+);
 
   /*****************
    *  Definitions  *
    *****************/
 
-  localparam AxiAddrWidth          = 64;
-  localparam AxiWideDataWidth      = 32 * NrLanes * NrClusters;
-  localparam ClusterAxiDataWidth   = 32 * NrLanes;
+  localparam AxiAddrWidth        = 64;
+  localparam AxiWideDataWidth    = 32 * NrLanes * NrClusters;
+  localparam ClusterAxiDataWidth = 32 * NrLanes;
 
   /*********
    *  DUT  *
    *********/
 
   ara_testharness #(
-    .NrCores     (NrCores         ),
-    .NrLanes     (NrLanes         ),
-    .NrClusters  (NrClusters      ),
-    .AxiAddrWidth(AxiAddrWidth    ),
-    .AxiDataWidth(AxiWideDataWidth),
-    .ClusterAxiDataWidth(ClusterAxiDataWidth)
+      .NrCores            (NrCores),
+      .NrLanes            (NrLanes),
+      .NrClusters         (NrClusters),
+      .AxiAddrWidth       (AxiAddrWidth),
+      .AxiDataWidth       (AxiWideDataWidth),
+      .ClusterAxiDataWidth(ClusterAxiDataWidth)
   ) dut (
-    .clk_i (clk_i ),
-    .rst_ni(rst_ni),
-    .exit_o(exit_o)
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+      .exit_o(exit_o)
   );
 
   /*********

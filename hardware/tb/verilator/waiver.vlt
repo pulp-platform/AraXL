@@ -21,4 +21,4 @@ lint_off -rule PINMISSING -file "*/cva6/*" -match "*"
 lint_off -rule PINMISSING -file "*/axi/*" -match "*"
 
 // Ignore usage of reserved words on Ariane
-lint_off -rule SYMRSVDWORD -file "*/cva6/*" -match "*"
+lint_off -rule SYMRSVDWORD -file "*/cva6/*" -match "*" 

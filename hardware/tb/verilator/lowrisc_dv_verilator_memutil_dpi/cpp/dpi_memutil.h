@@ -163,4 +163,4 @@ class DpiMemUtil {
    */
   const MemArea &GetRegionForSegment(const std::string &path, int seg_idx,
                                      uint32_t lma, uint32_t mem_sz) const;
-};
+}; 

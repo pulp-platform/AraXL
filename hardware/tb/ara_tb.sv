@@ -6,9 +6,15 @@
 // Description:
 // Top level testbench module.
 
-import "DPI-C" function void read_elf (input string filename);
-import "DPI-C" function byte get_section (output longint address, output longint len);
-import "DPI-C" context function byte read_section(input longint address, inout byte buffer[]);
+import "DPI-C" function void read_elf(input string filename);
+import "DPI-C" function byte get_section(
+  output longint address,
+  output longint len
+);
+import "DPI-C" context function byte read_section(
+  input longint address,
+  inout byte buffer[]
+);
 
 `define STRINGIFY(x) `"x`"
 
@@ -18,52 +24,51 @@ module ara_tb;
    *  Definitions  *
    *****************/
 
-  `ifndef VERILATOR
-  timeunit      1ns;
-  timeprecision 1ps;
-  `endif
+`ifndef VERILATOR
+  timeunit 1ns; timeprecision 1ps;
+`endif
 
-  `ifdef NR_CORES
+`ifdef NR_CORES
   localparam NrCores = `NR_CORES;
-  `else
+`else
   localparam NrCores = 0;
-  `endif
+`endif
 
-  `ifdef NR_LANES
+`ifdef NR_LANES
   localparam NrLanes = `NR_LANES;
-  `else
+`else
   localparam NrLanes = 0;
-  `endif
+`endif
 
-  `ifdef NR_CLUSTERS
+`ifdef NR_CLUSTERS
   localparam NrClusters = `NR_CLUSTERS;
-  `else
+`else
   localparam NrClusters = 0;
-  `endif
+`endif
 
-  `ifdef NR_L2_BANKS
+`ifdef NR_L2_BANKS
   localparam NrL2Banks = `NR_L2_BANKS;
-  `else
+`else
   localparam NrL2Banks = (NrCores > 0) ? NrCores : 1;
-  `endif
+`endif
   // Must track ara_soc's L2NumWords parameter: the ELF loader below mirrors
   // tc_sram's index truncation, so if the two drift apart the aliasing
   // warning stops matching what the hardware actually does.
-  localparam L2NumWords     = 2**20;
+  localparam L2NumWords = 2 ** 20;
   localparam L2BankIdxWidth = $clog2(NrL2Banks);
 
-  localparam ClockPeriod  = 1ns;
+  localparam ClockPeriod = 1ns;
   // Axi response delay [ps]
   localparam int unsigned AxiRespDelay = 200;
 
-  localparam AxiAddrWidth          = 64;
-  localparam AxiWideDataWidth      = 32 * NrLanes * NrClusters;
-  localparam ClusterAxiDataWidth   = 32 * NrLanes;
-  localparam AxiWideBeWidth    = AxiWideDataWidth / 8;
+  localparam AxiAddrWidth = 64;
+  localparam AxiWideDataWidth = 32 * NrLanes * NrClusters;
+  localparam ClusterAxiDataWidth = 32 * NrLanes;
+  localparam AxiWideBeWidth = AxiWideDataWidth / 8;
   localparam AxiWideByteOffset = $clog2(AxiWideBeWidth);
 
   localparam DRAMAddrBase = 64'h8000_0000;
-  localparam DRAMLength   = 64'h4000_0000; // 1GByte of DDR (split between two chips on Genesys2)
+  localparam DRAMLength = 64'h4000_0000;  // 1GByte of DDR (split between two chips on Genesys2)
 
   /********************************
    *  Clock and Reset Generation  *
@@ -78,7 +83,7 @@ module ara_tb;
     rst_n = 1'b0;
 
     // Synch reset for TB memories
-    repeat (10) #(ClockPeriod/2) clk = ~clk;
+    repeat (10) #(ClockPeriod / 2) clk = ~clk;
     clk = 1'b0;
 
     // Asynch reset for main system
@@ -87,7 +92,7 @@ module ara_tb;
     repeat (5) #(ClockPeriod);
 
     // Start the clock
-    forever #(ClockPeriod/2) clk = ~clk;
+    forever #(ClockPeriod / 2) clk = ~clk;
   end
 
   /*********
@@ -99,22 +104,22 @@ module ara_tb;
   // This TB must be implemented in C for integration with Verilator.
   // In order to Verilator to understand that the ara_testharness module is the top-level,
   // we do not instantiate it when Verilating this module.
-  `ifndef VERILATOR
+`ifndef VERILATOR
   ara_testharness #(
-    .NrCores     (NrCores         ),
-    .NrL2Banks   (NrL2Banks       ),
-    .NrLanes     (NrLanes         ),
-    .NrClusters  (NrClusters      ),
-    .AxiAddrWidth(AxiAddrWidth    ),
-    .AxiDataWidth(AxiWideDataWidth),
-    .ClusterAxiDataWidth(ClusterAxiDataWidth),
-    .AxiRespDelay(AxiRespDelay    )
+      .NrCores            (NrCores),
+      .NrL2Banks          (NrL2Banks),
+      .NrLanes            (NrLanes),
+      .NrClusters         (NrClusters),
+      .AxiAddrWidth       (AxiAddrWidth),
+      .AxiDataWidth       (AxiWideDataWidth),
+      .ClusterAxiDataWidth(ClusterAxiDataWidth),
+      .AxiRespDelay       (AxiRespDelay)
   ) dut (
-    .clk_i (clk  ),
-    .rst_ni(rst_n),
-    .exit_o(exit )
+      .clk_i (clk),
+      .rst_ni(rst_n),
+      .exit_o(exit)
   );
-  `endif
+`endif
 
   /*************************
    *  DRAM Initialization  *
@@ -127,7 +132,7 @@ module ara_tb;
   // word. Collected here rather than poked directly because the bank a word
   // belongs to is only known at run time, while a generate-block index must be
   // an elaboration-time constant -- see gen_l2_preload below.
-  data_t mem_image [longint unsigned];
+  data_t mem_image[longint unsigned];
   // Sequences the ELF reader against the per-bank preloaders: initial blocks
   // have no defined order at time 0, and iterating an empty mem_image would
   // preload nothing without complaining. Level-sensitive `wait`, not an event,
@@ -136,14 +141,13 @@ module ara_tb;
 
   initial begin : dram_init
     automatic data_t mem_row;
-    byte buffer [];
+    byte buffer[];
     addr_t address;
     addr_t length;
     string binary;
 
     // tc_sram is initialized with zeros. We need to overwrite this value.
-    repeat (2)
-      #ClockPeriod;
+    repeat (2) #ClockPeriod;
 
     // Initialize memories
     void'($value$plusargs("PRELOAD=%s", binary));
@@ -151,9 +155,11 @@ module ara_tb;
       // Read ELF
       read_elf(binary);
       $display("Loading ELF file %s", binary);
-      while (get_section(address, length)) begin
+      while (get_section(
+          address, length
+      )) begin
         // Read sections
-        automatic int nwords = (length + AxiWideBeWidth - 1)/AxiWideBeWidth;
+        automatic int nwords = (length + AxiWideBeWidth - 1) / AxiWideBeWidth;
         $display("Loading section %x of length %x", address, length);
         buffer = new[nwords * AxiWideBeWidth];
         void'(read_section(address, buffer));
@@ -162,14 +168,16 @@ module ara_tb;
           automatic longint unsigned byte_addr = address + (w << AxiWideByteOffset);
           mem_row = '0;
           for (int b = 0; b < AxiWideBeWidth; b++) begin
-            mem_row[8 * b +: 8] = buffer[w * AxiWideBeWidth + b];
+            mem_row[8*b+:8] = buffer[w*AxiWideBeWidth+b];
           end
           // This requires the sections to be aligned to AxiWideByteOffset,
           // otherwise, they can be over-written.
           if (byte_addr >= DRAMAddrBase && byte_addr < DRAMAddrBase + DRAMLength)
             mem_image[byte_addr] = mem_row;
           else
-            $display("Cannot initialize address %x, which doesn't fall into the L2 region.", byte_addr);
+            $display(
+                "Cannot initialize address %x, which doesn't fall into the L2 region.", byte_addr
+            );
         end
       end
     end else begin
@@ -202,9 +210,14 @@ module ara_tb;
           // exceeds L2NumWords for every DRAM address while still truncating
           // to the right place.
           if ((a - DRAMAddrBase) >= NrL2Banks * L2NumWords * AxiWideBeWidth)
-            $warning("Address %x is past L2 capacity (%0d B); it aliases onto bank %0d index %0d",
-                     a, NrL2Banks * L2NumWords * AxiWideBeWidth, b, idx % L2NumWords);
-          dut.i_ara_soc.gen_l2_mem[b].i_dram.init_val[idx % L2NumWords] = mem_image[a];
+            $warning(
+                "Address %x is past L2 capacity (%0d B); it aliases onto bank %0d index %0d",
+                a,
+                NrL2Banks * L2NumWords * AxiWideBeWidth,
+                b,
+                idx % L2NumWords
+            );
+          dut.i_ara_soc.gen_l2_mem[b].i_dram.init_val[idx%L2NumWords] = mem_image[a];
         end
       end
     end
@@ -224,15 +237,15 @@ module ara_tb;
   localparam OutResultFile = "../id_results.txt";
 `endif
 
-  int fd;
+  int                         fd;
 
-  data_t                     ara_w;
-  logic [AxiWideBeWidth-1:0] ara_w_strb;
-  logic                      ara_w_valid;
-  logic                      ara_w_ready;
+  data_t                      ara_w;
+  logic  [AxiWideBeWidth-1:0] ara_w_strb;
+  logic                       ara_w_valid;
+  logic                       ara_w_ready;
 
   // Avoid dumping what it's not measured, e.g. cache warming
-  logic dump_en_mask;
+  logic                       dump_en_mask;
 
   initial begin
     fd = $fopen(OutResultFile, "w");
@@ -261,8 +274,7 @@ module ara_tb;
     if (dump_en_mask)
       if (ara_w_valid && ara_w_ready)
         for (int b = 0; b < AxiWideBeWidth; b++)
-          if (ara_w_strb[b])
-            $fdisplay(fd, "%0x", ara_w[b*8 +: 8]);
+          if (ara_w_strb[b]) $fdisplay(fd, "%0x", ara_w[b*8+:8]);
 
 `endif
 
@@ -276,7 +288,9 @@ module ara_tb;
       for (genvar gl = 0; gl < NrLanes; gl++) begin : gen_fpu_disp_lane
         always @(posedge clk) begin
           if (exit[0] && !(exit >> 1)) begin
-            $display("core-%0d-cluster-%0d-lane-%0d [fpu-cycles] : %d", core, gc, gl, int'(dut.i_ara_soc.gen_ara_system[core].i_system.i_ara_cluster.p_cluster[gc].i_ara_macro.i_ara.gen_lanes[gl].i_lane.i_vfus.i_vmfpu.fpu_gen.vfpu_cnt_q));
+            $display(
+                "core-%0d-cluster-%0d-lane-%0d [fpu-cycles] : %d", core, gc, gl,
+                int'(dut.i_ara_soc.gen_ara_system[core].i_system.i_ara_cluster.p_cluster[gc].i_ara_macro.i_ara.gen_lanes[gl].i_lane.i_vfus.i_vmfpu.fpu_gen.vfpu_cnt_q));
           end
         end
       end : gen_fpu_disp_lane
@@ -305,7 +319,7 @@ module ara_tb;
     end
   end
 
-// Dump VCD with a SW trigger
+  // Dump VCD with a SW trigger
 `ifdef VCD_DUMP
 
   /****************
@@ -321,28 +335,27 @@ module ara_tb;
   localparam logic [63:0] VCD_TRIGGER_ON  = 64'h0000_0000_0000_0001;
   localparam logic [63:0] VCD_TRIGGER_OFF = 64'hFFFF_FFFF_FFFF_FFFF;
 
-  event start_dump_event;
-  event stop_dump_event;
+  event        start_dump_event;
+  event        stop_dump_event;
 
   logic [63:0] event_trigger_reg;
   logic        dumping = 1'b0;
 
-  assign event_trigger_reg =
-           dut.i_ara_soc.i_ctrl_registers.event_trigger_o;
+  assign event_trigger_reg = dut.i_ara_soc.i_ctrl_registers.event_trigger_o;
 
   initial begin
     $display("VCD_DUMP successfully defined\n");
   end
 
   always_ff @(posedge clk) begin
-    if(event_trigger_reg == VCD_TRIGGER_ON && !dumping) begin
-       $display("[TB - VCD] START DUMPING\n");
-       -> start_dump_event;
-       dumping = 1'b1;
+    if (event_trigger_reg == VCD_TRIGGER_ON && !dumping) begin
+      $display("[TB - VCD] START DUMPING\n");
+      ->start_dump_event;
+      dumping = 1'b1;
     end
-    if(event_trigger_reg == VCD_TRIGGER_OFF) begin
-       -> stop_dump_event;
-       $display("[TB - VCD] STOP DUMPING\n");
+    if (event_trigger_reg == VCD_TRIGGER_OFF) begin
+      ->stop_dump_event;
+      $display("[TB - VCD] STOP DUMPING\n");
     end
   end
 
@@ -354,8 +367,7 @@ module ara_tb;
 
     #1 $display("[TB - VCD] DUMPING...\n");
 
-    @(stop_dump_event)
-    $dumpoff;
+    @(stop_dump_event) $dumpoff;
     $dumpflush;
     $finish;
   end

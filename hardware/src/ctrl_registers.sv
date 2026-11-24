@@ -7,15 +7,15 @@
 // static information about Ara's SoC.
 
 module ctrl_registers #(
-    parameter int   unsigned                 DataWidth       = 32,
-    parameter int   unsigned                 AddrWidth       = 32,
+    parameter int unsigned                 DataWidth       = 32,
+    parameter int unsigned                 AddrWidth       = 32,
     // Parameters
-    parameter logic          [DataWidth-1:0] DRAMBaseAddr    = 0,
-    parameter logic          [DataWidth-1:0] DRAMLength      = 0,
+    parameter logic        [DataWidth-1:0] DRAMBaseAddr    = 0,
+    parameter logic        [DataWidth-1:0] DRAMLength      = 0,
     // AXI Structs
-    parameter type                           axi_lite_req_t  = logic,
-    parameter type                           axi_lite_resp_t = logic
-  ) (
+    parameter type                         axi_lite_req_t  = logic,
+    parameter type                         axi_lite_resp_t = logic
+) (
     input  logic                           clk_i,
     input  logic                           rst_ni,
     // AXI Bus
@@ -27,7 +27,7 @@ module ctrl_registers #(
     output logic           [DataWidth-1:0] dram_end_addr_o,
     output logic           [DataWidth-1:0] event_trigger_o,
     output logic           [DataWidth-1:0] hw_cnt_en_o
-  );
+);
 
   `include "common_cells/registers.svh"
 
@@ -35,11 +35,11 @@ module ctrl_registers #(
   //  Definitions  //
   ///////////////////
 
-  localparam int unsigned NumRegs          = 5;
+  localparam int unsigned NumRegs = 5;
   localparam int unsigned DataWidthInBytes = (DataWidth + 7) / 8;
-  localparam int unsigned RegNumBytes      = NumRegs * DataWidthInBytes;
+  localparam int unsigned RegNumBytes = NumRegs * DataWidthInBytes;
 
-  localparam logic [DataWidthInBytes-1:0] ReadOnlyReg  = {DataWidthInBytes{1'b1}};
+  localparam logic [DataWidthInBytes-1:0] ReadOnlyReg = {DataWidthInBytes{1'b1}};
   localparam logic [DataWidthInBytes-1:0] ReadWriteReg = {DataWidthInBytes{1'b0}};
 
   // Memory map
@@ -49,18 +49,18 @@ module ctrl_registers #(
   // [15:8]:  dram_base_addr (ro)
   // [7:0]:   exit           (rw)
   localparam logic [NumRegs-1:0][DataWidth-1:0] RegRstVal = '{
-    0,
-    0,
-    DRAMBaseAddr + DRAMLength,
-    DRAMBaseAddr,
-    0
+      0,
+      0,
+      DRAMBaseAddr + DRAMLength,
+      DRAMBaseAddr,
+      0
   };
   localparam logic [NumRegs-1:0][DataWidthInBytes-1:0] AxiReadOnly = '{
-    ReadWriteReg,
-    ReadWriteReg,
-    ReadOnlyReg,
-    ReadOnlyReg,
-    ReadWriteReg
+      ReadWriteReg,
+      ReadWriteReg,
+      ReadOnlyReg,
+      ReadOnlyReg,
+      ReadWriteReg
   };
 
   /////////////////
@@ -77,23 +77,23 @@ module ctrl_registers #(
 
 
   axi_lite_regs #(
-    .RegNumBytes (RegNumBytes    ),
-    .AxiAddrWidth(AddrWidth      ),
-    .AxiDataWidth(DataWidth      ),
-    .AxiReadOnly (AxiReadOnly    ),
-    .RegRstVal   (RegRstVal      ),
-    .req_lite_t  (axi_lite_req_t ),
-    .resp_lite_t (axi_lite_resp_t)
+      .RegNumBytes (RegNumBytes),
+      .AxiAddrWidth(AddrWidth),
+      .AxiDataWidth(DataWidth),
+      .AxiReadOnly (AxiReadOnly),
+      .RegRstVal   (RegRstVal),
+      .req_lite_t  (axi_lite_req_t),
+      .resp_lite_t (axi_lite_resp_t)
   ) i_axi_lite_regs (
-    .clk_i      (clk_i                                      ),
-    .rst_ni     (rst_ni                                     ),
-    .axi_req_i  (axi_lite_slave_req_i                       ),
-    .axi_resp_o (axi_lite_slave_resp_o                      ),
-    .wr_active_o(wr_active_d                                ),
-    .rd_active_o(/* Unused */                               ),
-    .reg_d_i    ('0                                         ),
-    .reg_load_i ('0                                         ),
-    .reg_q_o    ({hw_cnt_en, event_trigger, dram_end_address, dram_base_address, exit})
+      .clk_i      (clk_i),
+      .rst_ni     (rst_ni),
+      .axi_req_i  (axi_lite_slave_req_i),
+      .axi_resp_o (axi_lite_slave_resp_o),
+      .wr_active_o(wr_active_d),
+      .rd_active_o(  /* Unused */),
+      .reg_d_i    ('0),
+      .reg_load_i ('0),
+      .reg_q_o    ({hw_cnt_en, event_trigger, dram_end_address, dram_base_address, exit})
   );
 
   `FF(wr_active_q, wr_active_d, '0);

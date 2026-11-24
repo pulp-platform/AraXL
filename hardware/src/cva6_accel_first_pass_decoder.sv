@@ -7,28 +7,31 @@
 //              instruction, whether it reads scalar registers, and whether
 //              it writes to a destination scalar register
 
-module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
+module cva6_accel_first_pass_decoder
+  import rvv_pkg::*;
+  import ariane_pkg::*;
+#(
     parameter config_pkg::cva6_cfg_t CVA6Cfg = config_pkg::cva6_cfg_empty,
     parameter type scoreboard_entry_t = logic
-    ) (
-    input  logic [31:0]       instruction_i,   // instruction from IF
-    input  riscv::xs_t        fs_i,            // floating point extension status
-    input  riscv::xs_t        vs_i,            // vector extension status
-    output logic              is_accel_o,      // is a vector instruction
-    output scoreboard_entry_t instruction_o,   // predecoded instruction
-    output logic              illegal_instr_o, // is an illegal instruction
-    output logic              is_control_flow_instr_o
-  );
+) (
+    input  logic              [31:0] instruction_i,           // instruction from IF
+    input  riscv::xs_t               fs_i,                    // floating point extension status
+    input  riscv::xs_t               vs_i,                    // vector extension status
+    output logic                     is_accel_o,              // is a vector instruction
+    output scoreboard_entry_t        instruction_o,           // predecoded instruction
+    output logic                     illegal_instr_o,         // is an illegal instruction
+    output logic                     is_control_flow_instr_o
+);
 
-  logic        is_rs1;
-  logic        is_rs2;
-  logic        is_rd;
-  logic        is_fs1;
-  logic        is_fs2;
-  logic        is_fd;
-  logic        is_vfp;      // is a vector floating-point instruction
-  logic        is_load;
-  logic        is_store;
+  logic             is_rs1;
+  logic             is_rs2;
+  logic             is_rd;
+  logic             is_fs1;
+  logic             is_fs2;
+  logic             is_fd;
+  logic             is_vfp;  // is a vector floating-point instruction
+  logic             is_load;
+  logic             is_store;
 
   // Cast instruction into the `rvv_instruction_t` struct
   rvv_instruction_t instr;
@@ -62,39 +65,40 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
         is_accel_o = 1'b1;
         case (instr.varith_type.func3)
           OPFVV: begin
-            is_fd  = instr.varith_type.func6 == 6'b010_000; // VFWUNARY0
+            is_fd  = instr.varith_type.func6 == 6'b010_000;  // VFWUNARY0
             is_vfp = 1'b1;
           end
-          OPMVV: is_rd  = instr.varith_type.func6 == 6'b010_000; // VWXUNARY0
-          OPIVX: is_rs1 = 1'b1 ;
+          OPMVV: is_rd = instr.varith_type.func6 == 6'b010_000;  // VWXUNARY0
+          OPIVX: is_rs1 = 1'b1;
           OPFVF: begin
             is_fs1 = 1'b1;
             is_vfp = 1'b1;
           end
-          OPMVX: is_rs1 = 1'b1 ;
+          OPMVX: is_rs1 = 1'b1;
           OPCFG: begin
-            is_rs1 = instr.vsetivli_type.func2 != 2'b11; // not vsetivli
-            is_rs2 = instr.vsetvl_type.func7 == 7'b100_0000; // vsetvl
-            is_rd  = 1'b1 ;
+            is_rs1 = instr.vsetivli_type.func2 != 2'b11;  // not vsetivli
+            is_rs2 = instr.vsetvl_type.func7 == 7'b100_0000;  // vsetvl
+            is_rd  = 1'b1;
           end
         endcase
       end
 
       // Memory vector operations
-      riscv::OpcodeLoadFp,
-      riscv::OpcodeStoreFp: begin
-        case ({instr.vmem_type.mew, instr.vmem_type.width})
-          4'b0000, //VLxE8/VSxE8
-          4'b0101, //VLxE16/VSxE16
-          4'b0110, //VLxE32/VSxE32
-          4'b0111, //VLxE64/VSxE64
-          4'b1000, //VLxE128/VSxE128
-          4'b1101, //VLxE256/VSxE256
-          4'b1110, //VLxE512/VSxE512
-          4'b1111: begin //VLxE1024/VSxE1024
-            is_accel_o = 1'b1 ;
-            is_rs1   = 1'b1 ;
-            is_rs2   = instr.vmem_type.mop == 2'b10; // Strided operation
+      riscv::OpcodeLoadFp, riscv::OpcodeStoreFp: begin
+        case ({
+          instr.vmem_type.mew, instr.vmem_type.width
+        })
+          4'b0000,  //VLxE8/VSxE8
+          4'b0101,  //VLxE16/VSxE16
+          4'b0110,  //VLxE32/VSxE32
+          4'b0111,  //VLxE64/VSxE64
+          4'b1000,  //VLxE128/VSxE128
+          4'b1101,  //VLxE256/VSxE256
+          4'b1110,  //VLxE512/VSxE512
+          4'b1111: begin  //VLxE1024/VSxE1024
+            is_accel_o = 1'b1;
+            is_rs1 = 1'b1;
+            is_rs2 = instr.vmem_type.mop == 2'b10;  // Strided operation
           end
         endcase
       end
@@ -102,12 +106,12 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
       // Atomic vector operations
       riscv::OpcodeAmo: begin
         case (instr.vamo_type.width)
-          3'b000, //VAMO*EI8.V
-          3'b101, //VAMO*EI16.V
-          3'b110, //VAMO*EI32.V
-          3'b111: begin //VAMO*EI64.V
+          3'b000,  //VAMO*EI8.V
+          3'b101,  //VAMO*EI16.V
+          3'b110,  //VAMO*EI32.V
+          3'b111: begin  //VAMO*EI64.V
             is_accel_o = 1'b1;
-            is_rs1   = 1'b1;
+            is_rs1 = 1'b1;
           end
         endcase
       end
@@ -115,12 +119,12 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
       // CSRR/W instructions into vector CSRs
       riscv::OpcodeSystem: begin
         case (instr.i_type.funct3)
-          3'b001, //CSRRW
-          3'b010, //CSRRS,
-          3'b011, //CSRRC,
-          3'b101, //CSRRWI
-          3'b110, //CSRRSI
-          3'b111: begin //CSRRCI
+          3'b001,  //CSRRW
+          3'b010,  //CSRRS,
+          3'b011,  //CSRRC,
+          3'b101,  //CSRRWI
+          3'b110,  //CSRRSI
+          3'b111: begin  //CSRRCI
             is_accel_o = is_vector_csr(riscv::csr_reg_t'(instr.i_type.imm));
             is_rs1   = is_vector_csr(riscv::csr_reg_t'(instr.i_type.imm));
             is_rs2   = is_vector_csr(riscv::csr_reg_t'(instr.i_type.imm));
@@ -145,7 +149,9 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
       instruction_o.rd  = (is_rd || is_fd) ? instr_scalar.rtype.rd : {REG_ADDR_SIZE{1'b0}};
 
       // Decode the vector operation
-      unique case ({is_store, is_load, is_fs1, is_fs2, is_fd})
+      unique case ({
+        is_store, is_load, is_fs1, is_fs2, is_fd
+      })
         5'b10000: instruction_o.op = ACCEL_OP_STORE;
         5'b01000: instruction_o.op = ACCEL_OP_LOAD;
         5'b00100: instruction_o.op = ACCEL_OP_FS1;
@@ -157,7 +163,7 @@ module cva6_accel_first_pass_decoder import rvv_pkg::*; import ariane_pkg::*; #(
       illegal_instr_o = (is_vfp && (fs_i == riscv::Off)) ? 1'b1 : 1'b0;
 
       // result holds the undecoded instruction
-      instruction_o.result = { {CVA6Cfg.XLEN-32{1'b0}}, instruction_i[31:0] };
+      instruction_o.result = {{CVA6Cfg.XLEN - 32{1'b0}}, instruction_i[31:0]};
       instruction_o.use_imm = 1'b0;
     end
   end

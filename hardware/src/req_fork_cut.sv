@@ -8,68 +8,71 @@
 // Module to fork and cut the request interface.
 // Helps pipeline the request interface from CVA6 to ARA Clusters
 
-module req_fork_cut import ara_pkg::*; import rvv_pkg::*; #(
-  parameter int unsigned NrCuts             = 1, 
+module req_fork_cut
+  import ara_pkg::*;
+  import rvv_pkg::*;
+#(
+    parameter int unsigned NrCuts = 1,
 
-  parameter type         cva6_to_acc_t      = logic,
-  parameter type         acc_to_cva6_t      = logic
+    parameter type cva6_to_acc_t = logic,
+    parameter type acc_to_cva6_t = logic
 ) (
-  input logic clk_i, 
-  input logic rst_ni,
+    input logic clk_i,
+    input logic rst_ni,
 
-  input cva6_to_acc_t   req_i,
-  output acc_to_cva6_t resp_o,
+    input  cva6_to_acc_t req_i,
+    output acc_to_cva6_t resp_o,
 
-  output cva6_to_acc_t [1:0] req_o,
-  input acc_to_cva6_t [1:0] resp_i
+    output cva6_to_acc_t [1:0] req_o,
+    input  acc_to_cva6_t [1:0] resp_i
 );
 
   logic acc_req_valid_i, acc_req_ready_o;
   logic [1:0] acc_req_valid_o, acc_req_ready_i;
 
-  cva6_to_acc_t  [1:0] req_cut_i, req_cut_o;
+  cva6_to_acc_t [1:0] req_cut_i, req_cut_o;
   acc_to_cva6_t [1:0] resp_cut_i, resp_cut_o;
-  
+
   // From CVA6
   assign acc_req_valid_i = req_i.acc_req.req_valid;
-  for (genvar i=0; i<2; i++) begin
+  for (genvar i = 0; i < 2; i++) begin
     assign acc_req_ready_i[i] = resp_cut_o[i].acc_resp.req_ready;
   end
 
   stream_fork #(
-    .N_OUP(2)
+      .N_OUP(2)
   ) i_request_fork (
-    .clk_i  (clk_i            ),
-    .rst_ni (rst_ni           ),
-    
-    // To CVA6
-    .valid_i(acc_req_valid_i  ),
-    .ready_o(acc_req_ready_o  ),
-    
-    // To Clusters
-    .valid_o(acc_req_valid_o    ),
-    .ready_i(acc_req_ready_i    )
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
+
+      // To CVA6
+      .valid_i(acc_req_valid_i),
+      .ready_o(acc_req_ready_o),
+
+      // To Clusters
+      .valid_o(acc_req_valid_o),
+      .ready_i(acc_req_ready_i)
   );
 
-  for (genvar i=0; i<2; i++) begin
+  for (genvar i = 0; i < 2; i++) begin
     if (NrCuts > 0) begin
       // Cut after a fork
-      cva6_cut # (
-        .NrCuts            (NrCuts               ), 
-        .cva6_to_acc_t     (cva6_to_acc_t        ),
-        .acc_to_cva6_t     (acc_to_cva6_t        )
+      cva6_cut #(
+          .NrCuts       (NrCuts),
+          .cva6_to_acc_t(cva6_to_acc_t),
+          .acc_to_cva6_t(acc_to_cva6_t)
       ) i_cva6_macro_cut (
-        .clk_i       (clk_i            ), 
-        .rst_ni      (rst_ni           ), 
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
 
-        .acc_req_i   (req_cut_i[i]     ),
-        .acc_resp_o  (resp_cut_o[i]    ),
+          .acc_req_i (req_cut_i[i]),
+          .acc_resp_o(resp_cut_o[i]),
 
-        .acc_req_o   (req_cut_o[i]     ),
-        .acc_resp_i  (resp_cut_i[i]    )
+          .acc_req_o (req_cut_o[i]),
+          .acc_resp_i(resp_cut_i[i])
       );
-    end else begin 
-      assign req_cut_o[i] = req_cut_i[i];
+    end else begin
+      assign req_cut_o[i]  = req_cut_i[i];
       assign resp_cut_o[i] = resp_cut_i[i];
     end
 
@@ -78,7 +81,7 @@ module req_fork_cut import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   always_comb begin
-    for (int i=0; i<2; i++) begin
+    for (int i = 0; i < 2; i++) begin
       req_cut_i[i] = req_i;
       req_cut_i[i].acc_req.req_valid = acc_req_valid_o[i];
     end
@@ -87,4 +90,4 @@ module req_fork_cut import ara_pkg::*; import rvv_pkg::*; #(
     resp_o.acc_resp.req_ready = acc_req_ready_o;
   end
 
-endmodule 
+endmodule

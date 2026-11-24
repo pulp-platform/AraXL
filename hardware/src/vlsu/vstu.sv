@@ -13,19 +13,22 @@
 // This is Ara's vector store unit. It sends transactions on the W bus,
 // upon receiving vector memory operations.
 
-module vstu import ara_pkg::*; import rvv_pkg::*; #(
-    parameter  int  unsigned NrLanes = 0,
-    parameter  type          vaddr_t = logic,  // Type used to address vector register file elements
+module vstu
+  import ara_pkg::*;
+  import rvv_pkg::*;
+#(
+    parameter int unsigned NrLanes = 0,
+    parameter type vaddr_t = logic,  // Type used to address vector register file elements
     // AXI Interface parameters
-    parameter  int  unsigned AxiDataWidth = 0,
-    parameter  int  unsigned AxiAddrWidth = 0,
-    parameter  type          axi_w_t      = logic,
-    parameter  type          axi_b_t      = logic,
+    parameter int unsigned AxiDataWidth = 0,
+    parameter int unsigned AxiAddrWidth = 0,
+    parameter type axi_w_t = logic,
+    parameter type axi_b_t = logic,
     // Dependant parameters. DO NOT CHANGE!
-    localparam int           DataWidth    = $bits(elen_t),
-    localparam type          strb_t       = logic[DataWidth/8-1:0],
-    localparam type          axi_addr_t   = logic [AxiAddrWidth-1:0]
-  )(
+    localparam int DataWidth = $bits(elen_t),
+    localparam type strb_t = logic [DataWidth/8-1:0],
+    localparam type axi_addr_t = logic [AxiAddrWidth-1:0]
+) (
     input  logic                           clk_i,
     input  logic                           rst_ni,
     input  id_cluster_t                    cluster_id_i,
@@ -57,7 +60,7 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
     input  strb_t            [NrLanes-1:0] mask_i,
     input  logic             [NrLanes-1:0] mask_valid_i,
     output logic                           mask_ready_o
-  );
+);
 
   import cf_math_pkg::idx_width;
   import axi_pkg::beat_lower_byte;
@@ -72,22 +75,22 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
   logic  [NrLanes-1:0] stu_operand_valid;
   logic                stu_operand_ready;
 
-  for (genvar lane = 0; lane < NrLanes; lane++) begin: gen_regs
+  for (genvar lane = 0; lane < NrLanes; lane++) begin : gen_regs
     fall_through_register #(
-      .T(elen_t)
+        .T(elen_t)
     ) i_register (
-      .clk_i     (clk_i                    ),
-      .rst_ni    (rst_ni                   ),
-      .clr_i     (1'b0                     ),
-      .testmode_i(1'b0                     ),
-      .data_i    (stu_operand_i[lane]      ),
-      .valid_i   (stu_operand_valid_i[lane]),
-      .ready_o   (stu_operand_ready_o[lane]),
-      .data_o    (stu_operand[lane]        ),
-      .valid_o   (stu_operand_valid[lane]  ),
-      .ready_i   (stu_operand_ready        )
+        .clk_i     (clk_i),
+        .rst_ni    (rst_ni),
+        .clr_i     (1'b0),
+        .testmode_i(1'b0),
+        .data_i    (stu_operand_i[lane]),
+        .valid_i   (stu_operand_valid_i[lane]),
+        .ready_o   (stu_operand_ready_o[lane]),
+        .data_o    (stu_operand[lane]),
+        .valid_o   (stu_operand_valid[lane]),
+        .ready_i   (stu_operand_ready)
     );
-  end: gen_regs
+  end : gen_regs
 
   ////////////////////////////////
   //  Vector instruction queue  //
@@ -117,7 +120,8 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
     // we can handle.
     logic [idx_width(VInsnQueueDepth):0] issue_cnt;
     logic [idx_width(VInsnQueueDepth):0] commit_cnt;
-  } vinsn_queue_d, vinsn_queue_q;
+  }
+      vinsn_queue_d, vinsn_queue_q;
 
   // Is the vector instruction queue full?
   logic vinsn_queue_full;
@@ -130,7 +134,7 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
   // Do we have a vector instruction ready to be issued?
   pe_req_t vinsn_issue_d, vinsn_issue_q;
-  logic    vinsn_issue_valid;
+  logic vinsn_issue_valid;
   assign vinsn_issue_d     = vinsn_queue_d.vinsn[vinsn_queue_d.issue_pnt];
   assign vinsn_issue_valid = (vinsn_queue_q.issue_cnt != '0);
 
@@ -172,16 +176,16 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
   // - A pointer to which byte in the full VRF word we are reading data from.
   logic [idx_width(DataWidth*NrLanes/8):0] vrf_pnt_d, vrf_pnt_q;
 
-  always_comb begin: p_vstu
+  always_comb begin : p_vstu
     // Maintain state
-    vinsn_queue_d = vinsn_queue_q;
-    issue_cnt_d   = issue_cnt_q;
+    vinsn_queue_d           = vinsn_queue_q;
+    issue_cnt_d             = issue_cnt_q;
 
-    len_d     = len_q;
-    vrf_pnt_d = vrf_pnt_q;
+    len_d                   = len_q;
+    vrf_pnt_d               = vrf_pnt_q;
 
     // Vector instructions currently running
-    vinsn_running_d = vinsn_running_q & pe_vinsn_running_i;
+    vinsn_running_d         = vinsn_running_q & pe_vinsn_running_i;
 
     // We are not ready, by default
     axi_addrgen_req_ready_o = 1'b0;
@@ -194,7 +198,7 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
     store_complete_o        = 1'b0;
 
     // Inform the main sequencer if we are idle
-    pe_req_ready_o = !vinsn_queue_full;
+    pe_req_ready_o          = !vinsn_queue_full;
 
     /////////////////////////////////////
     //  Write data into the W channel  //
@@ -210,39 +214,39 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
       // Account for the issued bytes
       // How many bytes are valid in this VRF word
-      automatic vlen_t vrf_valid_bytes   = NrLanes * 8 - vrf_pnt_q;
+      automatic vlen_t vrf_valid_bytes = NrLanes * 8 - vrf_pnt_q;
       // How many bytes are valid in this instruction
       automatic vlen_t vinsn_valid_bytes = issue_cnt_q - vrf_pnt_q;
       // How many bytes are valid in this AXI word
-      automatic vlen_t axi_valid_bytes   = AxiDataWidth/8;
+      automatic vlen_t axi_valid_bytes = AxiDataWidth / 8;
 
       // How many bytes are we committing?
       automatic logic [idx_width(DataWidth*NrLanes/8):0] valid_bytes;
-      valid_bytes = issue_cnt_q < NrLanes * 8     ? vinsn_valid_bytes : vrf_valid_bytes;
-      valid_bytes = valid_bytes < axi_valid_bytes ? valid_bytes       : axi_valid_bytes;
+      valid_bytes = issue_cnt_q < NrLanes * 8 ? vinsn_valid_bytes : vrf_valid_bytes;
+      valid_bytes = valid_bytes < axi_valid_bytes ? valid_bytes : axi_valid_bytes;
 
       if (vinsn_issue_q.op inside {VSXE, VSSE}) valid_bytes = 1 << vinsn_issue_q.vtype.vsew;
 
       vrf_pnt_d = vrf_pnt_q + valid_bytes;
 
       // Copy data from the operands into the W channel
-      for (int axi_byte = 0; axi_byte < AxiDataWidth/8; axi_byte++) begin
+      for (int axi_byte = 0; axi_byte < AxiDataWidth / 8; axi_byte++) begin
         // Is this byte a valid byte in the W beat?
         if (axi_byte >= 0 && axi_byte < valid_bytes) begin
           // Map axy_byte to the corresponding byte in the VRF word (sequential)
           automatic int vrf_seq_byte = axi_byte + vrf_pnt_q;
           // And then shuffle it
-          automatic int vrf_byte     = shuffle_index(vrf_seq_byte, NrLanes, vinsn_issue_q.eew_vs1);
+          automatic int vrf_byte = shuffle_index(vrf_seq_byte, NrLanes, vinsn_issue_q.eew_vs1);
 
           // Is this byte a valid byte in the VRF word?
           if (vrf_seq_byte < issue_cnt_q) begin
             // At which lane, and what is the byte offset in that lane, of the byte vrf_byte?
-            automatic int vrf_lane   = vrf_byte >> 3;
+            automatic int vrf_lane = vrf_byte >> 3;
             automatic int vrf_offset = vrf_byte[2:0];
 
             // Copy data
-            axi_w_o.data[8*axi_byte +: 8] = stu_operand[vrf_lane][8*vrf_offset +: 8];
-            axi_w_o.strb[axi_byte]        = vinsn_issue_q.vm || mask_i[vrf_lane][vrf_offset];
+            axi_w_o.data[8*axi_byte+:8] = stu_operand[vrf_lane][8*vrf_offset+:8];
+            axi_w_o.strb[axi_byte]      = vinsn_issue_q.vm || mask_i[vrf_lane][vrf_offset];
           end
         end
       end
@@ -261,7 +265,7 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       end
 
       // We consumed a whole word from the lanes
-      if (vrf_pnt_d == NrLanes*8 || vrf_pnt_d == issue_cnt_q) begin
+      if (vrf_pnt_d == NrLanes * 8 || vrf_pnt_d == issue_cnt_q) begin
         // Reset the pointer in the VRF word
         vrf_pnt_d         = '0;
         // Acknowledge the operands with the lanes
@@ -270,8 +274,7 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
         mask_ready_o      = !vinsn_issue_q.vm;
         // Account for the results that were issued
         issue_cnt_d       = issue_cnt_q - NrLanes * 8;
-        if (issue_cnt_q < NrLanes * 8)
-          issue_cnt_d = '0;
+        if (issue_cnt_q < NrLanes * 8) issue_cnt_d = '0;
       end
     end
 
@@ -279,10 +282,8 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
     if (vinsn_issue_valid && issue_cnt_d == 0) begin
       // Bump issue counters and pointers of the vector instruction queue
       vinsn_queue_d.issue_cnt -= 1;
-      if (vinsn_queue_q.issue_pnt == VInsnQueueDepth-1)
-        vinsn_queue_d.issue_pnt = 0;
-      else
-        vinsn_queue_d.issue_pnt += 1;
+      if (vinsn_queue_q.issue_pnt == VInsnQueueDepth - 1) vinsn_queue_d.issue_pnt = 0;
+      else vinsn_queue_d.issue_pnt += 1;
 
       if (vinsn_queue_d.issue_cnt != 0)
         issue_cnt_d = vinsn_queue_q.vinsn[vinsn_queue_d.issue_pnt].vl <<
@@ -303,15 +304,13 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       if (vinsn_queue_d.issue_pnt != vinsn_queue_d.commit_pnt) begin
         // Signal complete store
         store_complete_o = 1'b1;
-        
+
         pe_resp.vinsn_done[vinsn_commit.id] = 1'b1;
 
         // Update the commit counters and pointers
         vinsn_queue_d.commit_cnt -= 1;
-        if (vinsn_queue_d.commit_pnt == VInsnQueueDepth-1)
-          vinsn_queue_d.commit_pnt = '0;
-        else
-          vinsn_queue_d.commit_pnt += 1;
+        if (vinsn_queue_d.commit_pnt == VInsnQueueDepth - 1) vinsn_queue_d.commit_pnt = '0;
+        else vinsn_queue_d.commit_pnt += 1;
       end
     end
 
@@ -325,33 +324,32 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
       vinsn_running_d[pe_req_i.id]                  = 1'b1;
 
       // Initialize counters
-      if (vinsn_queue_d.issue_cnt == '0)
-        issue_cnt_d = pe_req_i.vl << int'(pe_req_i.vtype.vsew);
+      if (vinsn_queue_d.issue_cnt == '0) issue_cnt_d = pe_req_i.vl << int'(pe_req_i.vtype.vsew);
 
       // Bump pointers and counters of the vector instruction queue
       vinsn_queue_d.accept_pnt += 1;
       vinsn_queue_d.issue_cnt += 1;
       vinsn_queue_d.commit_cnt += 1;
     end
-  end: p_vstu
+  end : p_vstu
 
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       vinsn_running_q <= '0;
       issue_cnt_q     <= '0;
 
-      len_q     <= '0;
-      vrf_pnt_q <= '0;
+      len_q           <= '0;
+      vrf_pnt_q       <= '0;
 
-      pe_resp_o <= '0;
+      pe_resp_o       <= '0;
     end else begin
       vinsn_running_q <= vinsn_running_d;
       issue_cnt_q     <= issue_cnt_d;
 
-      len_q     <= len_d;
-      vrf_pnt_q <= vrf_pnt_d;
+      len_q           <= len_d;
+      vrf_pnt_q       <= vrf_pnt_d;
 
-      pe_resp_o <= pe_resp;
+      pe_resp_o       <= pe_resp;
     end
   end
 
@@ -392,25 +390,19 @@ module vstu import ara_pkg::*; import rvv_pkg::*; #(
 
       if (trace_fd_opened && (vinsn_queue_q.accept_pnt != trace_accept_pnt_prev)) begin
         automatic pe_req_t accepted_vinsn = vinsn_queue_q.vinsn[trace_accept_pnt_prev];
-        $fwrite(trace_fd, "B,%0t,%0d,%0d,%s,%0d,%0d,,,\n",
-                $time, cluster_id_i,
-                accepted_vinsn.id, accepted_vinsn.op.name(),
-                accepted_vinsn.vl, accepted_vinsn.vd);
+        $fwrite(trace_fd, "B,%0t,%0d,%0d,%s,%0d,%0d,,,\n", $time, cluster_id_i, accepted_vinsn.id,
+                accepted_vinsn.op.name(), accepted_vinsn.vl, accepted_vinsn.vd);
       end
 
       if (trace_fd_opened && axi_w_valid_o && axi_w_ready_i && vinsn_issue_valid) begin
-        $fwrite(trace_fd, "W,%0t,%0d,%0d,%s,%0d,%0d,%0h,%0h,%0b\n",
-                $time, cluster_id_i,
-                vinsn_issue_q.id, vinsn_issue_q.op.name(),
-                vinsn_issue_q.vl, vinsn_issue_q.vd,
+        $fwrite(trace_fd, "W,%0t,%0d,%0d,%s,%0d,%0d,%0h,%0h,%0b\n", $time, cluster_id_i,
+                vinsn_issue_q.id, vinsn_issue_q.op.name(), vinsn_issue_q.vl, vinsn_issue_q.vd,
                 axi_w_o.data, axi_w_o.strb, axi_w_o.last);
       end
 
       if (trace_fd_opened && store_complete_o && vinsn_commit_valid) begin
-        $fwrite(trace_fd, "E,%0t,%0d,%0d,%s,%0d,%0d,,,\n",
-                $time, cluster_id_i,
-                vinsn_commit.id, vinsn_commit.op.name(),
-                vinsn_commit.vl, vinsn_commit.vd);
+        $fwrite(trace_fd, "E,%0t,%0d,%0d,%s,%0d,%0d,,,\n", $time, cluster_id_i, vinsn_commit.id,
+                vinsn_commit.op.name(), vinsn_commit.vl, vinsn_commit.vd);
       end
     end
   end

@@ -8,26 +8,26 @@
 //              Instantiates an AXI-Bus and memories.
 
 module ara_testharness #(
-    parameter int unsigned NrCores      = 0,
+    parameter int unsigned NrCores             = 0,
     // Number of word-interleaved L2 banks. Must be a power of two.
-    parameter int unsigned NrL2Banks    = NrCores,
+    parameter int unsigned NrL2Banks           = NrCores,
     // Ara-specific parameters
-    parameter int unsigned NrLanes      = 0,
-    parameter int unsigned NrClusters   = 0,
+    parameter int unsigned NrLanes             = 0,
+    parameter int unsigned NrClusters          = 0,
     // AXI Parameters
     parameter int unsigned AxiUserWidth        = 1,
     parameter int unsigned AxiIdWidth          = 5,
     parameter int unsigned AxiAddrWidth        = 64,
-    parameter int unsigned AxiDataWidth        = 64*NrLanes/2,
-    parameter int unsigned ClusterAxiDataWidth = 64*NrLanes*NrClusters/2,
+    parameter int unsigned AxiDataWidth        = 64 * NrLanes / 2,
+    parameter int unsigned ClusterAxiDataWidth = 64 * NrLanes * NrClusters / 2,
 
     // AXI Resp Delay [ps] for gate-level simulation
     parameter int unsigned AxiRespDelay = 200
-  ) (
+) (
     input  logic        clk_i,
     input  logic        rst_ni,
     output logic [63:0] exit_o
-  );
+);
 
   `include "axi/typedef.svh"
 
@@ -54,51 +54,51 @@ module ara_testharness #(
    *************/
 
   // UART
-  logic        uart_penable;
-  logic        uart_pwrite;
-  logic [31:0] uart_paddr;
-  logic        uart_psel;
-  logic [31:0] uart_pwdata;
-  logic [31:0] uart_prdata;
-  logic        uart_pready;
-  logic        uart_pslverr;
+  logic             uart_penable;
+  logic             uart_pwrite;
+  logic      [31:0] uart_paddr;
+  logic             uart_psel;
+  logic      [31:0] uart_pwdata;
+  logic      [31:0] uart_prdata;
+  logic             uart_pready;
+  logic             uart_pslverr;
 
   // AXI
-  axi_req_t  dram_req;
-  axi_resp_t dram_resp;
+  axi_req_t         dram_req;
+  axi_resp_t        dram_resp;
 
   /*********
    *  SoC  *
    *********/
 
   ara_soc #(
-    .NrCores     (NrCores      ),
-    .NrL2Banks   (NrL2Banks    ),
-    .NrLanes     (NrLanes      ),
-    .NrClusters  (NrClusters   ),
-    .AxiAddrWidth(AxiAddrWidth ),
-    .AxiDataWidth(AxiDataWidth ),
-    .ClusterAxiDataWidth(ClusterAxiDataWidth),
-    .AxiIdWidth  (AxiIdWidth   ),
-    .AxiUserWidth(AxiUserWidth ),
-    .AxiRespDelay(AxiRespDelay )
+      .NrCores            (NrCores),
+      .NrL2Banks          (NrL2Banks),
+      .NrLanes            (NrLanes),
+      .NrClusters         (NrClusters),
+      .AxiAddrWidth       (AxiAddrWidth),
+      .AxiDataWidth       (AxiDataWidth),
+      .ClusterAxiDataWidth(ClusterAxiDataWidth),
+      .AxiIdWidth         (AxiIdWidth),
+      .AxiUserWidth       (AxiUserWidth),
+      .AxiRespDelay       (AxiRespDelay)
   ) i_ara_soc (
-    .clk_i         (clk_i       ),
-    .rst_ni        (rst_ni      ),
-    .hw_cnt_en_o   (/* Unused */),
-    .exit_o        (exit_o      ),
-    .scan_enable_i (1'b0        ),
-    .scan_data_i   (1'b0        ),
-    .scan_data_o   (/* Unused */),
-    // UART
-    .uart_penable_o(uart_penable),
-    .uart_pwrite_o (uart_pwrite ),
-    .uart_paddr_o  (uart_paddr  ),
-    .uart_psel_o   (uart_psel   ),
-    .uart_pwdata_o (uart_pwdata ),
-    .uart_prdata_i (uart_prdata ),
-    .uart_pready_i (uart_pready ),
-    .uart_pslverr_i(uart_pslverr)
+      .clk_i         (clk_i),
+      .rst_ni        (rst_ni),
+      .hw_cnt_en_o   (  /* Unused */),
+      .exit_o        (exit_o),
+      .scan_enable_i (1'b0),
+      .scan_data_i   (1'b0),
+      .scan_data_o   (  /* Unused */),
+      // UART
+      .uart_penable_o(uart_penable),
+      .uart_pwrite_o (uart_pwrite),
+      .uart_paddr_o  (uart_paddr),
+      .uart_psel_o   (uart_psel),
+      .uart_pwdata_o (uart_pwdata),
+      .uart_prdata_i (uart_prdata),
+      .uart_pready_i (uart_pready),
+      .uart_pslverr_i(uart_pslverr)
   );
 
   /**********
@@ -106,16 +106,16 @@ module ara_testharness #(
    **********/
 
   mock_uart i_mock_uart (
-    .clk_i    (clk_i       ),
-    .rst_ni   (rst_ni      ),
-    .penable_i(uart_penable),
-    .pwrite_i (uart_pwrite ),
-    .paddr_i  (uart_paddr  ),
-    .psel_i   (uart_psel   ),
-    .pwdata_i (uart_pwdata ),
-    .prdata_o (uart_prdata ),
-    .pready_o (uart_pready ),
-    .pslverr_o(uart_pslverr)
+      .clk_i    (clk_i),
+      .rst_ni   (rst_ni),
+      .penable_i(uart_penable),
+      .pwrite_i (uart_pwrite),
+      .paddr_i  (uart_paddr),
+      .psel_i   (uart_psel),
+      .pwdata_i (uart_pwdata),
+      .prdata_o (uart_prdata),
+      .pready_o (uart_pready),
+      .pslverr_o(uart_pslverr)
   );
 
 `ifndef TARGET_GATESIM
@@ -147,36 +147,38 @@ module ara_testharness #(
   logic [63:0] runtime_cnt_d, runtime_cnt_q;
   logic [63:0] runtime_buf_d, runtime_buf_q;
   logic runtime_cnt_en_d, runtime_cnt_en_q;
-  logic	runtime_to_be_updated_d, runtime_to_be_updated_q;
+  logic runtime_to_be_updated_d, runtime_to_be_updated_q;
 
   // The counter can start only if it's enabled. When it's disabled, it will go on counting until
   // the last vector instruciton is over.
   logic cnt_en_mask;
 `ifndef IDEAL_DISPATCHER
-  assign cnt_en_mask = 1'b1; //i_ara_soc.hw_cnt_en_o[0];
+  assign cnt_en_mask = 1'b1;  //i_ara_soc.hw_cnt_en_o[0];
 `else
   assign cnt_en_mask = 1'b1;
 `endif
-  always_comb begin
-    // Keep the previous value
-    runtime_cnt_en_d = runtime_cnt_en_q;
-    // If disabled
-    if (!runtime_cnt_en_q)
-      // Start only if the software allowed the enable and we detect the first V instruction 
+  logic ara_req_valid, ara_idle;
 `ifndef USE_CLUSTER
-      runtime_cnt_en_d = i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid & cnt_en_mask;
+  assign ara_req_valid = i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid;
+  assign ara_idle = i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle;
 `else
-      runtime_cnt_en_d = i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid & cnt_en_mask;
-`endif 
-
-    // If enabled
-    if (runtime_cnt_en_q)
-      // Stop counting only if the software disabled the counter and Ara returned idle
-`ifndef USE_CLUSTER
-      runtime_cnt_en_d = cnt_en_mask | ~i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle;
-`else
-      runtime_cnt_en_d = cnt_en_mask & ~i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle;
+  assign ara_req_valid = i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid;
+  assign ara_idle = i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle;
 `endif
+
+  always_comb begin
+    runtime_cnt_en_d = runtime_cnt_en_q;
+    // Start counting when software enables the counter and Ara receives a request.
+    if (!runtime_cnt_en_q) begin
+      runtime_cnt_en_d = ara_req_valid & cnt_en_mask;
+    end
+    if (runtime_cnt_en_q) begin
+`ifndef USE_CLUSTER
+      runtime_cnt_en_d = cnt_en_mask | ~ara_idle;
+`else
+      runtime_cnt_en_d = cnt_en_mask & ~ara_idle;
+`endif
+    end
   end
 
   // Vector runtime counter
@@ -196,24 +198,12 @@ module ara_testharness #(
     runtime_to_be_updated_d = runtime_to_be_updated_q;
 
     // Assert the update flag upon a new valid vector instruction
-  `ifndef USE_CLUSTER
-    if (!runtime_to_be_updated_q && i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid) begin
-  `else 
-    if (!runtime_to_be_updated_q && i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid) begin
-  `endif
+    if (!runtime_to_be_updated_q && ara_req_valid) begin
       runtime_to_be_updated_d = 1'b1;
     end
 
     // Update the internal runtime and reset the update flag
-    `ifndef USE_CLUSTER
-    if (runtime_to_be_updated_q           &&
-        i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle &&
-        !i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid) begin
-    `else
-    if (runtime_to_be_updated_q           &&
-        i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle &&
-        !i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid) begin
-    `endif
+    if (runtime_to_be_updated_q && ara_idle && !ara_req_valid) begin
       runtime_buf_d = runtime_cnt_q;
       runtime_to_be_updated_d = 1'b0;
     end
@@ -225,7 +215,7 @@ module ara_testharness #(
       runtime_cnt_q           <= '0;
       runtime_to_be_updated_q <= '0;
       runtime_buf_q           <= '0;
-   end else begin
+    end else begin
       runtime_cnt_en_q        <= runtime_cnt_en_d;
       runtime_cnt_q           <= runtime_cnt_d;
       runtime_to_be_updated_q <= runtime_to_be_updated_d;
@@ -261,21 +251,13 @@ module ara_testharness #(
     if (runtime_cnt_en_q && i_ara_soc.gen_ara_system[0].i_system.i_ariane.gen_perf_counter.perf_counters_i.l1_icache_miss_i)
       icache_stall_cnt_d += 1;
     if (runtime_cnt_en_q && i_ara_soc.gen_ara_system[0].i_system.i_ariane.gen_perf_counter.perf_counters_i.sb_full_i)
-      sb_full_cnt_d      += 1;
+      sb_full_cnt_d += 1;
   end
 
   // Update logic
   always_comb begin
     // Update the internal runtime and reset the update flag
-`ifndef USE_CLUSTER
-    if (runtime_to_be_updated_q           &&
-        i_ara_soc.gen_ara_system[0].i_system.i_ara.ara_idle &&
-        !i_ara_soc.gen_ara_system[0].i_system.i_ara.acc_req_i.acc_req.req_valid) begin
-`else
-    if (runtime_to_be_updated_q           &&
-        i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.i_ara.ara_idle &&
-        !i_ara_soc.gen_ara_system[0].i_system.i_ara_cluster.p_cluster[0].i_ara_macro.acc_req_i.acc_req.req_valid) begin
-`endif
+    if (runtime_to_be_updated_q && ara_idle && !ara_req_valid) begin
       dcache_stall_buf_d = dcache_stall_cnt_q;
       icache_stall_buf_d = icache_stall_cnt_q;
       sb_full_buf_d      = sb_full_cnt_q;
@@ -298,7 +280,7 @@ module ara_testharness #(
       icache_stall_buf_q <= icache_stall_buf_d;
       sb_full_buf_q      <= sb_full_buf_d;
     end
-  end // always_ff @ (posedge clk_i or negedge rst_ni)
+  end  // always_ff @ (posedge clk_i or negedge rst_ni)
 
 `else
 

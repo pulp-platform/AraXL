@@ -7,73 +7,76 @@
 // Description:
 // Ara's System, containing Ara instances and Global Units connecting them.
 
-module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
+module ara_cluster
+  import ara_pkg::*;
+  import rvv_pkg::*;
+#(
     // RVV Parameters
-    parameter  int           unsigned NrLanes      = 0,   // Number of parallel vector lanes per Ara instance
-    parameter  int           unsigned NrClusters   = 0,   // Number of Ara instances
+    parameter int unsigned NrLanes    = 0,  // Number of parallel vector lanes per Ara instance
+    parameter int unsigned NrClusters = 0,  // Number of Ara instances
 
     // Support for floating-point data types
-    parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
+    parameter fpu_support_e   FPUSupport   = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
-    parameter  fpext_support_e        FPExtSupport = FPExtSupportEnable,
+    parameter fpext_support_e FPExtSupport = FPExtSupportEnable,
     // Support for fixed-point data types
-    parameter  fixpt_support_e        FixPtSupport = FixedPointEnable,
-    
+    parameter fixpt_support_e FixPtSupport = FixedPointEnable,
+
     // Ariane configuration
-    parameter config_pkg::cva6_cfg_t            CVA6Cfg            = cva6_config_pkg::cva6_cfg,
+    parameter config_pkg::cva6_cfg_t CVA6Cfg            = cva6_config_pkg::cva6_cfg,
     // CVA6-related parameters
-    parameter type                              exception_t        = logic,
-    parameter type                              accelerator_req_t  = logic,
-    parameter type                              accelerator_resp_t = logic,
-    parameter type                              cva6_to_acc_t      = logic,
-    parameter type                              acc_to_cva6_t      = logic,
+    parameter type                   exception_t        = logic,
+    parameter type                   accelerator_req_t  = logic,
+    parameter type                   accelerator_resp_t = logic,
+    parameter type                   cva6_to_acc_t      = logic,
+    parameter type                   acc_to_cva6_t      = logic,
 
     // AXI Interface
-    parameter  int           unsigned AxiDataWidth        = 0,
-    parameter  int           unsigned AxiAddrWidth        = 0,
-    parameter  int           unsigned ClusterAxiDataWidth = 0,
-    parameter  int           unsigned NrAxiCuts           = 2,
+    parameter int unsigned AxiDataWidth        = 0,
+    parameter int unsigned AxiAddrWidth        = 0,
+    parameter int unsigned ClusterAxiDataWidth = 0,
+    parameter int unsigned NrAxiCuts           = 2,
 
-    parameter  type                   axi_ar_t     = logic,
-    parameter  type                   axi_r_t      = logic,
-    parameter  type                   axi_aw_t     = logic,
-    parameter  type                   axi_w_t      = logic,
-    parameter  type                   axi_b_t      = logic,
-    parameter  type                   axi_req_t    = logic,
-    parameter  type                   axi_resp_t   = logic,
+    parameter type axi_ar_t   = logic,
+    parameter type axi_r_t    = logic,
+    parameter type axi_aw_t   = logic,
+    parameter type axi_w_t    = logic,
+    parameter type axi_b_t    = logic,
+    parameter type axi_req_t  = logic,
+    parameter type axi_resp_t = logic,
 
-    parameter  type                   cluster_axi_ar_t     = logic,
-    parameter  type                   cluster_axi_r_t      = logic,
-    parameter  type                   cluster_axi_aw_t     = logic,
-    parameter  type                   cluster_axi_w_t      = logic,
-    parameter  type                   cluster_axi_b_t      = logic,
-    parameter  type                   cluster_axi_req_t    = logic,
-    parameter  type                   cluster_axi_resp_t   = logic,
+    parameter type cluster_axi_ar_t   = logic,
+    parameter type cluster_axi_r_t    = logic,
+    parameter type cluster_axi_aw_t   = logic,
+    parameter type cluster_axi_w_t    = logic,
+    parameter type cluster_axi_b_t    = logic,
+    parameter type cluster_axi_req_t  = logic,
+    parameter type cluster_axi_resp_t = logic,
 
-    localparam int  unsigned DataWidth = $bits(elen_t),
+    localparam int unsigned DataWidth = $bits(elen_t),
 
     // Dependant parameters. DO NOT CHANGE!
     // Ara has NrLanes + 3 processing elements: each one of the lanes, the vector load unit, the
     // vector store unit, the slide unit, and the mask unit.
-    localparam int           unsigned NrPEs        = NrLanes + 4
-  ) (
+    localparam int unsigned NrPEs = NrLanes + 4
+) (
     // Clock and Reset
-    input  logic              clk_i,
-    input  logic              rst_ni,
+    input  logic         clk_i,
+    input  logic         rst_ni,
     // Scan chain
-    input  logic              scan_enable_i,
-    input  logic              scan_data_i,
-    output logic              scan_data_o,
+    input  logic         scan_enable_i,
+    input  logic         scan_data_i,
+    output logic         scan_data_o,
     // Interface with Ariane
-    input  cva6_to_acc_t      acc_req_i,
-    output acc_to_cva6_t      acc_resp_o,
+    input  cva6_to_acc_t acc_req_i,
+    output acc_to_cva6_t acc_resp_o,
     // AXI interface
-    output axi_req_t          axi_req_o,
-    input  axi_resp_t         axi_resp_i
+    output axi_req_t     axi_req_o,
+    input  axi_resp_t    axi_resp_i
 
-  );
+);
 
-  `include "common_cells/registers.svh" 
+  `include "common_cells/registers.svh"
 
   // Number of Clusters configuration
   num_cluster_t numClusters;
@@ -86,10 +89,12 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   acc_to_cva6_t [NrClusters-1:0] acc_resp, acc_resp_cut;
   acc_to_cva6_t acc_resp_d, acc_resp_q;
 
-  cluster_axi_req_t      [NrClusters-1:0] ara_axi_req, ara_axi_req_cut, rs_axi_req, ldst_axi_req, ldst_axi_req_cut;
-  cluster_axi_resp_t     [NrClusters-1:0] ara_axi_resp, ara_axi_resp_cut, ldst_axi_resp, rs_axi_resp, ldst_axi_resp_cut;
+  cluster_axi_req_t [NrClusters-1:0]
+      ara_axi_req, ara_axi_req_cut, rs_axi_req, ldst_axi_req, ldst_axi_req_cut;
+  cluster_axi_resp_t [NrClusters-1:0]
+      ara_axi_resp, ara_axi_resp_cut, ldst_axi_resp, rs_axi_resp, ldst_axi_resp_cut;
 
-  axi_req_t  axi_req_cut, axi_req_ldst, axi_req_align, axi_req_align_o;
+  axi_req_t axi_req_cut, axi_req_ldst, axi_req_align, axi_req_align_o;
   axi_resp_t axi_resp_cut, axi_resp_ldst, axi_resp_align, axi_resp_align_i;
 
   // Ring connections
@@ -97,7 +102,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   logic [NrClusters-1:0] ring_data_l_ready, ring_data_l_valid, ring_data_r_ready, ring_data_r_valid;
 
   remote_data_t [NrClusters-1:0] ring_data_l_cut, ring_data_r_cut;
-  logic [NrClusters-1:0] ring_data_l_ready_cut, ring_data_l_valid_cut, ring_data_r_ready_cut, ring_data_r_valid_cut;
+  logic [NrClusters-1:0]
+      ring_data_l_ready_cut, ring_data_l_valid_cut, ring_data_r_ready_cut, ring_data_r_valid_cut;
 
   // Hierarchical stream fork
   localparam int nlevels = $clog2(NrClusters);
@@ -109,17 +115,18 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   // Shuffle stage to ARA cuts
   localparam int ShuffleCuts = $clog2(NrClusters);
-  typedef cluster_axi_req_t   [NrClusters-1:0] group_req_t;
-  typedef cluster_axi_resp_t  [NrClusters-1:0] group_resp_t;
+  typedef cluster_axi_req_t [NrClusters-1:0] group_req_t;
+  typedef cluster_axi_resp_t [NrClusters-1:0] group_resp_t;
 
-  group_req_t [ShuffleCuts:0] ara_axi_req_shuffle_cut;
+  group_req_t  [ShuffleCuts:0] ara_axi_req_shuffle_cut;
   group_resp_t [ShuffleCuts:0] ara_axi_resp_shuffle_cut;
 
-  cluster_metadata_t cluster_metadata_cut, 
-                     cluster_metadata_cut_rs,
-                     cluster_metadata_cut_glsu,
-                     cluster_metadata_cut_glsu2align,
-                     cluster_metadata_cut_align;
+  cluster_metadata_t
+      cluster_metadata_cut,
+      cluster_metadata_cut_rs,
+      cluster_metadata_cut_glsu,
+      cluster_metadata_cut_glsu2align,
+      cluster_metadata_cut_align;
 
   typedef cluster_metadata_t [NrClusters-1:0] cluster_metadata_group_t;
   cluster_metadata_group_t cluster_metadata;
@@ -137,7 +144,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   localparam int unsigned MaxNoRingCutEntries = 10;
 
   // Function to check if an index is in the active no-cut list.
-  function automatic bit is_index_in_list(int index, int list[MaxNoRingCutEntries], int unsigned list_len);
+  function automatic bit is_index_in_list(int index, int list[MaxNoRingCutEntries],
+                                          int unsigned list_len);
     int found = 0;
     for (int i = 0; i < list_len; i++) begin
       if (list[i] == index) found = 1;
@@ -148,21 +156,65 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
 
   // No-ring-cut profiles per supported NrClusters.
   // The cuts are specified for 4, 8, and 16 clusters. For other cluster counts, no cuts are applied.
-  localparam int idx_no_ring_cut_left_16[MaxNoRingCutEntries]  = '{0, 1, 3, 6, 7, 8, 9, 10, 13, 15};
+  localparam int idx_no_ring_cut_left_16[MaxNoRingCutEntries] = '{0, 1, 3, 6, 7, 8, 9, 10, 13, 15};
   localparam int idx_no_ring_cut_right_16[MaxNoRingCutEntries] = '{0, 2, 5, 6, 7, 8, 9, 12, 14, 15};
 
-  localparam int idx_no_ring_cut_left_8[MaxNoRingCutEntries]   = '{0, 2, 5, 6, -1, -1, -1, -1, -1, -1};
-  localparam int idx_no_ring_cut_right_8[MaxNoRingCutEntries]  = '{1, 4, 5, 7, -1, -1, -1, -1, -1, -1};
+  localparam int idx_no_ring_cut_left_8[MaxNoRingCutEntries] = '{
+      0,
+      2,
+      5,
+      6,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+  };
+  localparam int idx_no_ring_cut_right_8[MaxNoRingCutEntries] = '{
+      1,
+      4,
+      5,
+      7,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+  };
 
-  localparam int idx_no_ring_cut_left_4[MaxNoRingCutEntries]   = '{1, 3, -1, -1, -1, -1, -1, -1, -1, -1};
-  localparam int idx_no_ring_cut_right_4[MaxNoRingCutEntries]  = '{0, 2, -1, -1, -1, -1, -1, -1, -1, -1};
+  localparam int idx_no_ring_cut_left_4[MaxNoRingCutEntries] = '{
+      1,
+      3,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+  };
+  localparam int idx_no_ring_cut_right_4[MaxNoRingCutEntries] = '{
+      0,
+      2,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+  };
 
   function automatic bit bypass_ring_cut_left(int index);
     bypass_ring_cut_left = 1'b0;
     case (NrClusters)
       16: bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_16, 10);
-      8:  bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_8, 4);
-      4:  bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_4, 2);
+      8: bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_8, 4);
+      4: bypass_ring_cut_left = is_index_in_list(index, idx_no_ring_cut_left_4, 2);
       default: bypass_ring_cut_left = 1'b0;
     endcase
   endfunction
@@ -171,8 +223,8 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     bypass_ring_cut_right = 1'b0;
     case (NrClusters)
       16: bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_16, 10);
-      8:  bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_8, 4);
-      4:  bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_4, 2);
+      8: bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_8, 4);
+      4: bypass_ring_cut_right = is_index_in_list(index, idx_no_ring_cut_right_4, 2);
       default: bypass_ring_cut_right = 1'b0;
     endcase
   endfunction
@@ -185,108 +237,109 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   logic sldu_completed_all;
   logic sldu_completed_all_q1, sldu_completed_all_q2;
 
-  for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster
-      ara_macro #(
-        .NrLanes           (NrLanes             ),
-        .FPUSupport        (FPUSupport          ),
-        .FPExtSupport      (FPExtSupport        ),
-        .FixPtSupport      (FixPtSupport        ),
-        .CVA6Cfg           (CVA6Cfg             ),
-        .exception_t       (exception_t          ),
-        .accelerator_req_t (accelerator_req_t   ),
-        .accelerator_resp_t(accelerator_resp_t  ),
-        .cva6_to_acc_t     (cva6_to_acc_t       ),
-        .acc_to_cva6_t     (acc_to_cva6_t       ),
-        .AxiDataWidth      (AxiDataWidth        ),
-        .AxiAddrWidth      (AxiAddrWidth        ),
-        .ClusterAxiDataWidth (ClusterAxiDataWidth),
-        .cluster_axi_ar_t  (cluster_axi_ar_t    ),
-        .cluster_axi_r_t   (cluster_axi_r_t     ),
-        .cluster_axi_aw_t  (cluster_axi_aw_t    ),
-        .cluster_axi_w_t   (cluster_axi_w_t     ),
-        .cluster_axi_b_t   (cluster_axi_b_t     ),
-        .cluster_axi_req_t (cluster_axi_req_t   ),
-        .cluster_axi_resp_t(cluster_axi_resp_t  )
-      ) i_ara_macro (
-        .clk_i             (clk_i               ),
-        .rst_ni            (rst_ni              ),
+  for (genvar cluster = 0; cluster < NrClusters; cluster++) begin : p_cluster
+    ara_macro #(
+        .NrLanes            (NrLanes),
+        .FPUSupport         (FPUSupport),
+        .FPExtSupport       (FPExtSupport),
+        .FixPtSupport       (FixPtSupport),
+        .CVA6Cfg            (CVA6Cfg),
+        .exception_t        (exception_t),
+        .accelerator_req_t  (accelerator_req_t),
+        .accelerator_resp_t (accelerator_resp_t),
+        .cva6_to_acc_t      (cva6_to_acc_t),
+        .acc_to_cva6_t      (acc_to_cva6_t),
+        .AxiDataWidth       (AxiDataWidth),
+        .AxiAddrWidth       (AxiAddrWidth),
+        .ClusterAxiDataWidth(ClusterAxiDataWidth),
+        .cluster_axi_ar_t   (cluster_axi_ar_t),
+        .cluster_axi_r_t    (cluster_axi_r_t),
+        .cluster_axi_aw_t   (cluster_axi_aw_t),
+        .cluster_axi_w_t    (cluster_axi_w_t),
+        .cluster_axi_b_t    (cluster_axi_b_t),
+        .cluster_axi_req_t  (cluster_axi_req_t),
+        .cluster_axi_resp_t (cluster_axi_resp_t)
+    ) i_ara_macro (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
 
-        .scan_enable_i     (scan_enable_i       ),
-        .scan_data_i       (scan_data_i         ),
-        .scan_data_o       (/* Unused */        ),
+        .scan_enable_i(scan_enable_i),
+        .scan_data_i  (scan_data_i),
+        .scan_data_o  (  /* Unused */),
 
         // Id
-        .cluster_id_i      (id_cluster_t'(cluster) ),
-        .num_clusters_i    (numClusters            ),
+        .cluster_id_i  (id_cluster_t'(cluster)),
+        .num_clusters_i(numClusters),
 
         // Interface with Ariane
-        .acc_req_i         (acc_req_fork[nlevels][cluster]    ),
-        .acc_resp_o        (acc_resp_fork[nlevels][cluster]   ),
+        .acc_req_i (acc_req_fork[nlevels][cluster]),
+        .acc_resp_o(acc_resp_fork[nlevels][cluster]),
 
         // Interface with GLSU
-        .axi_req_o          (ara_axi_req[cluster]      ),
-        .axi_resp_i         (ara_axi_resp[cluster]     ),
-        .cluster_metadata_o (cluster_metadata[cluster] ),
+        .axi_req_o         (ara_axi_req[cluster]),
+        .axi_resp_i        (ara_axi_resp[cluster]),
+        .cluster_metadata_o(cluster_metadata[cluster]),
 
         // Synchronization for indexed operations and reductions
-        .idx_completed_o     (   /* unused */          ),
+        .idx_completed_o(  /* unused */),
         .idx_completed_sync_i(idx_completed_sync_all   ), // TODO: check in BE if it is in critical path
 
-        .sldu_completed_o      (sldu_completed[cluster]    ),
-        .sldu_pending_o        (sldu_participating[cluster]),
-        .sldu_completed_sync_i (sldu_completed_all_q2      ),
+        .sldu_completed_o     (sldu_completed[cluster]),
+        .sldu_pending_o       (sldu_participating[cluster]),
+        .sldu_completed_sync_i(sldu_completed_all_q2),
 
         // Ring
-        .ring_data_r_i       (ring_data_l_cut        [cluster == NrClusters-1 ? 0 : cluster + 1]     ),
-        .ring_data_r_valid_i (ring_data_l_valid_cut  [cluster == NrClusters-1 ? 0 : cluster + 1]     ),
-        .ring_data_r_ready_o (ring_data_l_ready  [cluster]                                           ),
+        .ring_data_r_i      (ring_data_l_cut[cluster == NrClusters - 1 ? 0 : cluster + 1]),
+        .ring_data_r_valid_i(ring_data_l_valid_cut[cluster == NrClusters - 1 ? 0 : cluster + 1]),
+        .ring_data_r_ready_o(ring_data_l_ready[cluster]),
 
-        .ring_data_l_i       (ring_data_r_cut        [cluster == 0 ? NrClusters-1 : cluster - 1]     ),
-        .ring_data_l_valid_i (ring_data_r_valid_cut  [cluster == 0 ? NrClusters-1 : cluster - 1]     ),
-        .ring_data_l_ready_o (ring_data_r_ready_cut  [cluster]                                       ),
+        .ring_data_l_i      (ring_data_r_cut[cluster == 0 ? NrClusters - 1 : cluster - 1]),
+        .ring_data_l_valid_i(ring_data_r_valid_cut[cluster == 0 ? NrClusters - 1 : cluster - 1]),
+        .ring_data_l_ready_o(ring_data_r_ready_cut[cluster]),
 
-        .ring_data_r_o       (ring_data_r        [cluster]                                       ),
-        .ring_data_r_valid_o (ring_data_r_valid  [cluster]                                       ),
-        .ring_data_r_ready_i (ring_data_r_ready  [cluster == NrClusters-1 ? 0 : cluster + 1]     ),
+        .ring_data_r_o      (ring_data_r[cluster]),
+        .ring_data_r_valid_o(ring_data_r_valid[cluster]),
+        .ring_data_r_ready_i(ring_data_r_ready[cluster == NrClusters - 1 ? 0 : cluster + 1]),
 
-        .ring_data_l_o       (ring_data_l        [cluster]                                       ),
-        .ring_data_l_valid_o (ring_data_l_valid  [cluster]                                       ),
-        .ring_data_l_ready_i (ring_data_l_ready_cut  [cluster == 0 ? NrClusters-1 : cluster - 1]     )
+        .ring_data_l_o      (ring_data_l[cluster]),
+        .ring_data_l_valid_o(ring_data_l_valid[cluster]),
+        .ring_data_l_ready_i(ring_data_l_ready_cut[cluster == 0 ? NrClusters - 1 : cluster - 1])
+    );
+
+    // Cuts from ara macro to the shuffle stage
+    assign ara_axi_req_shuffle_cut[0][cluster] = ara_axi_req[cluster];
+    assign ara_axi_resp[cluster] = ara_axi_resp_shuffle_cut[0][cluster];
+    assign cluster_metadata_shuffle_cut[0][cluster] = cluster_metadata[cluster];
+
+    for (genvar s = 0; s < ShuffleCuts; s++) begin
+      axi_cut #(
+          .ar_chan_t (cluster_axi_ar_t),
+          .aw_chan_t (cluster_axi_aw_t),
+          .b_chan_t  (cluster_axi_b_t),
+          .r_chan_t  (cluster_axi_r_t),
+          .w_chan_t  (cluster_axi_w_t),
+          .axi_req_t (cluster_axi_req_t),
+          .axi_resp_t(cluster_axi_resp_t)
+      ) i_macro_axi_cut (
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
+
+          .slv_req_i (ara_axi_req_shuffle_cut[s][cluster]),
+          .slv_resp_o(ara_axi_resp_shuffle_cut[s][cluster]),
+
+          .mst_req_o (ara_axi_req_shuffle_cut[s+1][cluster]),
+          .mst_resp_i(ara_axi_resp_shuffle_cut[s+1][cluster])
       );
-
-      // Cuts from ara macro to the shuffle stage
-      assign ara_axi_req_shuffle_cut[0][cluster] = ara_axi_req[cluster];
-      assign ara_axi_resp[cluster] = ara_axi_resp_shuffle_cut[0][cluster];
-      assign cluster_metadata_shuffle_cut[0][cluster] = cluster_metadata[cluster];
-
-      for (genvar s=0; s < ShuffleCuts; s++) begin
-        axi_cut #(
-          .ar_chan_t   (cluster_axi_ar_t     ),
-          .aw_chan_t   (cluster_axi_aw_t     ),
-          .b_chan_t    (cluster_axi_b_t      ),
-          .r_chan_t    (cluster_axi_r_t      ),
-          .w_chan_t    (cluster_axi_w_t      ),
-          .axi_req_t   (cluster_axi_req_t    ),
-          .axi_resp_t  (cluster_axi_resp_t   )
-        ) i_macro_axi_cut (
-          .clk_i       (clk_i),
-          .rst_ni      (rst_ni),
-
-          .slv_req_i   (ara_axi_req_shuffle_cut [s][cluster]),
-          .slv_resp_o  (ara_axi_resp_shuffle_cut[s][cluster]),
-
-          .mst_req_o   (ara_axi_req_shuffle_cut [s+1][cluster]),
-          .mst_resp_i  (ara_axi_resp_shuffle_cut[s+1][cluster])
-        );
-        `FF(cluster_metadata_shuffle_cut[s+1][cluster], cluster_metadata_shuffle_cut[s][cluster], cluster_metadata_t'('0), clk_i, rst_ni)
-      end
+      `FF(cluster_metadata_shuffle_cut[s+1][cluster], cluster_metadata_shuffle_cut[s][cluster],
+          cluster_metadata_t'('0), clk_i, rst_ni)
+    end
   end
 
   // Synchronization logic: wait for completion from all participating clusters
   // Accumulate completed and pending clusters over time, clear when all done
   // 2 pipeline stages on sldu_completed_all to relax timing in the cluster
   always_comb begin
-    sldu_completed_d = sldu_completed_q | sldu_completed;
+    sldu_completed_d   = sldu_completed_q | sldu_completed;
 
     // Only check completion for participating clusters
     sldu_completed_all = &(sldu_completed_d | ~sldu_participating);
@@ -308,118 +361,119 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
     end
   end
 
-  `ifdef ADD_RING_LATENCY
+`ifdef ADD_RING_LATENCY
 
-    typedef remote_data_t [`RING_LATENCY : 0] ring_cut_data_t;
-    ring_cut_data_t [NrClusters-1 : 0] data_l_cut, data_r_cut;
-    typedef logic [`RING_LATENCY:0] ring_bit_t;
-    ring_bit_t [NrClusters-1:0] data_l_valid_cut, data_l_ready_cut, data_r_valid_cut, data_r_ready_cut;
+  typedef remote_data_t [`RING_LATENCY : 0] ring_cut_data_t;
+  ring_cut_data_t [NrClusters-1 : 0] data_l_cut, data_r_cut;
+  typedef logic [`RING_LATENCY:0] ring_bit_t;
+  ring_bit_t [NrClusters-1:0]
+      data_l_valid_cut, data_l_ready_cut, data_r_valid_cut, data_r_ready_cut;
 
-    for (genvar cluster=0; cluster < NrClusters; cluster++) begin
-      for (genvar i=0; i < `RING_LATENCY; i++) begin : p_ring_cut
-          spill_register #(
-            .T(remote_data_t)
-          ) i_ring_latency_left (
-            .clk_i  (clk_i                      ),
-            .rst_ni (rst_ni                     ),
+  for (genvar cluster = 0; cluster < NrClusters; cluster++) begin
+    for (genvar i = 0; i < `RING_LATENCY; i++) begin : p_ring_cut
+      spill_register #(
+          .T(remote_data_t)
+      ) i_ring_latency_left (
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
 
-            .valid_i(data_l_valid_cut     [cluster][i]   ),
-            .ready_o(data_l_ready_cut     [cluster][i]   ),
-            .data_i (data_l_cut           [cluster][i]   ),
+          .valid_i(data_l_valid_cut[cluster][i]),
+          .ready_o(data_l_ready_cut[cluster][i]),
+          .data_i (data_l_cut[cluster][i]),
 
-            .valid_o(data_l_valid_cut     [cluster][i+1] ),
-            .ready_i(data_l_ready_cut     [cluster][i+1] ),
-            .data_o (data_l_cut           [cluster][i+1] )
-          );
+          .valid_o(data_l_valid_cut[cluster][i+1]),
+          .ready_i(data_l_ready_cut[cluster][i+1]),
+          .data_o (data_l_cut[cluster][i+1])
+      );
 
-          spill_register #(
-            .T(remote_data_t)
-          ) i_ring_latency_right (
-            .clk_i  (clk_i                      ),
-            .rst_ni (rst_ni                     ),
+      spill_register #(
+          .T(remote_data_t)
+      ) i_ring_latency_right (
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
 
-            .valid_i(data_r_valid_cut     [cluster][i]   ),
-            .ready_o(data_r_ready_cut     [cluster][i]   ),
-            .data_i (data_r_cut           [cluster][i]   ),
+          .valid_i(data_r_valid_cut[cluster][i]),
+          .ready_o(data_r_ready_cut[cluster][i]),
+          .data_i (data_r_cut[cluster][i]),
 
-            .valid_o(data_r_valid_cut     [cluster][i+1] ),
-            .ready_i(data_r_ready_cut     [cluster][i+1] ),
-            .data_o (data_r_cut           [cluster][i+1] )
-          );
-      end
-
-      assign data_l_valid_cut[cluster][0] = ring_data_l_valid[cluster];
-      assign ring_data_l_valid_cut[cluster] = data_l_valid_cut[cluster][`RING_LATENCY];
-
-      assign data_l_cut[cluster][0] = ring_data_l[cluster];
-      assign ring_data_l_cut[cluster] = data_l_cut[cluster][`RING_LATENCY];
-
-      assign ring_data_l_ready_cut[cluster == 0 ? NrClusters-1 : cluster - 1] = data_l_ready_cut[cluster][0];
-      assign data_l_ready_cut[cluster][`RING_LATENCY] = ring_data_l_ready[cluster == 0 ? NrClusters-1 : cluster - 1];
-
-      assign data_r_valid_cut[cluster][0] = ring_data_r_valid[cluster];
-      assign ring_data_r_valid_cut[cluster] = data_r_valid_cut[cluster][`RING_LATENCY];
-
-      assign data_r_cut[cluster][0] = ring_data_r[cluster];
-      assign ring_data_r_cut[cluster] = data_r_cut[cluster][`RING_LATENCY];
-
-      assign ring_data_r_ready[cluster == NrClusters-1 ? 0 : cluster + 1] = data_r_ready_cut[cluster][0];
-      assign data_r_ready_cut[cluster][`RING_LATENCY] = ring_data_r_ready_cut[cluster == NrClusters-1 ? 0 : cluster + 1];
+          .valid_o(data_r_valid_cut[cluster][i+1]),
+          .ready_i(data_r_ready_cut[cluster][i+1]),
+          .data_o (data_r_cut[cluster][i+1])
+      );
     end
 
-  `else
+    assign data_l_valid_cut[cluster][0] = ring_data_l_valid[cluster];
+    assign ring_data_l_valid_cut[cluster] = data_l_valid_cut[cluster][`RING_LATENCY];
 
-      for (genvar cluster=0; cluster < NrClusters; cluster++) begin
-        // Check if this cluster needs a cut on the left
-        if (bypass_ring_cut_left(cluster)) begin
-          // Pass through
-          assign ring_data_l_valid_cut[cluster] = ring_data_l_valid[cluster];
-          assign ring_data_l_ready_cut[cluster == 0 ? NrClusters-1 : cluster - 1] = ring_data_l_ready[cluster == 0 ? NrClusters-1 : cluster - 1];
-          assign ring_data_l_cut[cluster] = ring_data_l[cluster];
-        end else begin
-          // Cuts on the ring interface
-          // To meet timing at the top level
-          spill_register #(
-            .T(remote_data_t)
-          ) i_ring_macro_spill_left (
-            .clk_i  (clk_i                        ),
-            .rst_ni (rst_ni                       ),
+    assign data_l_cut[cluster][0] = ring_data_l[cluster];
+    assign ring_data_l_cut[cluster] = data_l_cut[cluster][`RING_LATENCY];
 
-            .valid_i(ring_data_l_valid         [cluster]                                     ),
-            .ready_o(ring_data_l_ready_cut     [cluster == 0 ? NrClusters-1 : cluster - 1]   ),
-            .data_i (ring_data_l               [cluster]                                     ),
+    assign ring_data_l_ready_cut[cluster == 0 ? NrClusters-1 : cluster - 1] = data_l_ready_cut[cluster][0];
+    assign data_l_ready_cut[cluster][`RING_LATENCY] = ring_data_l_ready[cluster == 0 ? NrClusters-1 : cluster - 1];
 
-            .valid_o(ring_data_l_valid_cut     [cluster]   ),
-            .ready_i(ring_data_l_ready         [cluster == 0 ? NrClusters-1 : cluster - 1]    ),
-            .data_o (ring_data_l_cut           [cluster]   )
-          );
-        end
+    assign data_r_valid_cut[cluster][0] = ring_data_r_valid[cluster];
+    assign ring_data_r_valid_cut[cluster] = data_r_valid_cut[cluster][`RING_LATENCY];
 
-        // Check if this cluster needs a cut on the right
-        if (bypass_ring_cut_right(cluster)) begin
-          // Pass through
-          assign ring_data_r_valid_cut[cluster] = ring_data_r_valid[cluster];
-          assign ring_data_r_ready[cluster == NrClusters-1 ? 0 : cluster + 1] = ring_data_r_ready_cut[cluster == NrClusters-1 ? 0 : cluster + 1];
-          assign ring_data_r_cut[cluster] = ring_data_r[cluster];
-        end else begin
-          spill_register #(
-            .T(remote_data_t)
-          ) i_ring_macro_spill_right (
-            .clk_i  (clk_i                        ),
-            .rst_ni (rst_ni                       ),
+    assign data_r_cut[cluster][0] = ring_data_r[cluster];
+    assign ring_data_r_cut[cluster] = data_r_cut[cluster][`RING_LATENCY];
 
-            .valid_i(ring_data_r_valid     [cluster]                                     ),
-            .ready_o(ring_data_r_ready     [cluster == NrClusters-1 ? 0 : cluster + 1]   ),
-            .data_i (ring_data_r           [cluster]                                     ),
+    assign ring_data_r_ready[cluster == NrClusters-1 ? 0 : cluster + 1] = data_r_ready_cut[cluster][0];
+    assign data_r_ready_cut[cluster][`RING_LATENCY] = ring_data_r_ready_cut[cluster == NrClusters-1 ? 0 : cluster + 1];
+  end
 
-            .valid_o(ring_data_r_valid_cut         [cluster]                                       ),
-            .ready_i(ring_data_r_ready_cut         [cluster == NrClusters-1 ? 0 : cluster + 1]     ),
-            .data_o (ring_data_r_cut               [cluster]                                       )
-          );
-        end
-      end
+`else
 
-  `endif
+  for (genvar cluster = 0; cluster < NrClusters; cluster++) begin
+    // Check if this cluster needs a cut on the left
+    if (bypass_ring_cut_left(cluster)) begin
+      // Pass through
+      assign ring_data_l_valid_cut[cluster] = ring_data_l_valid[cluster];
+      assign ring_data_l_ready_cut[cluster == 0 ? NrClusters-1 : cluster - 1] = ring_data_l_ready[cluster == 0 ? NrClusters-1 : cluster - 1];
+      assign ring_data_l_cut[cluster] = ring_data_l[cluster];
+    end else begin
+      // Cuts on the ring interface
+      // To meet timing at the top level
+      spill_register #(
+          .T(remote_data_t)
+      ) i_ring_macro_spill_left (
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
+
+          .valid_i(ring_data_l_valid[cluster]),
+          .ready_o(ring_data_l_ready_cut[cluster == 0 ? NrClusters - 1 : cluster - 1]),
+          .data_i (ring_data_l[cluster]),
+
+          .valid_o(ring_data_l_valid_cut[cluster]),
+          .ready_i(ring_data_l_ready[cluster == 0 ? NrClusters - 1 : cluster - 1]),
+          .data_o (ring_data_l_cut[cluster])
+      );
+    end
+
+    // Check if this cluster needs a cut on the right
+    if (bypass_ring_cut_right(cluster)) begin
+      // Pass through
+      assign ring_data_r_valid_cut[cluster] = ring_data_r_valid[cluster];
+      assign ring_data_r_ready[cluster == NrClusters-1 ? 0 : cluster + 1] = ring_data_r_ready_cut[cluster == NrClusters-1 ? 0 : cluster + 1];
+      assign ring_data_r_cut[cluster] = ring_data_r[cluster];
+    end else begin
+      spill_register #(
+          .T(remote_data_t)
+      ) i_ring_macro_spill_right (
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
+
+          .valid_i(ring_data_r_valid[cluster]),
+          .ready_o(ring_data_r_ready[cluster == NrClusters - 1 ? 0 : cluster + 1]),
+          .data_i (ring_data_r[cluster]),
+
+          .valid_o(ring_data_r_valid_cut[cluster]),
+          .ready_i(ring_data_r_ready_cut[cluster == NrClusters - 1 ? 0 : cluster + 1]),
+          .data_o (ring_data_r_cut[cluster])
+      );
+    end
+  end
+
+`endif
 
   //////////////////
   // GLOBAL LD-ST //
@@ -431,188 +485,189 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   assign cluster_metadata_cut = cluster_metadata_shuffle_cut[ShuffleCuts][0];
 
   shuffle_stage #(
-    .NrLanes              (NrLanes              ),
-    .NrClusters           (NrClusters           ),
-      .ClusterAxiDataWidth(ClusterAxiDataWidth  ),
-      .AxiAddrWidth       (AxiAddrWidth         ),
-      .axi_r_t            (cluster_axi_r_t      ),
-      .axi_w_t            (cluster_axi_w_t      ),
-      .axi_req_t          (cluster_axi_req_t    ),
-      .axi_resp_t         (cluster_axi_resp_t   )
-    ) i_shuffle_stage (
-      .clk_i              (clk_i                ),
-      .rst_ni             (rst_ni               ),
-      .cluster_metadata_i (cluster_metadata_shuffle_cut[ShuffleCuts]  ),
-      .idx_completed_o    (idx_completed_sync_all                     ),
-      .axi_req_i          (ara_axi_req_cut      ),
-      .axi_resp_o         (ara_axi_resp_cut     ),
-      .axi_req_o          (ldst_axi_req_cut     ),
-      .axi_resp_i         (ldst_axi_resp_cut    )
+      .NrLanes            (NrLanes),
+      .NrClusters         (NrClusters),
+      .ClusterAxiDataWidth(ClusterAxiDataWidth),
+      .AxiAddrWidth       (AxiAddrWidth),
+      .axi_r_t            (cluster_axi_r_t),
+      .axi_w_t            (cluster_axi_w_t),
+      .axi_req_t          (cluster_axi_req_t),
+      .axi_resp_t         (cluster_axi_resp_t)
+  ) i_shuffle_stage (
+      .clk_i             (clk_i),
+      .rst_ni            (rst_ni),
+      .cluster_metadata_i(cluster_metadata_shuffle_cut[ShuffleCuts]),
+      .idx_completed_o   (idx_completed_sync_all),
+      .axi_req_i         (ara_axi_req_cut),
+      .axi_resp_o        (ara_axi_resp_cut),
+      .axi_req_o         (ldst_axi_req_cut),
+      .axi_resp_i        (ldst_axi_resp_cut)
   );
 
-  for (genvar cluster=0; cluster < NrClusters; cluster++) begin : p_cluster_cut
+  for (genvar cluster = 0; cluster < NrClusters; cluster++) begin : p_cluster_cut
     axi_cut #(
-        .ar_chan_t   (cluster_axi_ar_t     ),
-        .aw_chan_t   (cluster_axi_aw_t     ),
-        .b_chan_t    (cluster_axi_b_t      ),
-        .r_chan_t    (cluster_axi_r_t      ),
-        .w_chan_t    (cluster_axi_w_t      ),
-        .axi_req_t   (cluster_axi_req_t    ),
-        .axi_resp_t  (cluster_axi_resp_t   )
+        .ar_chan_t (cluster_axi_ar_t),
+        .aw_chan_t (cluster_axi_aw_t),
+        .b_chan_t  (cluster_axi_b_t),
+        .r_chan_t  (cluster_axi_r_t),
+        .w_chan_t  (cluster_axi_w_t),
+        .axi_req_t (cluster_axi_req_t),
+        .axi_resp_t(cluster_axi_resp_t)
     ) i_shuffle_axi_cut (
-        .clk_i       (clk_i),
-        .rst_ni      (rst_ni),
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
 
-        .slv_req_i   (ldst_axi_req_cut[cluster]),
-        .slv_resp_o  (ldst_axi_resp_cut[cluster]),
+        .slv_req_i (ldst_axi_req_cut[cluster]),
+        .slv_resp_o(ldst_axi_resp_cut[cluster]),
 
-        .mst_req_o   (rs_axi_req[cluster]),
-        .mst_resp_i  (rs_axi_resp[cluster])
-      );
+        .mst_req_o (rs_axi_req[cluster]),
+        .mst_resp_i(rs_axi_resp[cluster])
+    );
   end
 
   `FF(cluster_metadata_cut_rs, cluster_metadata_cut, cluster_metadata_t'('0), clk_i, rst_ni)
 
   // Reshuffle filter
   reshuffle_filter #(
-    .NrLanes            (NrLanes            ),
-    .NrClusters         (NrClusters         ),
-    .ClusterAxiDataWidth(ClusterAxiDataWidth),
-    .cluster_axi_req_t  (cluster_axi_req_t  ),
-    .cluster_axi_resp_t (cluster_axi_resp_t ),
-    .axi_req_t          (axi_req_t          ),
-    .axi_resp_t         (axi_resp_t         )
+      .NrLanes            (NrLanes),
+      .NrClusters         (NrClusters),
+      .ClusterAxiDataWidth(ClusterAxiDataWidth),
+      .cluster_axi_req_t  (cluster_axi_req_t),
+      .cluster_axi_resp_t (cluster_axi_resp_t),
+      .axi_req_t          (axi_req_t),
+      .axi_resp_t         (axi_resp_t)
   ) i_reshuffle_filter (
-    .clk_i              (clk_i              ),
-    .rst_ni             (rst_ni             ),
-    // To Ara
-    .axi_req_i          (rs_axi_req       ),
-    .axi_resp_o         (rs_axi_resp      ),
-    .cluster_metadata_i (cluster_metadata_cut_rs  ),
-    .cluster_metadata_o (cluster_metadata_cut_glsu),
-    // To GLSU
-    .axi_resp_i         (ldst_axi_resp       ),
-    .axi_req_o          (ldst_axi_req        )
+      .clk_i             (clk_i),
+      .rst_ni            (rst_ni),
+      // To Ara
+      .axi_req_i         (rs_axi_req),
+      .axi_resp_o        (rs_axi_resp),
+      .cluster_metadata_i(cluster_metadata_cut_rs),
+      .cluster_metadata_o(cluster_metadata_cut_glsu),
+      // To GLSU
+      .axi_resp_i        (ldst_axi_resp),
+      .axi_req_o         (ldst_axi_req)
   );
 
   // Global Ld/St Unit
   global_ldst #(
-    .NrLanes            (NrLanes            ),
-    .NrClusters         (NrClusters         ),
-    .AxiDataWidth       (AxiDataWidth       ),
-    .ClusterAxiDataWidth(ClusterAxiDataWidth),
-    .AxiAddrWidth       (AxiAddrWidth       ),
-    .cluster_axi_req_t  (cluster_axi_req_t  ),
-    .cluster_axi_resp_t (cluster_axi_resp_t ),
-    .axi_req_t          (axi_req_t          ),
-    .axi_resp_t         (axi_resp_t         )
+      .NrLanes            (NrLanes),
+      .NrClusters         (NrClusters),
+      .AxiDataWidth       (AxiDataWidth),
+      .ClusterAxiDataWidth(ClusterAxiDataWidth),
+      .AxiAddrWidth       (AxiAddrWidth),
+      .cluster_axi_req_t  (cluster_axi_req_t),
+      .cluster_axi_resp_t (cluster_axi_resp_t),
+      .axi_req_t          (axi_req_t),
+      .axi_resp_t         (axi_resp_t)
   ) i_global_ldst (
-    .clk_i              (clk_i              ),
-    .rst_ni             (rst_ni             ),
-    // To Ara
-    .axi_req_i          (ldst_axi_req       ),
-    .axi_resp_o         (ldst_axi_resp      ),
-    .cluster_metadata_i (cluster_metadata_cut_glsu      ),
-    .cluster_metadata_o (cluster_metadata_cut_glsu2align),
-    // To System
-    .axi_resp_i         (axi_resp_cut       ),
-    .axi_req_o          (axi_req_cut        )
+      .clk_i             (clk_i),
+      .rst_ni            (rst_ni),
+      // To Ara
+      .axi_req_i         (ldst_axi_req),
+      .axi_resp_o        (ldst_axi_resp),
+      .cluster_metadata_i(cluster_metadata_cut_glsu),
+      .cluster_metadata_o(cluster_metadata_cut_glsu2align),
+      // To System
+      .axi_resp_i        (axi_resp_cut),
+      .axi_req_o         (axi_req_cut)
   );
 
   axi_cut #(
-    .ar_chan_t   (axi_ar_t     ),
-    .aw_chan_t   (axi_aw_t     ),
-    .b_chan_t    (axi_b_t      ),
-    .r_chan_t    (axi_r_t      ),
-    .w_chan_t    (axi_w_t      ),
-    .axi_req_t   (axi_req_t    ),
-    .axi_resp_t  (axi_resp_t   )
+      .ar_chan_t (axi_ar_t),
+      .aw_chan_t (axi_aw_t),
+      .b_chan_t  (axi_b_t),
+      .r_chan_t  (axi_r_t),
+      .w_chan_t  (axi_w_t),
+      .axi_req_t (axi_req_t),
+      .axi_resp_t(axi_resp_t)
   ) i_global_axi_cut (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .slv_req_i   (axi_req_cut),
-    .slv_resp_o  (axi_resp_cut),
-    .mst_req_o   (axi_req_ldst),
-    .mst_resp_i  (axi_resp_ldst)
+      .clk_i     (clk_i),
+      .rst_ni    (rst_ni),
+      .slv_req_i (axi_req_cut),
+      .slv_resp_o(axi_resp_cut),
+      .mst_req_o (axi_req_ldst),
+      .mst_resp_i(axi_resp_ldst)
   );
 
-  `FF(cluster_metadata_cut_align, cluster_metadata_cut_glsu2align, cluster_metadata_t'('0), clk_i, rst_ni)
+  `FF(cluster_metadata_cut_align, cluster_metadata_cut_glsu2align, cluster_metadata_t'('0), clk_i,
+      rst_ni)
 
   // Align stage
   align_stage #(
-      .NrClusters       (NrClusters         ),
-      .AxiDataWidth     (AxiDataWidth       ),
-      .AxiAddrWidth     (AxiAddrWidth       ),
-      .axi_ar_t         (axi_ar_t           ),
-      .axi_aw_t         (axi_aw_t           ),
-      .axi_b_t          (axi_b_t            ),
-      .axi_r_t          (axi_r_t            ),
-      .axi_w_t          (axi_w_t            ),
-      .axi_req_t        (axi_req_t          ),
-      .axi_resp_t       (axi_resp_t         )
-    ) i_align_stage (
-      .clk_i               (clk_i                        ),
-      .rst_ni              (rst_ni                       ),
-      .cluster_metadata_i  (cluster_metadata_cut_align   ),
-      .axi_req_i           (axi_req_ldst                 ),
-      .axi_resp_o          (axi_resp_ldst                ),
-      .axi_req_o           (axi_req_align                ),
-      .axi_resp_i          (axi_resp_align               )
+      .NrClusters  (NrClusters),
+      .AxiDataWidth(AxiDataWidth),
+      .AxiAddrWidth(AxiAddrWidth),
+      .axi_ar_t    (axi_ar_t),
+      .axi_aw_t    (axi_aw_t),
+      .axi_b_t     (axi_b_t),
+      .axi_r_t     (axi_r_t),
+      .axi_w_t     (axi_w_t),
+      .axi_req_t   (axi_req_t),
+      .axi_resp_t  (axi_resp_t)
+  ) i_align_stage (
+      .clk_i             (clk_i),
+      .rst_ni            (rst_ni),
+      .cluster_metadata_i(cluster_metadata_cut_align),
+      .axi_req_i         (axi_req_ldst),
+      .axi_resp_o        (axi_resp_ldst),
+      .axi_req_o         (axi_req_align),
+      .axi_resp_i        (axi_resp_align)
   );
 
   axi_cut #(
-    .ar_chan_t   (axi_ar_t     ),
-    .aw_chan_t   (axi_aw_t     ),
-    .b_chan_t    (axi_b_t      ),
-    .r_chan_t    (axi_r_t      ),
-    .w_chan_t    (axi_w_t      ),
-    .axi_req_t   (axi_req_t    ),
-    .axi_resp_t  (axi_resp_t   )
+      .ar_chan_t (axi_ar_t),
+      .aw_chan_t (axi_aw_t),
+      .b_chan_t  (axi_b_t),
+      .r_chan_t  (axi_r_t),
+      .w_chan_t  (axi_w_t),
+      .axi_req_t (axi_req_t),
+      .axi_resp_t(axi_resp_t)
   ) i_align_axi_cut (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .slv_req_i   (axi_req_align),
-    .slv_resp_o  (axi_resp_align),
-    .mst_req_o   (axi_req_align_o),
-    .mst_resp_i  (axi_resp_align_i)
+      .clk_i     (clk_i),
+      .rst_ni    (rst_ni),
+      .slv_req_i (axi_req_align),
+      .slv_resp_o(axi_resp_align),
+      .mst_req_o (axi_req_align_o),
+      .mst_resp_i(axi_resp_align_i)
   );
 
   // For performance simulations to understand impact of memory access latency
-  `ifdef ADD_MEM_LATENCY
-    axi_req_t [`MEM_LATENCY:0] axi_req_latency;
-    axi_resp_t [`MEM_LATENCY:0] axi_resp_latency;
+`ifdef ADD_MEM_LATENCY
+  axi_req_t  [`MEM_LATENCY:0] axi_req_latency;
+  axi_resp_t [`MEM_LATENCY:0] axi_resp_latency;
 
-    for (genvar i=0; i < `MEM_LATENCY; i++) begin
+  for (genvar i = 0; i < `MEM_LATENCY; i++) begin
 
-      axi_cut #(
-        .ar_chan_t   (axi_ar_t     ),
-        .aw_chan_t   (axi_aw_t     ),
-        .b_chan_t    (axi_b_t      ),
-        .r_chan_t    (axi_r_t      ),
-        .w_chan_t    (axi_w_t      ),
-        .axi_req_t   (axi_req_t    ),
-        .axi_resp_t  (axi_resp_t   )
-      ) i_mem_latency_axi_cut (
-        .clk_i       (clk_i),
-        .rst_ni      (rst_ni),
-        .slv_req_i   (axi_req_latency[i]),
-        .slv_resp_o  (axi_resp_latency[i]),
-        .mst_req_o   (axi_req_latency[i+1]),
-        .mst_resp_i  (axi_resp_latency[i+1])
-      );
-    end
+    axi_cut #(
+        .ar_chan_t (axi_ar_t),
+        .aw_chan_t (axi_aw_t),
+        .b_chan_t  (axi_b_t),
+        .r_chan_t  (axi_r_t),
+        .w_chan_t  (axi_w_t),
+        .axi_req_t (axi_req_t),
+        .axi_resp_t(axi_resp_t)
+    ) i_mem_latency_axi_cut (
+        .clk_i     (clk_i),
+        .rst_ni    (rst_ni),
+        .slv_req_i (axi_req_latency[i]),
+        .slv_resp_o(axi_resp_latency[i]),
+        .mst_req_o (axi_req_latency[i+1]),
+        .mst_resp_i(axi_resp_latency[i+1])
+    );
+  end
 
-    assign axi_req_latency[0] = axi_req_align_o;
-    assign axi_resp_latency[`MEM_LATENCY] = axi_resp_i;
+  assign axi_req_latency[0] = axi_req_align_o;
+  assign axi_resp_latency[`MEM_LATENCY] = axi_resp_i;
 
-    assign axi_req_o = axi_req_latency[`MEM_LATENCY];
-    assign axi_resp_align_i = axi_resp_latency[0];
+  assign axi_req_o = axi_req_latency[`MEM_LATENCY];
+  assign axi_resp_align_i = axi_resp_latency[0];
 
-  `else
-    assign axi_req_o = axi_req_align_o;
-    assign axi_resp_align_i = axi_resp_i;
+`else
+  assign axi_req_o = axi_req_align_o;
+  assign axi_resp_align_i = axi_resp_i;
 
-  `endif
+`endif
 
   //////////////////
   ////// CVA6 //////
@@ -624,61 +679,60 @@ module ara_cluster import ara_pkg::*; import rvv_pkg::*;  #(
   // This is implemented by using a stream fork module
 
   // For performance simulations to understand impact of cva6 latency
-  `ifdef ADD_CVA6_LATENCY
+`ifdef ADD_CVA6_LATENCY
 
-    cva6_to_acc_t req_cut_i, req_cut_o;
-    acc_to_cva6_t resp_cut_i, resp_cut_o;
+  cva6_to_acc_t req_cut_i, req_cut_o;
+  acc_to_cva6_t resp_cut_i, resp_cut_o;
 
-    cva6_cut # (
-      .NrCuts            (`CVA6_LATENCY        ),
-      .cva6_to_acc_t     (cva6_to_acc_t        ),
-      .acc_to_cva6_t     (acc_to_cva6_t        )
-    ) i_cva6_latency_cut (
-      .clk_i       (clk_i         ),
-      .rst_ni      (rst_ni        ),
+  cva6_cut #(
+      .NrCuts       (`CVA6_LATENCY),
+      .cva6_to_acc_t(cva6_to_acc_t),
+      .acc_to_cva6_t(acc_to_cva6_t)
+  ) i_cva6_latency_cut (
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-      .acc_req_i   (req_cut_i     ),
-      .acc_resp_o  (resp_cut_o    ),
+      .acc_req_i (req_cut_i),
+      .acc_resp_o(resp_cut_o),
 
-      .acc_req_o   (req_cut_o     ),
-      .acc_resp_i  (resp_cut_i    )
-    );
+      .acc_req_o (req_cut_o),
+      .acc_resp_i(resp_cut_i)
+  );
 
-    assign req_cut_i = acc_req_i;
-    assign acc_resp_o = resp_cut_o;
+  assign req_cut_i = acc_req_i;
+  assign acc_resp_o = resp_cut_o;
 
-    assign acc_req_fork[0][0] = req_cut_o;
-    assign resp_cut_i = acc_resp_fork[0][0];
+  assign acc_req_fork[0][0] = req_cut_o;
+  assign resp_cut_i = acc_resp_fork[0][0];
 
-  `else
-    assign acc_req_fork[0][0] = acc_req_i;
-    assign acc_resp_o = acc_resp_fork[0][0];
+`else
+  assign acc_req_fork[0][0] = acc_req_i;
+  assign acc_resp_o = acc_resp_fork[0][0];
 
-  `endif
+`endif
 
-  for (genvar l=0; l < nlevels; l++) begin : p_level
-    for (genvar n=0; n < (1<<l); n++) begin : p_fork
+  for (genvar l = 0; l < nlevels; l++) begin : p_level
+    for (genvar n = 0; n < (1 << l); n++) begin : p_fork
 
       // Req fork
       req_fork_cut #(
-        //.NrCuts ((l==0 || l==2) ? 1 : 0)
-        .NrCuts (1), 
-        .cva6_to_acc_t     (cva6_to_acc_t        ),
-        .acc_to_cva6_t     (acc_to_cva6_t        )
+          //.NrCuts ((l==0 || l==2) ? 1 : 0)
+          .NrCuts       (1),
+          .cva6_to_acc_t(cva6_to_acc_t),
+          .acc_to_cva6_t(acc_to_cva6_t)
       ) i_req_fork (
-        .clk_i (clk_i                          ),
-        .rst_ni(rst_ni                         ),
+          .clk_i (clk_i),
+          .rst_ni(rst_ni),
 
-        .req_i (acc_req_fork[l][n]         ),
-        .resp_o(acc_resp_fork[l][n]         ),
+          .req_i (acc_req_fork[l][n]),
+          .resp_o(acc_resp_fork[l][n]),
 
-        .req_o (acc_req_fork[l+1][2*n +: 2]  ),
-        .resp_i(acc_resp_fork[l+1][2*n +: 2]  )
+          .req_o (acc_req_fork[l+1][2*n+:2]),
+          .resp_i(acc_resp_fork[l+1][2*n+:2])
       );
     end
   end
 
-  if (NrClusters > MaxNrClusters)
-    $error("Increase MaxNrClusters in ara_pkg size");
+  if (NrClusters > MaxNrClusters) $error("Increase MaxNrClusters in ara_pkg size");
 
 endmodule : ara_cluster

@@ -7,18 +7,18 @@
 `ifndef ARA_SVH_
 `define ARA_SVH_
 
-  // Structs in ports of hierarchical modules are not supported in Verilator
-  // --> Flatten them for Verilator
-  `define STRUCT_PORT(struct_t)  \
+// Structs in ports of hierarchical modules are not supported in Verilator
+// --> Flatten them for Verilator
+`define STRUCT_PORT(struct_t)  \
   `ifndef VERILATOR              \
     struct_t                     \
   `else                          \
     logic[$bits(struct_t)-1:0]   \
   `endif
 
-  // Create a flattened vector of a struct. Make sure the first dimension is
-  // the dimension into the vector of struct types and not the struct itself.
-  `define STRUCT_VECT(struct_t, dim)  \
+// Create a flattened vector of a struct. Make sure the first dimension is
+// the dimension into the vector of struct types and not the struct itself.
+`define STRUCT_VECT(struct_t, dim)  \
   `ifndef VERILATOR                   \
     struct_t dim                      \
   `else                               \

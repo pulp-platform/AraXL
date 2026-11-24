@@ -6,192 +6,195 @@
 // Description:
 // A Repeatable ARA macro, containing ARA and ring router
 
-module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
+module ara_macro
+  import ara_pkg::*;
+  import rvv_pkg::*;
+#(
     // RVV Parameters
-    parameter  int           unsigned NrLanes      = 0,   // Number of parallel vector lanes per Ara instance
+    parameter int unsigned NrLanes = 0,  // Number of parallel vector lanes per Ara instance
     // Support for floating-point data types
-    parameter  fpu_support_e          FPUSupport   = FPUSupportHalfSingleDouble,
+    parameter fpu_support_e FPUSupport = FPUSupportHalfSingleDouble,
     // External support for vfrec7, vfrsqrt7
-    parameter  fpext_support_e        FPExtSupport = FPExtSupportEnable,
+    parameter fpext_support_e FPExtSupport = FPExtSupportEnable,
     // Support for fixed-point data types
-    parameter  fixpt_support_e        FixPtSupport = FixedPointEnable,
+    parameter fixpt_support_e FixPtSupport = FixedPointEnable,
 
     // Ariane configuration
-    parameter config_pkg::cva6_cfg_t            CVA6Cfg            = cva6_config_pkg::cva6_cfg,
+    parameter config_pkg::cva6_cfg_t CVA6Cfg            = cva6_config_pkg::cva6_cfg,
     // CVA6-related parameters
-    parameter type                              exception_t        = logic,
-    parameter type                              accelerator_req_t  = logic,
-    parameter type                              accelerator_resp_t = logic,
-    parameter type                              cva6_to_acc_t      = logic,
-    parameter type                              acc_to_cva6_t      = logic,
+    parameter type                   exception_t        = logic,
+    parameter type                   accelerator_req_t  = logic,
+    parameter type                   accelerator_resp_t = logic,
+    parameter type                   cva6_to_acc_t      = logic,
+    parameter type                   acc_to_cva6_t      = logic,
 
     // AXI Interface
-    parameter  int           unsigned AxiDataWidth        = 0,
-    parameter  int           unsigned AxiAddrWidth        = 0,
-    parameter  int           unsigned ClusterAxiDataWidth = 0,
+    parameter int unsigned AxiDataWidth        = 0,
+    parameter int unsigned AxiAddrWidth        = 0,
+    parameter int unsigned ClusterAxiDataWidth = 0,
 
-    parameter  type                   cluster_axi_ar_t     = logic,
-    parameter  type                   cluster_axi_r_t      = logic,
-    parameter  type                   cluster_axi_aw_t     = logic,
-    parameter  type                   cluster_axi_w_t      = logic,
-    parameter  type                   cluster_axi_b_t      = logic,
-    parameter  type                   cluster_axi_req_t    = logic,
-    parameter  type                   cluster_axi_resp_t   = logic,
-  
-    localparam int  unsigned DataWidth = $bits(elen_t),
+    parameter type cluster_axi_ar_t   = logic,
+    parameter type cluster_axi_r_t    = logic,
+    parameter type cluster_axi_aw_t   = logic,
+    parameter type cluster_axi_w_t    = logic,
+    parameter type cluster_axi_b_t    = logic,
+    parameter type cluster_axi_req_t  = logic,
+    parameter type cluster_axi_resp_t = logic,
+
+    localparam int unsigned DataWidth = $bits(elen_t),
 
     // Dependant parameters. DO NOT CHANGE!
     // Ara has NrLanes + 3 processing elements: each one of the lanes, the vector load unit, the
     // vector store unit, the slide unit, and the mask unit.
-    localparam int           unsigned NrPEs        = NrLanes + 4
-  ) (
+    localparam int unsigned NrPEs = NrLanes + 4
+) (
     // Clock and Reset
-    input  logic              clk_i,
-    input  logic              rst_ni,
+    input logic clk_i,
+    input logic rst_ni,
 
     // Scan chain
-    input  logic              scan_enable_i,
-    input  logic              scan_data_i,
-    output logic              scan_data_o,
+    input  logic scan_enable_i,
+    input  logic scan_data_i,
+    output logic scan_data_o,
 
     // Id
-    input  id_cluster_t       cluster_id_i,
-    input  num_cluster_t      num_clusters_i,
+    input id_cluster_t  cluster_id_i,
+    input num_cluster_t num_clusters_i,
 
     // Interface with Ariane
-    input  cva6_to_acc_t      acc_req_i,
-    output acc_to_cva6_t      acc_resp_o,
+    input  cva6_to_acc_t acc_req_i,
+    output acc_to_cva6_t acc_resp_o,
 
     // AXI interface
-    output cluster_axi_req_t     axi_req_o,
-    input  cluster_axi_resp_t    axi_resp_i,
+    output cluster_axi_req_t  axi_req_o,
+    input  cluster_axi_resp_t axi_resp_i,
 
     // Synchronization for indexed operations
-    output logic                 idx_completed_o,
-    input  logic                 idx_completed_sync_i,
+    output logic idx_completed_o,
+    input  logic idx_completed_sync_i,
 
     // Synchronization of reduction operations
-    output logic                 sldu_completed_o,
-    output logic                 sldu_pending_o,
-    input  logic                 sldu_completed_sync_i,
+    output logic sldu_completed_o,
+    output logic sldu_pending_o,
+    input  logic sldu_completed_sync_i,
 
     // Ring
-    input remote_data_t  ring_data_r_i,
-    input logic          ring_data_r_valid_i,
-    output logic         ring_data_r_ready_o, 
+    input  remote_data_t ring_data_r_i,
+    input  logic         ring_data_r_valid_i,
+    output logic         ring_data_r_ready_o,
 
-    input remote_data_t  ring_data_l_i,
-    input logic          ring_data_l_valid_i,
-    output logic         ring_data_l_ready_o, 
+    input  remote_data_t ring_data_l_i,
+    input  logic         ring_data_l_valid_i,
+    output logic         ring_data_l_ready_o,
 
     output remote_data_t ring_data_r_o,
     output logic         ring_data_r_valid_o,
-    input logic          ring_data_r_ready_i, 
+    input  logic         ring_data_r_ready_i,
 
     output remote_data_t ring_data_l_o,
     output logic         ring_data_l_valid_o,
-    input logic          ring_data_l_ready_i,
+    input  logic         ring_data_l_ready_i,
 
     output cluster_metadata_t cluster_metadata_o
-  );
+);
 
   `include "common_cells/registers.svh"
 
   // To System AXI
-  cluster_axi_req_t     ara_axi_req;
-  cluster_axi_resp_t    ara_axi_resp;
+  cluster_axi_req_t  ara_axi_req;
+  cluster_axi_resp_t ara_axi_resp;
 
   // Sldu to Ariane
-  remote_data_t sldu_i, sldu_o; 
-  logic         sldu_valid_i, sldu_valid_o; 
-  logic         sldu_ready_i, sldu_ready_o;
+  remote_data_t sldu_i, sldu_o;
+  logic sldu_valid_i, sldu_valid_o;
+  logic sldu_ready_i, sldu_ready_o;
 
   vew_e vew_ar, vew_aw;
   vlen_cluster_t vl_ldst;
-  id_cluster_t cluster_id;
-  num_cluster_t num_clusters;
+  id_cluster_t   cluster_id;
+  num_cluster_t  num_clusters;
 
   cva6_to_acc_t acc_req, acc_req_o;
   acc_to_cva6_t acc_resp, acc_resp_out;
 
   //// Request signals
-  logic                                 req_valid;
-  logic                                 resp_ready;
-  logic                                 acc_cons_en;
-  logic                                 store_pending_req;
-  logic                                 inval_ready;
+  logic                     req_valid;
+  logic                     resp_ready;
+  logic                     acc_cons_en;
+  logic                     store_pending_req;
+  logic                     inval_ready;
   //// Response signals
-  logic                                 req_ready;
-  logic                                 resp_valid;
+  logic                     req_ready;
+  logic                     resp_valid;
   // Metadata
-  logic                                 store_pending;
-  logic                                 store_complete;
-  logic                                 load_complete;
-  logic [4:0]                           fflags;
-  logic                                 fflags_valid;
+  logic                     store_pending;
+  logic                     store_complete;
+  logic                     load_complete;
+  logic              [ 4:0] fflags;
+  logic                     fflags_valid;
   // Invalidation interface
-  logic                                 inval_valid;
-  logic [63:0]                          inval_addr;
+  logic                     inval_valid;
+  logic              [63:0] inval_addr;
 
   /////////////////////////
   // Cuts for the macro ///
   /////////////////////////
 
-  cluster_metadata_t cluster_metadata;
+  cluster_metadata_t        cluster_metadata;
 
   `FF(cluster_metadata_o, cluster_metadata, cluster_metadata_t'('0), clk_i, rst_ni);
   `FF(cluster_id, cluster_id_i, '0, clk_i, rst_ni);
   `FF(num_clusters, num_clusters_i, '0, clk_i, rst_ni);
-  
+
   // Cut Request interface
   spill_register #(
-    .T(cva6_to_acc_t)
+      .T(cva6_to_acc_t)
   ) i_cva6_req_cut (
-    .clk_i  (clk_i                         ),
-    .rst_ni (rst_ni                        ),
-    
-    .valid_i(acc_req_i.acc_req.req_valid           ),
-    .ready_o(req_ready                     ),
-    .data_i (acc_req_i                     ),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    .valid_o(req_valid                     ),
-    .ready_i(acc_resp.acc_resp.req_ready            ),
-    .data_o (acc_req                       )
+      .valid_i(acc_req_i.acc_req.req_valid),
+      .ready_o(req_ready),
+      .data_i (acc_req_i),
+
+      .valid_o(req_valid),
+      .ready_i(acc_resp.acc_resp.req_ready),
+      .data_o (acc_req)
   );
 
   // Cut Response interface
   spill_register #(
-    .T(acc_to_cva6_t)
+      .T(acc_to_cva6_t)
   ) i_cva6_resp_cut (
-    .clk_i  (clk_i                        ),
-    .rst_ni (rst_ni                       ),
-    
-    .valid_i(acc_resp.acc_resp.resp_valid          ),
-    .ready_o(resp_ready                   ),
-    .data_i (acc_resp                     ),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    .valid_o(resp_valid                   ),
-    .ready_i(acc_req_i.acc_req.resp_ready         ),
-    .data_o (acc_resp_out                 )
+      .valid_i(acc_resp.acc_resp.resp_valid),
+      .ready_o(resp_ready),
+      .data_i (acc_resp),
+
+      .valid_o(resp_valid),
+      .ready_i(acc_req_i.acc_req.resp_ready),
+      .data_o (acc_resp_out)
   );
 
   // Invalidation interface
   spill_register #(
-    .T(logic [63:0])
+      .T(logic [63:0])
   ) i_cva6_invalid_cut (
-    .clk_i  (clk_i                        ),
-    .rst_ni (rst_ni                       ),
-    
-    .valid_i(acc_resp.acc_resp.inval_valid       ),
-    .ready_o(inval_ready                  ),
-    .data_i (acc_resp.acc_resp.inval_addr          ),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    .valid_o(inval_valid                ),
-    .ready_i(acc_req_i.acc_req.inval_ready        ),
-    .data_o (inval_addr                 )
+      .valid_i(acc_resp.acc_resp.inval_valid),
+      .ready_o(inval_ready),
+      .data_i (acc_resp.acc_resp.inval_addr),
+
+      .valid_o(inval_valid),
+      .ready_i(acc_req_i.acc_req.inval_ready),
+      .data_o (inval_addr)
   );
 
-   //`FF(trans_id, acc_resp.trans_id, '0, clk_i, rst_ni);
+  //`FF(trans_id, acc_resp.trans_id, '0, clk_i, rst_ni);
   `FF(load_complete, acc_resp.acc_resp.load_complete, '0, clk_i, rst_ni);
   `FF(store_complete, acc_resp.acc_resp.store_complete, '0, clk_i, rst_ni);
   `FF(store_pending, acc_resp.acc_resp.store_pending, '0, clk_i, rst_ni);
@@ -205,7 +208,7 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
     acc_resp_o = acc_resp_out;
     acc_resp_o.acc_resp.req_ready = req_ready;
     acc_resp_o.acc_resp.resp_valid = resp_valid;
-    
+
     // MetaData
     acc_resp_o.acc_resp.load_complete = load_complete;
     acc_resp_o.acc_resp.store_complete = store_complete;
@@ -228,111 +231,111 @@ module ara_macro import ara_pkg::*; import rvv_pkg::*; #(
   end
 
   axi_cut #(
-    .ar_chan_t   (cluster_axi_ar_t     ),
-    .aw_chan_t   (cluster_axi_aw_t     ),
-    .b_chan_t    (cluster_axi_b_t      ),
-    .r_chan_t    (cluster_axi_r_t      ),
-    .w_chan_t    (cluster_axi_w_t      ),
-    .axi_req_t   (cluster_axi_req_t    ),
-    .axi_resp_t  (cluster_axi_resp_t   )
+      .ar_chan_t (cluster_axi_ar_t),
+      .aw_chan_t (cluster_axi_aw_t),
+      .b_chan_t  (cluster_axi_b_t),
+      .r_chan_t  (cluster_axi_r_t),
+      .w_chan_t  (cluster_axi_w_t),
+      .axi_req_t (cluster_axi_req_t),
+      .axi_resp_t(cluster_axi_resp_t)
   ) i_global_ldst_ara_axi_cut (
-    .clk_i       (clk_i),
-    .rst_ni      (rst_ni),
-    .slv_req_i   (ara_axi_req),
-    .slv_resp_o  (ara_axi_resp),
-    .mst_req_o   (axi_req_o),
-    .mst_resp_i  (axi_resp_i)
+      .clk_i     (clk_i),
+      .rst_ni    (rst_ni),
+      .slv_req_i (ara_axi_req),
+      .slv_resp_o(ara_axi_resp),
+      .mst_req_o (axi_req_o),
+      .mst_resp_i(axi_resp_i)
   );
 
   ara #(
-    .NrLanes     (NrLanes             ),
-    .FPUSupport  (FPUSupport          ),
-    .FPExtSupport(FPExtSupport        ),
-    .FixPtSupport(FixPtSupport        ),
-    .CVA6Cfg           (CVA6Cfg             ),
-    .exception_t       (exception_t         ),
-    .accelerator_req_t (accelerator_req_t   ),
-    .accelerator_resp_t(accelerator_resp_t  ),
-    .cva6_to_acc_t     (cva6_to_acc_t       ),
-    .acc_to_cva6_t     (acc_to_cva6_t       ),
-    .AxiDataWidth(ClusterAxiDataWidth ),
-    .AxiAddrWidth(AxiAddrWidth        ),
-    .axi_ar_t    (cluster_axi_ar_t    ),
-    .axi_r_t     (cluster_axi_r_t     ),
-    .axi_aw_t    (cluster_axi_aw_t    ),
-    .axi_w_t     (cluster_axi_w_t     ),
-    .axi_b_t     (cluster_axi_b_t     ),
-    .axi_req_t   (cluster_axi_req_t   ),
-    .axi_resp_t  (cluster_axi_resp_t  )
+      .NrLanes           (NrLanes),
+      .FPUSupport        (FPUSupport),
+      .FPExtSupport      (FPExtSupport),
+      .FixPtSupport      (FixPtSupport),
+      .CVA6Cfg           (CVA6Cfg),
+      .exception_t       (exception_t),
+      .accelerator_req_t (accelerator_req_t),
+      .accelerator_resp_t(accelerator_resp_t),
+      .cva6_to_acc_t     (cva6_to_acc_t),
+      .acc_to_cva6_t     (acc_to_cva6_t),
+      .AxiDataWidth      (ClusterAxiDataWidth),
+      .AxiAddrWidth      (AxiAddrWidth),
+      .axi_ar_t          (cluster_axi_ar_t),
+      .axi_r_t           (cluster_axi_r_t),
+      .axi_aw_t          (cluster_axi_aw_t),
+      .axi_w_t           (cluster_axi_w_t),
+      .axi_b_t           (cluster_axi_b_t),
+      .axi_req_t         (cluster_axi_req_t),
+      .axi_resp_t        (cluster_axi_resp_t)
   ) i_ara (
-    .clk_i           (clk_i            ),
-    .rst_ni          (rst_ni           ),
-    .scan_enable_i   (scan_enable_i    ),
-    .scan_data_i     (1'b0             ),
-    .scan_data_o     (/* Unused */     ),
-    
-    .cluster_id_i    (cluster_id       ),
-    .num_clusters_i  (num_clusters     ),
-    .acc_req_i       (acc_req_o        ),
-    .acc_resp_o      (acc_resp         ),
-    .axi_req_o       (ara_axi_req      ),
-    .axi_resp_i      (ara_axi_resp     ),
+      .clk_i        (clk_i),
+      .rst_ni       (rst_ni),
+      .scan_enable_i(scan_enable_i),
+      .scan_data_i  (1'b0),
+      .scan_data_o  (  /* Unused */),
 
-    // To GLSU
-    .cluster_metadata_o  (cluster_metadata   ),
+      .cluster_id_i  (cluster_id),
+      .num_clusters_i(num_clusters),
+      .acc_req_i     (acc_req_o),
+      .acc_resp_o    (acc_resp),
+      .axi_req_o     (ara_axi_req),
+      .axi_resp_i    (ara_axi_resp),
 
-    // Synchronization for indexed operations and reductions
-    .idx_completed_o     (idx_completed_o    ),
-    .idx_completed_sync_i(idx_completed_sync_i),
+      // To GLSU
+      .cluster_metadata_o(cluster_metadata),
 
-    .sldu_completed_o     (sldu_completed_o      ),
-    .sldu_pending_o       (sldu_pending_o        ),
-    .sldu_completed_sync_i(sldu_completed_sync_i ),
-    
-    // To Ring Routers
-    .ring_data_o         (sldu_o             ), 
-    .ring_valid_o        (sldu_valid_o       ),
-    .ring_ready_i        (sldu_ready_i       ),
+      // Synchronization for indexed operations and reductions
+      .idx_completed_o     (idx_completed_o),
+      .idx_completed_sync_i(idx_completed_sync_i),
 
-    .ring_data_i         (sldu_i             ), 
-    .ring_valid_i        (sldu_valid_i       ), 
-    .ring_ready_o        (sldu_ready_o       )
+      .sldu_completed_o     (sldu_completed_o),
+      .sldu_pending_o       (sldu_pending_o),
+      .sldu_completed_sync_i(sldu_completed_sync_i),
+
+      // To Ring Routers
+      .ring_data_o (sldu_o),
+      .ring_valid_o(sldu_valid_o),
+      .ring_ready_i(sldu_ready_i),
+
+      .ring_data_i (sldu_i),
+      .ring_valid_i(sldu_valid_i),
+      .ring_ready_o(sldu_ready_o)
 
   );
 
   ring_router i_ring_router (
-    .clk_i             (clk_i),
-    .rst_ni            (rst_ni),
+      .clk_i (clk_i),
+      .rst_ni(rst_ni),
 
-    .cluster_id_i (cluster_id    ),
-    .num_clusters_i  (num_clusters     ),
-    
-    // From SLDU in ARA
-    .sldu_i       (sldu_o        ),
-    .sldu_valid_i (sldu_valid_o  ),
-    .sldu_ready_o (sldu_ready_i  ),  
+      .cluster_id_i  (cluster_id),
+      .num_clusters_i(num_clusters),
 
-    .sldu_o       (sldu_i        ),
-    .sldu_valid_o (sldu_valid_i  ),
-    .sldu_ready_i (sldu_ready_o  ),
+      // From SLDU in ARA
+      .sldu_i      (sldu_o),
+      .sldu_valid_i(sldu_valid_o),
+      .sldu_ready_o(sldu_ready_i),
+
+      .sldu_o      (sldu_i),
+      .sldu_valid_o(sldu_valid_i),
+      .sldu_ready_i(sldu_ready_o),
 
 
-    // From other ring routers
-    .ring_right_i       (ring_data_r_i      ),
-    .ring_right_valid_i (ring_data_r_valid_i),
-    .ring_right_ready_o (ring_data_r_ready_o),
+      // From other ring routers
+      .ring_right_i      (ring_data_r_i),
+      .ring_right_valid_i(ring_data_r_valid_i),
+      .ring_right_ready_o(ring_data_r_ready_o),
 
-    .ring_left_i        (ring_data_l_i      ),
-    .ring_left_valid_i  (ring_data_l_valid_i),
-    .ring_left_ready_o  (ring_data_l_ready_o),
+      .ring_left_i      (ring_data_l_i),
+      .ring_left_valid_i(ring_data_l_valid_i),
+      .ring_left_ready_o(ring_data_l_ready_o),
 
-    .ring_right_o       (ring_data_r_o      ),
-    .ring_right_valid_o (ring_data_r_valid_o),
-    .ring_right_ready_i (ring_data_r_ready_i),
+      .ring_right_o      (ring_data_r_o),
+      .ring_right_valid_o(ring_data_r_valid_o),
+      .ring_right_ready_i(ring_data_r_ready_i),
 
-    .ring_left_o        (ring_data_l_o      ),
-    .ring_left_valid_o  (ring_data_l_valid_o),
-    .ring_left_ready_i  (ring_data_l_ready_i)
+      .ring_left_o      (ring_data_l_o),
+      .ring_left_valid_o(ring_data_l_valid_o),
+      .ring_left_ready_i(ring_data_l_ready_i)
   );
 
 endmodule

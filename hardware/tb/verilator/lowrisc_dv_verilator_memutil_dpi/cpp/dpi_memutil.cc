@@ -679,4 +679,4 @@ const MemArea &DpiMemUtil::GetRegionForSegment(const std::string &path,
   }
 
   return *mem_area;
-}
+} 

@@ -48,4 +48,4 @@ class SVScoped {
   svScope prev_scope_;
 };
 
-#endif  // OPENTITAN_HW_DV_VERILATOR_CPP_SV_SCOPED_H_
+#endif  // OPENTITAN_HW_DV_VERILATOR_CPP_SV_SCOPED_H_ 

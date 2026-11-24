@@ -185,4 +185,4 @@ bool VerilatorMemUtil::ParseCLIArguments(int argc, char **argv,
   }
 
   return true;
-}
+} 

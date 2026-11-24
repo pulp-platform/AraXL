@@ -20,17 +20,20 @@
 `define N_VINSN 1
 `endif
 
-module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
-  parameter config_pkg::cva6_cfg_t     CVA6Cfg        = cva6_config_pkg::cva6_cfg,
-  parameter type                       cva6_to_acc_t  = logic,
-  parameter type                       acc_to_cva6_t  = logic,
-  localparam type                      xlen_t         = logic [CVA6Cfg.XLEN-1:0]
-  ) (
-  input logic                     clk_i,
-  input logic                     rst_ni,
-  // Accelerator interaface
-  output cva6_to_acc_t  acc_req_o,
-  input  acc_to_cva6_t acc_resp_i
+module accel_dispatcher_ideal
+  import axi_pkg::*;
+  import ara_pkg::*;
+#(
+    parameter  config_pkg::cva6_cfg_t CVA6Cfg       = cva6_config_pkg::cva6_cfg,
+    parameter  type                   cva6_to_acc_t = logic,
+    parameter  type                   acc_to_cva6_t = logic,
+    localparam type                   xlen_t        = logic                     [CVA6Cfg.XLEN-1:0]
+) (
+    input  logic         clk_i,
+    input  logic         rst_ni,
+    // Accelerator interaface
+    output cva6_to_acc_t acc_req_o,
+    input  acc_to_cva6_t acc_resp_i
 );
 
   localparam string vtrace = `STRINGIFY(`VTRACE);
@@ -40,8 +43,8 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
   //////////
 
   // Width and number of vector instructions in the ideal dispatcher
-  localparam integer unsigned DATA_WIDTH  = 32 + 64 + 64; // vinsn + scalar reg + scalar reg
-  localparam integer unsigned N_VINSN   = `N_VINSN;
+  localparam integer unsigned DATA_WIDTH = 32 + 64 + 64;  // vinsn + scalar reg + scalar reg
+  localparam integer unsigned N_VINSN = `N_VINSN;
 
   typedef struct packed {
     riscv::instruction_t insn;
@@ -60,7 +63,7 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
   // FIFO counter
   logic [$clog2(N_VINSN):0] status_cnt_n, status_cnt_q;
   // FIFO
-  logic [DATA_WIDTH-1:0] fifo_q [N_VINSN];
+  logic [DATA_WIDTH-1:0] fifo_q[N_VINSN];
   logic fifo_empty;
 
   // read and write queue logic
@@ -73,10 +76,8 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
     if (acc_resp_i.req_ready && ~fifo_empty) begin
       // read from the queue is a default assignment
       // but increment the read pointer...
-      if (read_pointer_n == N_VINSN - 1)
-        read_pointer_n = '0;
-      else
-        read_pointer_n = read_pointer_q + 1;
+      if (read_pointer_n == N_VINSN - 1) read_pointer_n = '0;
+      else read_pointer_n = read_pointer_q + 1;
       // ... and decrement the overall count
       status_cnt_n = status_cnt_q - 1;
     end
@@ -85,11 +86,11 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
   // sequential process
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
-      read_pointer_q  <= '0;
-      status_cnt_q    <= N_VINSN;
+      read_pointer_q <= '0;
+      status_cnt_q   <= N_VINSN;
     end else begin
-      read_pointer_q  <= read_pointer_n;
-      status_cnt_q    <= status_cnt_n;
+      read_pointer_q <= read_pointer_n;
+      status_cnt_q   <= status_cnt_n;
     end
   end
 
@@ -98,15 +99,18 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
   // Output assignment
   assign fifo_data = fifo_payload_t'(fifo_data_raw);
   assign acc_req_o = '{
-    insn    : fifo_data.insn,
-    rs1     : fifo_data.rs1,
-    rs2     : fifo_data.rs2,
-    // Always valid until empty
-    req_valid  : ~fifo_empty,
-    // Flush the answer
-    resp_ready : 1'b1,
-    default : '0
-  };
+          insn    : fifo_data.insn,
+          rs1     : fifo_data.rs1,
+          rs2     : fifo_data.rs2,
+          // Always valid until empty
+          req_valid  :
+          ~
+          fifo_empty,
+          // Flush the answer
+          resp_ready :
+          1'b1,
+          default: '0
+      };
 
   // Initialize the perfect dispatcher
   initial $readmemh(vtrace, fifo_q);
@@ -124,10 +128,10 @@ module accel_dispatcher_ideal import axi_pkg::*; import ara_pkg::*; #(
   assign perf_cnt_d = rst_ni ? perf_cnt_q + 1 : '0;
   always_ff @(posedge clk_i, negedge rst_ni) begin : p_perf_cnt_ideal
     if (!rst_ni) begin
-      perf_cnt_q  <= '0;
-      was_reset   <= 1'b1;
-	end else begin
-      perf_cnt_q  <= perf_cnt_d;
+      perf_cnt_q <= '0;
+      was_reset  <= 1'b1;
+    end else begin
+      perf_cnt_q <= perf_cnt_d;
     end
   end
 
