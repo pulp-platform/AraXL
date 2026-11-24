@@ -5,6 +5,13 @@
 // Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
 // Description:
 // Ara's SoC, containing Ariane, Ara, and a L2 cache.
+//
+// NrCores selects the single-core or multicore fabric and replicates the same
+// ara_system. AxiIdWidth is the per-system output width (5 by default): the
+// internal CVA6/Ara IDs use one fewer bit, and the multicore fabric appends
+// $clog2(NrCores) routing bits outside the system boundary. Keep NrLanes,
+// NrClusters, AXI widths, feature options, and build defines the same to reuse
+// a synthesized ara_system across SoCs. NrL2Banks affects only the fabric/SRAMs.
 
 module ara_soc
   import axi_pkg::*;
@@ -25,6 +32,7 @@ module ara_soc
     parameter int unsigned ClusterAxiDataWidth = 32 * NrLanes,
     parameter int unsigned AxiAddrWidth = 64,
     parameter int unsigned AxiUserWidth = 1,
+    // ID width at each ara_system output, independent of NrCores.
     parameter int unsigned AxiIdWidth = 5,
     // AXI Resp Delay [ps] for gate-level simulation
     parameter int unsigned AxiRespDelay = 200,
@@ -61,25 +69,9 @@ module ara_soc
     input  logic        uart_pslverr_i
 );
 
-  `include "axi/assign.svh"
   `include "axi/typedef.svh"
-  `include "common_cells/registers.svh"
   `include "apb/typedef.svh"
   `include "ara/intf_typedef.svh"
-
-  //////////////////////
-  //  Memory Regions  //
-  //////////////////////
-
-  // First xBar right after ara_system
-  localparam int NONL2 = 0;
-  localparam int L2MEM = 1;
-  localparam int AMO = 2;  // non-cacheable window, atomics path
-
-  localparam int NrAXISlavePre = AMO + 1;
-
-  // Second xBar
-  localparam NrAXIMasters = NrCores;  // Actually masters, but slaves on the crossbar
 
   localparam int UART = 0;
   localparam int CTRL = 1;
@@ -92,8 +84,6 @@ module ara_soc
   localparam int unsigned L2NumWords = DRAMLength / (NrL2Banks * (AxiDataWidth / 8));
   localparam logic [63:0] UARTLength = 64'h1000;
   localparam logic [63:0] CTRLLength = 64'h1000;
-
-  localparam logic [63:0] DRAMLengthPerCore = DRAMLength / NrCores;
 
   typedef enum logic [63:0] {
     DRAMBase = 64'h8000_0000,
@@ -109,21 +99,7 @@ module ara_soc
   localparam logic [63:0] DRAMAtomLength = 64'h800;
   localparam logic [63:0] DRAMAtomBase = DRAMBase + DRAMLength - DRAMAtomLength;
 
-  // L2 is one contiguous address range, word-interleaved across NrL2Banks
-  // ara_tb.sv's ELF loader must reproduce this mapping exactly.
-  localparam int unsigned L2WordOffset = $clog2(AxiDataWidth / 8);
-  localparam int unsigned L2BankIdxWidth = $clog2(NrL2Banks);  // 0 when NrL2Banks == 1
-  localparam int unsigned L2BankSelW = (L2BankIdxWidth == 0) ? 1 : L2BankIdxWidth;
-  localparam int unsigned L2IndexLow = L2WordOffset + L2BankIdxWidth;
-
-  // Interconnect requester ports: one per core, plus the shared atomics path.
-  localparam int unsigned NrL2Req = NrCores + 1;
-  localparam int unsigned L2AmoReq = NrCores;
-
-  // Bank read latency. tc_sram and the interconnect's response pipeline MUST
-  // agree: the interconnect steers read data home by replaying the winning
-  // requester index after exactly this many cycles, so if the two diverge the
-  // data lands on the wrong requester and no assertion fires.
+  // SRAM latency is shared by both interconnect implementations.
   localparam int unsigned L2Latency = 1;
 
   ///////////
@@ -137,8 +113,9 @@ module ara_soc
   localparam AxiWideDataWidth = AxiDataWidth;
   localparam AXiWideStrbWidth = AxiWideDataWidth / 8;
 
-  localparam AxiSocIdWidth = AxiIdWidth;
-  localparam AxiSystemIdWidth = AxiIdWidth - $clog2(NrAXIMasters);
+  // Only the fabric appends the core index to transaction IDs.
+  localparam AxiSystemIdWidth = AxiIdWidth;
+  localparam AxiSocIdWidth = AxiSystemIdWidth + $clog2(NrCores);
   localparam AxiCoreIdWidth = AxiSystemIdWidth - 1;
 
   // Internal types
@@ -161,271 +138,94 @@ module ara_soc
   `AXI_TYPEDEF_ALL(ara_cluster_axi, cluster_axi_addr_t, axi_core_id_t, cluster_axi_data_t,
                    cluster_axi_strb_t, cluster_axi_user_t)
 
-  // Buses
-  system_req_t [NrAXIMasters-1:0] system_axi_req_spill;
-  system_resp_t [NrAXIMasters-1:0] system_axi_resp_spill;
-  system_resp_t [NrAXIMasters-1:0] system_axi_resp_spill_del;
-  system_req_t [NrAXIMasters-1:0] system_axi_req;
-  system_resp_t [NrAXIMasters-1:0] system_axi_resp;
+  // Fixed-width system ports preserve the ara_system synthesis boundary.
+  system_req_t  [NrCores-1:0] system_axi_req_pre;
+  system_resp_t [NrCores-1:0] system_axi_resp_pre;
+`ifdef TARGET_GATESIM
+  system_req_t  [NrCores-1:0] system_axi_req_spill;
+  system_resp_t [NrCores-1:0] system_axi_resp_spill;
+  system_resp_t [NrCores-1:0] system_axi_resp_spill_del;
+`endif
 
-  // The Buses for the first xbar which is right after each ara_system
-  system_req_t [NrAXIMasters-1:0] system_axi_req_pre;
-  system_resp_t [NrAXIMasters-1:0] system_axi_resp_pre;
-  system_req_t [NrAXIMasters-1:0][NrAXISlavePre-1:0] system_axi_req_bifur;
-  system_resp_t [NrAXIMasters-1:0][NrAXISlavePre-1:0] system_axi_resp_bifur;
-
-  // Atomics path: every core's AMO branch is gathered here and muxed onto one
-  // port, so that a single axi_riscv_atomics adapter sees all cores' atomic
-  // traffic.
-  system_req_t [NrCores-1:0] amo_slv_req;
-  system_resp_t [NrCores-1:0] amo_slv_resp;
-  soc_wide_req_t amo_axi_req, amo_axi_req_flt;
-  soc_wide_resp_t amo_axi_resp, amo_axi_resp_flt;
-
-  soc_wide_req_t    [NrAXISlaves-1:0] periph_wide_axi_req;
-  soc_wide_resp_t   [NrAXISlaves-1:0] periph_wide_axi_resp;
-
-  soc_narrow_req_t  [NrAXISlaves-1:0] periph_narrow_axi_req;
-  soc_narrow_resp_t [NrAXISlaves-1:0] periph_narrow_axi_resp;
-
-  ////////////////
-  //  Crossbar  //
-  ////////////////
-
-  localparam axi_pkg::xbar_cfg_t XBarCfg = '{
-      NoSlvPorts        : NrAXIMasters,
-      NoMstPorts        : NrAXISlaves,
-      MaxMstTrans       : 4,
-      MaxSlvTrans       : 4,
-      FallThrough       : 1'b0,
-      LatencyMode       : axi_pkg::CUT_MST_PORTS,
-      PipelineStages    : 0,
-      AxiIdWidthSlvPorts: AxiSystemIdWidth,
-      AxiIdUsedSlvPorts : AxiSystemIdWidth,
-      UniqueIds         : 1'b0,
-      AxiAddrWidth      : AxiAddrWidth,
-      AxiDataWidth      : AxiWideDataWidth,
-      NoAddrRules       : NrAXISlaves
-  };
-
-  axi_pkg::xbar_rule_64_t [NrAXISlaves-1:0] routing_rules;
-
-  assign routing_rules = '{
-          '{idx: CTRL, start_addr: CTRLBase, end_addr: CTRLBase + CTRLLength},
-          '{idx: UART, start_addr: UARTBase, end_addr: UARTBase + UARTLength}
-      };
-
-  axi_xbar #(
-      .Cfg          (XBarCfg),
-      .slv_aw_chan_t(system_aw_chan_t),
-      .mst_aw_chan_t(soc_wide_aw_chan_t),
-      .w_chan_t     (system_w_chan_t),
-      .slv_b_chan_t (system_b_chan_t),
-      .mst_b_chan_t (soc_wide_b_chan_t),
-      .slv_ar_chan_t(system_ar_chan_t),
-      .mst_ar_chan_t(soc_wide_ar_chan_t),
-      .slv_r_chan_t (system_r_chan_t),
-      .mst_r_chan_t (soc_wide_r_chan_t),
-      .slv_req_t    (system_req_t),
-      .slv_resp_t   (system_resp_t),
-      .mst_req_t    (soc_wide_req_t),
-      .mst_resp_t   (soc_wide_resp_t),
-      .rule_t       (axi_pkg::xbar_rule_64_t)
-  ) i_soc_xbar (
-      .clk_i                (clk_i),
-      .rst_ni               (rst_ni),
-      .test_i               (1'b0),
-      .slv_ports_req_i      (system_axi_req),
-      .slv_ports_resp_o     (system_axi_resp),
-      .mst_ports_req_o      (periph_wide_axi_req),
-      .mst_ports_resp_i     (periph_wide_axi_resp),
-      .addr_map_i           (routing_rules),
-      .en_default_mst_port_i('0),
-      .default_mst_port_i   ('0)
-  );
-
-  //////////
-  //  L2  //
-  //////////
-
-  // Outstanding memory requests per requester. Must cover the interconnect
-  // round trip (arbitration + SRAM latency), not just the SRAM latency: the
-  // axi_to_mem default of 1 would throttle the bank port.
-  localparam int unsigned L2BufDepth = 4;
-
-  // Requester side of the L2 interconnect: one port per core, plus the shared
-  // atomics path at index L2AmoReq.
-  logic [  NrL2Req-1:0]                     l2r_req;
-  logic [  NrL2Req-1:0]                     l2r_gnt;
-  logic [  NrL2Req-1:0]                     l2r_we;
-  logic [  NrL2Req-1:0][  AxiAddrWidth-1:0] l2r_addr;
-  logic [  NrL2Req-1:0][AxiDataWidth/8-1:0] l2r_strb;
-  logic [  NrL2Req-1:0][  AxiDataWidth-1:0] l2r_wdata;
-  logic [  NrL2Req-1:0][  AxiDataWidth-1:0] l2r_rdata;
-  logic [  NrL2Req-1:0]                     l2r_rvalid;
+  soc_wide_req_t    [NrAXISlaves-1:0]                     periph_wide_axi_req;
+  soc_wide_resp_t   [NrAXISlaves-1:0]                     periph_wide_axi_resp;
+  soc_narrow_req_t  [NrAXISlaves-1:0]                     periph_narrow_axi_req;
+  soc_narrow_resp_t [NrAXISlaves-1:0]                     periph_narrow_axi_resp;
 
   // Bank side of the L2 interconnect. bank_addr is already a word index with
   // the bank-select bits removed.
-  logic [NrL2Banks-1:0]                     l2b_req;
-  logic [NrL2Banks-1:0]                     l2b_we;
-  logic [NrL2Banks-1:0][  AxiAddrWidth-1:0] l2b_addr;
-  logic [NrL2Banks-1:0][AxiDataWidth/8-1:0] l2b_strb;
-  logic [NrL2Banks-1:0][  AxiDataWidth-1:0] l2b_wdata;
-  logic [NrL2Banks-1:0][  AxiDataWidth-1:0] l2b_rdata;
+  logic             [  NrL2Banks-1:0]                     l2b_req;
+  logic             [  NrL2Banks-1:0]                     l2b_we;
+  logic             [  NrL2Banks-1:0][  AxiAddrWidth-1:0] l2b_addr;
+  logic             [  NrL2Banks-1:0][AxiDataWidth/8-1:0] l2b_strb;
+  logic             [  NrL2Banks-1:0][  AxiDataWidth-1:0] l2b_wdata;
+  logic             [  NrL2Banks-1:0][  AxiDataWidth-1:0] l2b_rdata;
 
-  // One axi_to_mem per core: turns that core's AXI bursts into one memory
-  // request per AxiDataWidth word, which the interconnect then arbitrates word
-  // by word. This is what makes per-word QoS fall out for free -- no burst can
-  // occupy a bank for longer than a single cycle.
-  for (genvar c = 0; c < NrCores; c++) begin : gen_core_axi_to_mem
-    axi_to_mem #(
-        .AddrWidth (AxiAddrWidth),
-        .DataWidth (AxiDataWidth),
-        .IdWidth   (AxiSystemIdWidth),
-        .NumBanks  (1),
-        .BufDepth  (L2BufDepth),
-        .axi_req_t (system_req_t),
-        .axi_resp_t(system_resp_t)
-    ) i_axi_to_mem (
-        .clk_i       (clk_i),
-        .rst_ni      (rst_ni),
-        .axi_req_i   (system_axi_req_bifur[c][L2MEM]),
-        .axi_resp_o  (system_axi_resp_bifur[c][L2MEM]),
-        .mem_req_o   (l2r_req[c]),
-        .mem_gnt_i   (l2r_gnt[c]),
-        .mem_we_o    (l2r_we[c]),
-        .mem_addr_o  (l2r_addr[c]),
-        .mem_strb_o  (l2r_strb[c]),
-        .mem_wdata_o (l2r_wdata[c]),
-        .mem_rdata_i (l2r_rdata[c]),
-        .mem_rvalid_i(l2r_rvalid[c]),
-        .mem_atop_o  (  /* ATOPs filtered upstream */),
-        .busy_o      (  /* Unused */)
+  // NrCores selects only the fabric. All ara_system parameters below are
+  // identical for a given lane/cluster configuration in either topology.
+  if (NrCores == 1) begin : gen_interconnect_singlecore
+    ara_interconnect_singlecore #(
+        .NrL2Banks   (NrL2Banks),
+        .AxiAddrWidth(AxiAddrWidth),
+        .AxiDataWidth(AxiDataWidth),
+        .AxiUserWidth(AxiUserWidth),
+        .AxiIdWidth  (AxiSystemIdWidth),
+        .DRAMBase    (DRAMBase),
+        .DRAMLength  (DRAMLength),
+        .UARTBase    (UARTBase),
+        .UARTLength  (UARTLength),
+        .CTRLBase    (CTRLBase),
+        .CTRLLength  (CTRLLength),
+        .axi_req_t   (system_req_t),
+        .axi_resp_t  (system_resp_t)
+    ) i_interconnect (
+        .clk_i        (clk_i),
+        .rst_ni       (rst_ni),
+        .system_req_i (system_axi_req_pre[0]),
+        .system_resp_o(system_axi_resp_pre[0]),
+        .periph_req_o (periph_wide_axi_req),
+        .periph_resp_i(periph_wide_axi_resp),
+        .l2_req_o     (l2b_req),
+        .l2_we_o      (l2b_we),
+        .l2_addr_o    (l2b_addr),
+        .l2_strb_o    (l2b_strb),
+        .l2_wdata_o   (l2b_wdata),
+        .l2_rdata_i   (l2b_rdata)
+    );
+  end else begin : gen_interconnect_multicore
+    ara_interconnect_multicore #(
+        .NrCores          (NrCores),
+        .NrL2Banks        (NrL2Banks),
+        .AxiAddrWidth     (AxiAddrWidth),
+        .AxiDataWidth     (AxiDataWidth),
+        .AxiUserWidth     (AxiUserWidth),
+        .AxiSystemIdWidth (AxiSystemIdWidth),
+        .DRAMBase         (DRAMBase),
+        .DRAMLength       (DRAMLength),
+        .DRAMAtomLength   (DRAMAtomLength),
+        .UARTBase         (UARTBase),
+        .UARTLength       (UARTLength),
+        .CTRLBase         (CTRLBase),
+        .CTRLLength       (CTRLLength),
+        .system_axi_req_t (system_req_t),
+        .system_axi_resp_t(system_resp_t),
+        .soc_axi_req_t    (soc_wide_req_t),
+        .soc_axi_resp_t   (soc_wide_resp_t)
+    ) i_interconnect (
+        .clk_i        (clk_i),
+        .rst_ni       (rst_ni),
+        .system_req_i (system_axi_req_pre),
+        .system_resp_o(system_axi_resp_pre),
+        .periph_req_o (periph_wide_axi_req),
+        .periph_resp_i(periph_wide_axi_resp),
+        .l2_req_o     (l2b_req),
+        .l2_we_o      (l2b_we),
+        .l2_addr_o    (l2b_addr),
+        .l2_strb_o    (l2b_strb),
+        .l2_wdata_o   (l2b_wdata),
+        .l2_rdata_i   (l2b_rdata)
     );
   end
-
-  ////////////////////
-  //  Atomics path  //
-  ////////////////////
-
-  // All cores' AMO branches converge on one adapter. Putting the adapter per
-  // core instead would let two cores each run their own read-modify-write on
-  // the same address, silently breaking sync_barrier().
-  for (genvar c = 0; c < NrCores; c++) begin : gen_amo_gather
-    assign amo_slv_req[c]                = system_axi_req_bifur[c][AMO];
-    assign system_axi_resp_bifur[c][AMO] = amo_slv_resp[c];
-  end
-
-  axi_mux #(
-      .SlvAxiIDWidth(AxiSystemIdWidth),
-      .slv_aw_chan_t(system_aw_chan_t),
-      .mst_aw_chan_t(soc_wide_aw_chan_t),
-      .w_chan_t     (system_w_chan_t),
-      .slv_b_chan_t (system_b_chan_t),
-      .mst_b_chan_t (soc_wide_b_chan_t),
-      .slv_ar_chan_t(system_ar_chan_t),
-      .mst_ar_chan_t(soc_wide_ar_chan_t),
-      .slv_r_chan_t (system_r_chan_t),
-      .mst_r_chan_t (soc_wide_r_chan_t),
-      .slv_req_t    (system_req_t),
-      .slv_resp_t   (system_resp_t),
-      .mst_req_t    (soc_wide_req_t),
-      .mst_resp_t   (soc_wide_resp_t),
-      .NoSlvPorts   (NrCores),
-      .SpillAw      (1'b1),
-      .SpillW       (1'b1),
-      .SpillB       (1'b1),
-      .SpillAr      (1'b1),
-      .SpillR       (1'b1)
-  ) i_amo_mux (
-      .clk_i      (clk_i),
-      .rst_ni     (rst_ni),
-      .test_i     (1'b0),
-      .slv_reqs_i (amo_slv_req),
-      .slv_resps_o(amo_slv_resp),
-      .mst_req_o  (amo_axi_req),
-      .mst_resp_i (amo_axi_resp)
-  );
-
-  axi_riscv_atomics_structs #(
-      .AxiAddrWidth   (AxiAddrWidth),
-      .AxiDataWidth   (AxiDataWidth),
-      .AxiIdWidth     (AxiSocIdWidth),
-      .AxiUserWidth   (AxiUserWidth),
-      .AxiMaxReadTxns (8),
-      .AxiMaxWriteTxns(8),
-      .RiscvWordWidth (64),
-      .axi_req_t      (soc_wide_req_t),
-      .axi_rsp_t      (soc_wide_resp_t)
-  ) i_axi_riscv_atomics_wrap (
-      .clk_i        (clk_i),
-      .rst_ni       (rst_ni),
-      .axi_slv_req_i(amo_axi_req),
-      .axi_slv_rsp_o(amo_axi_resp),
-      .axi_mst_req_o(amo_axi_req_flt),
-      .axi_mst_rsp_i(amo_axi_resp_flt)
-  );
-
-  axi_to_mem #(
-      .AddrWidth (AxiAddrWidth),
-      .DataWidth (AxiDataWidth),
-      .IdWidth   (AxiSocIdWidth),
-      .NumBanks  (1),
-      .BufDepth  (L2BufDepth),
-      .axi_req_t (soc_wide_req_t),
-      .axi_resp_t(soc_wide_resp_t)
-  ) i_amo_axi_to_mem (
-      .clk_i       (clk_i),
-      .rst_ni      (rst_ni),
-      .axi_req_i   (amo_axi_req_flt),
-      .axi_resp_o  (amo_axi_resp_flt),
-      .mem_req_o   (l2r_req[L2AmoReq]),
-      .mem_gnt_i   (l2r_gnt[L2AmoReq]),
-      .mem_we_o    (l2r_we[L2AmoReq]),
-      .mem_addr_o  (l2r_addr[L2AmoReq]),
-      .mem_strb_o  (l2r_strb[L2AmoReq]),
-      .mem_wdata_o (l2r_wdata[L2AmoReq]),
-      .mem_rdata_i (l2r_rdata[L2AmoReq]),
-      .mem_rvalid_i(l2r_rvalid[L2AmoReq]),
-      .mem_atop_o  (  /* resolved by the adapter above */),
-      .busy_o      (  /* Unused */)
-  );
-
-  /////////////////////////
-  //  L2 interconnect    //
-  /////////////////////////
-
-  // Word-interleaved, fixed-latency. Because each requester's mem port is a
-  // single in-order req/gnt channel and every bank has the same latency,
-  // grant order == issue order == response order: no reorder buffer needed.
-  // The mapping is derived inside the module from DataWidth and NoMstPorts, so
-  // it cannot be mis-parameterized from here. L2WordOffset / L2BankIdxWidth /
-  // L2IndexLow above exist for gen_l2_mem's address slice and for ara_tb.sv's
-  // ELF loader, which must reproduce the same mapping.
-  l2_mem_interconnect #(
-      .NoSlvPorts(NrL2Req),
-      .NoMstPorts(NrL2Banks),
-      .AddrWidth (AxiAddrWidth),
-      .DataWidth (AxiDataWidth),
-      .Latency   (L2Latency)
-  ) i_l2_mem_interconnect (
-      .clk_i             (clk_i),
-      .rst_ni            (rst_ni),
-      .slv_ports_req_i   (l2r_req),
-      .slv_ports_gnt_o   (l2r_gnt),
-      .slv_ports_we_i    (l2r_we),
-      .slv_ports_addr_i  (l2r_addr),
-      .slv_ports_strb_i  (l2r_strb),
-      .slv_ports_wdata_i (l2r_wdata),
-      .slv_ports_rdata_o (l2r_rdata),
-      .slv_ports_rvalid_o(l2r_rvalid),
-      .mst_ports_req_o   (l2b_req),
-      .mst_ports_we_o    (l2b_we),
-      .mst_ports_addr_o  (l2b_addr),
-      .mst_ports_strb_o  (l2b_strb),
-      .mst_ports_wdata_o (l2b_wdata),
-      .mst_ports_rdata_i (l2b_rdata)
-  );
 
 `ifndef SPYGLASS
   for (genvar b = 0; b < NrL2Banks; b++) begin : gen_l2_mem
@@ -633,39 +433,37 @@ module ara_soc
   //  System  //
   //////////////
 
-
   // Modify configuration parameters
   function automatic config_pkg::cva6_user_cfg_t gen_usr_cva6_config(
       config_pkg::cva6_user_cfg_t cfg);
-    cfg.AxiAddrWidth          = AxiAddrWidth;
-    cfg.AxiDataWidth          = AxiNarrowDataWidth;
-    cfg.AxiIdWidth            = AxiIdWidth;
-    cfg.AxiUserWidth          = AxiUserWidth;
-    cfg.XF16                  = FPUSupport[3];
-    cfg.RVF                   = FPUSupport[4];
-    cfg.RVD                   = FPUSupport[5];
-    cfg.XF16ALT               = FPUSupport[2];
-    cfg.XF8                   = FPUSupport[1];
+    cfg.AxiAddrWidth            = AxiAddrWidth;
+    cfg.AxiDataWidth            = AxiNarrowDataWidth;
+    cfg.AxiIdWidth              = AxiCoreIdWidth;
+    cfg.AxiUserWidth            = AxiUserWidth;
+    cfg.XF16                    = FPUSupport[3];
+    cfg.RVF                     = FPUSupport[4];
+    cfg.RVD                     = FPUSupport[5];
+    cfg.XF16ALT                 = FPUSupport[2];
+    cfg.XF8                     = FPUSupport[1];
     // cfg.XF8ALT                = FPUSupport[0]; // Not supported by OpenHW Group's CVFPU
-    cfg.NrPMPEntries          = 0;
+    cfg.NrPMPEntries            = 0;
     // idempotent region
-    cfg.NrNonIdempotentRules  = 2;
-    cfg.NonIdempotentAddrBase = {UARTBase, CTRLBase};
-    cfg.NonIdempotentLength   = {UARTLength, CTRLLength};
-    cfg.NrExecuteRegionRules  = 3;
+    cfg.NrNonIdempotentRules    = 2;
+    cfg.NonIdempotentAddrBase   = {UARTBase, CTRLBase};
+    cfg.NonIdempotentLength     = {UARTLength, CTRLLength};
+    cfg.NrExecuteRegionRules    = 3;
     //                          DRAM;       Boot ROM;   Debug Module
-    cfg.ExecuteRegionAddrBase = {DRAMBase, 64'h1_0000, 64'h0};
-    cfg.ExecuteRegionLength   = {DRAMLength, 64'h10000, 64'h1000};
+    cfg.ExecuteRegionAddrBase   = {DRAMBase, 64'h1_0000, 64'h0};
+    cfg.ExecuteRegionLength     = {DRAMLength, 64'h10000, 64'h1000};
     // cached region
-    cfg.NrCachedRegionRules   = 1;
-    cfg.CachedRegionAddrBase  = {DRAMBase};
-    cfg.CachedRegionLength    = {DRAMLength - DRAMAtomLength};
+    cfg.NrCachedRegionRules     = 1;
+    cfg.CachedRegionAddrBase    = {DRAMBase};
+    cfg.CachedRegionLength      = {DRAMLength - DRAMAtomLength};
     // Shared-memory software uses FENCE for cache maintenance between the
-    // non-coherent cores. Keep this behavior when starting from CVA6's template.
-    if (NrCores > 1) begin
-      cfg.DcacheFlushOnFence      = 1'b1;
-      cfg.DcacheInvalidateOnFlush = 1'b1;
-    end
+    // non-coherent cores. Keep this hardware in the single-core system too,
+    // so the same synthesized system can be reused in either topology.
+    cfg.DcacheFlushOnFence      = 1'b1;
+    cfg.DcacheInvalidateOnFlush = 1'b1;
     // Return modified config
     return cfg;
   endfunction
@@ -691,7 +489,7 @@ module ara_soc
   `CVA6_INTF_TYPEDEF_CVA6_TO_ACC(cva6_to_acc_t, accelerator_req_t, acc_mmu_resp_t)
   `CVA6_INTF_TYPEDEF_ACC_TO_CVA6(acc_to_cva6_t, accelerator_resp_t, acc_mmu_req_t)
 
-  // Create multiple instance of ara system
+  // Core count affects replication only, never the system configuration.
   for (genvar hart_id = 0; hart_id < NrCores; hart_id++) begin : gen_ara_system
 `ifndef TARGET_GATESIM
     ara_system #(
@@ -755,11 +553,11 @@ module ara_soc
         .axi_resp_i   (system_axi_resp_pre[hart_id])
     );
 `else
-    // Post-layout netlist
-    ara_group i_system (
+    // Reuse the same system netlist for every core count.
+    ara_system i_system (
         .clk_i        (clk_i),
         .rst_ni       (rst_ni),
-        .boot_addr_i  (DRAMBase),                           // start fetching from DRAM
+        .boot_addr_i  (DRAMBase),
         .hart_id_i    (3'(hart_id)),
         .scan_enable_i(1'b0),
         .scan_data_i  (1'b0),
@@ -767,7 +565,6 @@ module ara_soc
         .axi_req_o    (system_axi_req_spill[hart_id]),
         .axi_resp_i   (system_axi_resp_spill_del[hart_id])
     );
-
     assign #(AxiRespDelay*1ps) system_axi_resp_spill_del[hart_id] = system_axi_resp_spill[hart_id];
 
     axi_cut #(
@@ -788,81 +585,14 @@ module ara_soc
     );
 `endif
 
-    ////////////////////////////////
-    //  Crossbar (L2 and non-L2)  //
-    ////////////////////////////////
-
-    localparam axi_pkg::xbar_cfg_t XBarPreCfg = '{
-        NoSlvPorts        : 1,
-        NoMstPorts        : NrAXISlavePre,
-        MaxMstTrans       : 4,
-        MaxSlvTrans       : 4,
-        FallThrough       : 1'b0,
-        LatencyMode       : axi_pkg::CUT_MST_PORTS,
-        PipelineStages    : 0,
-        AxiIdWidthSlvPorts: AxiSystemIdWidth,
-        AxiIdUsedSlvPorts : AxiSystemIdWidth,
-        UniqueIds         : 1'b0,
-        AxiAddrWidth      : AxiAddrWidth,
-        AxiDataWidth      : AxiWideDataWidth,
-        NoAddrRules       : 2
-    };
-
-    axi_pkg::xbar_rule_64_t [1:0] routing_rules_pre;
-
-    // Rules must not overlap. Anything matching neither (UART, CTRL) falls through
-    // to NONL2 via en_default_mst_port_i below.
-    assign routing_rules_pre = '{
-            '{idx: AMO, start_addr: DRAMAtomBase, end_addr: DRAMAtomBase + DRAMAtomLength},
-            '{idx: L2MEM, start_addr: DRAMBase, end_addr: DRAMAtomBase}
-        };
-
-    axi_xbar #(
-        .Cfg          (XBarPreCfg),
-        .slv_aw_chan_t(system_aw_chan_t),
-        .mst_aw_chan_t(system_aw_chan_t),
-        .w_chan_t     (system_w_chan_t),
-        .slv_b_chan_t (system_b_chan_t),
-        .mst_b_chan_t (system_b_chan_t),
-        .slv_ar_chan_t(system_ar_chan_t),
-        .mst_ar_chan_t(system_ar_chan_t),
-        .slv_r_chan_t (system_r_chan_t),
-        .mst_r_chan_t (system_r_chan_t),
-        .slv_req_t    (system_req_t),
-        .slv_resp_t   (system_resp_t),
-        .mst_req_t    (system_req_t),
-        .mst_resp_t   (system_resp_t),
-        .rule_t       (axi_pkg::xbar_rule_64_t)
-    ) i_pre_xbar (
-        .clk_i                (clk_i),
-        .rst_ni               (rst_ni),
-        .test_i               (1'b0),
-        .slv_ports_req_i      (system_axi_req_pre[hart_id]),
-        .slv_ports_resp_o     (system_axi_resp_pre[hart_id]),
-        .mst_ports_req_o      (system_axi_req_bifur[hart_id]),
-        .mst_ports_resp_i     (system_axi_resp_bifur[hart_id]),
-        .addr_map_i           (routing_rules_pre),
-        .en_default_mst_port_i('1),
-        .default_mst_port_i   ('0)
-    );
-
-    // Wire req/resp to/from non-L2 region
-    assign system_axi_req[hart_id]               = system_axi_req_bifur[hart_id][NONL2];
-    assign system_axi_resp_bifur[hart_id][NONL2] = system_axi_resp[hart_id];
-
-    ////////////////////////////////
-    //  Crossbar with address scrambling (among L2 Mem) (TODO)   //
-    ////////////////////////////////
-
-
-  end
+  end : gen_ara_system
 
   //////////////////
   //  Assertions  //
   //////////////////
 
-  if (NrCores == 0 || (NrCores & (NrCores - 1)) != 0)
-    $error("[ara_soc] NrCores must be a power of two.");
+  if (NrCores == 0 || NrCores > 8 || (NrCores & (NrCores - 1)) != 0)
+    $error("[ara_soc] NrCores must be a power of two between 1 and 8 (hart_id_i is 3 bits).");
 
   if (NrL2Banks == 0 || (NrL2Banks & (NrL2Banks - 1)) != 0)
     $error("[ara_soc] NrL2Banks must be a power of two.");
@@ -877,6 +607,7 @@ module ara_soc
 
   if (AxiUserWidth == 0) $error("[ara_soc] The AXI user width must be greater than zero.");
 
-  if (AxiIdWidth == 0) $error("[ara_soc] The AXI ID width must be greater than zero.");
+  if (AxiIdWidth < 5)
+    $error("[ara_soc] AxiIdWidth must include at least 4 CVA6 ID bits and 1 system mux bit.");
 
 endmodule : ara_soc

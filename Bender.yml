@@ -78,6 +78,8 @@ sources:
     - hardware/src/ara_system.sv
     - hardware/src/l2_mem_interconnect.sv
     # Level 9
+    - hardware/src/ara_interconnect_singlecore.sv
+    - hardware/src/ara_interconnect_multicore.sv
     - hardware/src/ara_soc.sv
 
     - target: ara_test

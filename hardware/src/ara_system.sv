@@ -4,7 +4,8 @@
 //
 // Author: Matheus Cavalcante <matheusd@iis.ee.ethz.ch>
 // Description:
-// Ara's System, containing Ariane and Ara.
+// Ara's System, containing Ariane and Ara. This is the reusable synthesis
+// boundary: keep its configuration and AXI types independent of SoC core count.
 
 module ara_system
   import axi_pkg::*;
