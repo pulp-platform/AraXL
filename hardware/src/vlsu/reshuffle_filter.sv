@@ -103,6 +103,7 @@ always_comb begin
   cluster_metadata_d   = cluster_metadata_i;
   b_pending_d          = b_pending_q;
   aw_id_d              = aw_id_q;
+  ar_id_d              = ar_id_q;
 
   for (int j=0; j < NrClusters; j++) begin
     rs_w_clusters_valid[j] = axi_req_i[j].w_valid;

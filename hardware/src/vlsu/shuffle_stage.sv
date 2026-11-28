@@ -394,6 +394,11 @@ ara_op_e wr_op;
 assign wr_datapath = wr_tracker_q[wr_issue_pnt_q[0]].datapath;
 assign wr_op = wr_tracker_q[wr_issue_pnt_q[0]].op;
 
+datapath_t wr_datapath_out;
+ara_op_e wr_op_out;
+assign wr_datapath_out = wr_tracker_q[wr_issue_pnt_q[NumStages-1]].datapath;
+assign wr_op_out       = wr_tracker_q[wr_issue_pnt_q[NumStages-1]].op;
+
 cluster_bitmask_t rd_cluster_completed_d, rd_cluster_completed_q;
 logic [NumBuffers-1:0] rd_buffer_completed_d, rd_buffer_completed_q;
 
@@ -490,7 +495,7 @@ for (genvar c=0; c<NrClusters; c++) begin
     .inp_data_i    ({wr_buf_data_o[c], w_data_out[NumStages-1][c]}),
     .inp_ready_o   ({wr_buf_ready_o[c], w_ready_shuffle[c]}       ),
     .inp_valid_i   ({wr_buf_data_valid[c], w_valid[NumStages-1]}  ),
-    .inp_sel_i     (wr_datapath                                   ),
+    .inp_sel_i     (wr_datapath_out                                   ),
     .oup_ready_i   (axi_req_unit_stride_ready[c]                  ),
     .oup_valid_o   (axi_req_unit_stride_valid[c]                  ),
     .oup_data_o    (axi_req_unit_stride_o[c]                      )
@@ -503,7 +508,7 @@ for (genvar c=0; c<NrClusters; c++) begin
     .inp_data_i    ({axi_req_unit_stride_o[c], axi_req_i[c].w}             ),
     .inp_ready_o   ({axi_req_unit_stride_ready[c], axi_wr_indexed_ready[c]}),
     .inp_valid_i   ({axi_req_unit_stride_valid[c], axi_wr_indexed_valid[c]}),
-    .inp_sel_i     (wr_op inside {VSXE, VSSE} ? 1'b0 : 1'b1                ),
+    .inp_sel_i     (wr_op_out inside {VSXE, VSSE} ? 1'b0 : 1'b1                ),
     .oup_ready_i   (axi_resp_i[c].w_ready                                  ),
     .oup_valid_o   (axi_req_o[c].w_valid                                   ),
     .oup_data_o    (axi_req_o[c].w                                         )
@@ -728,6 +733,7 @@ always_comb begin
       if (s==NumStages-1) begin
         wr_tracker_d[wr_issue_pnt_q[s]].shuffle_en = '0;
         wr_tracker_d[wr_issue_pnt_q[s]].datapath = SHUFFLE;
+        //wr_tracker_d[wr_issue_pnt_q[s]].op = VSE;
         wr_cnt_d -= 1'b1;
       end
     end
@@ -1052,6 +1058,7 @@ always_comb begin
       if (&cluster_completed) begin
         wr_cnt_d -= 1'b1;
         for (int i=0; i<NumStages; i++) begin
+          //wr_tracker_d[wr_issue_pnt_q[i]].op = VSE;
           wr_issue_pnt_d[i] = (wr_issue_pnt_q[i] == NumTrackers-1) ? '0 : wr_issue_pnt_q[i] + 1;
         end
         cluster_w_d = '0;
